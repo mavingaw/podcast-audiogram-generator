@@ -39,6 +39,13 @@ class Config:
             'header': '/System/Library/Fonts/Helvetica.ttc',
             'transcript': '/System/Library/Fonts/Helvetica.ttc'
         },
+        # Subtitle block position, per format. Same units as the built-in
+        # layout: fraction of the central area, measured from its top.
+        'subtitles': {
+            'vertical': {'y_offset': 0.84},
+            'square': {'y_offset': 0.15},
+            'horizontal': {'y_offset': 0.12},
+        },
         'cta': {
             'enabled': False,
             'text': 'Link in bio',
@@ -95,7 +102,7 @@ class Config:
                 if file_config:
                     # Deep merge for colors, formats, fonts and caption_labels
                     for key, value in file_config.items():
-                        if key in ['colors', 'formats', 'fonts', 'caption_labels', 'cta'] and isinstance(value, dict):
+                        if key in ['colors', 'formats', 'fonts', 'caption_labels', 'cta', 'subtitles'] and isinstance(value, dict):
                             if key not in self.config:
                                 self.config[key] = {}
                             self._deep_merge(self.config[key], value)  # type: ignore[arg-type]

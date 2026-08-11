@@ -12,28 +12,21 @@ feeds, extracts soundbites, and renders videos in vertical (9:16), square (1:1),
   `video_generator.py` is a backward-compat re-export shim; `rendering/facade.py` is the stable API used by the CLI.
 **Configuration:** `config.yaml` (YAML) deep-merged in `audiogram_generator/config.py`
 
+**Overlay positions:** the CTA is threaded from the CLI down to the renderer as a parameter,
+the subtitle block is *not*: `subtitles.<format>.y_offset` is written into `LAYOUT_CONFIGS`
+by `apply_subtitle_overrides()` (called once in `cli.py`), because passing it as a parameter
+would mean touching a dozen signatures for one float. If a subtitle position looks wrong,
+look there, not at the render call.
+
 ---
 
 ## Running tests
 
-### Known venv issue
-
-The venv lives at `venv/` but was created under a different project path (`PycharmProjects/`
-instead of `PyCharmMiscProject/`). The shebang in `venv/bin/pytest` points to the old,
-non-existent path, so direct invocation fails:
-
-```bash
-# BROKEN — shebang points to old path
-venv/bin/pytest tests/
-
-# BROKEN — pytest not installed in system python
-python3 -m pytest tests/
-```
-
 ### Correct command
 
-Use `.venv` (not `venv` — that one has broken symlinks). Always invoke pytest via the venv
-Python interpreter using `-m pytest`:
+Only `.venv/` exists (the old broken `venv/` is gone). Always invoke pytest via the venv
+Python interpreter using `-m pytest` — `python3 -m pytest` fails, pytest is not in the
+system interpreter:
 
 ```bash
 .venv/bin/python -m pytest tests/ -v --tb=short 2>&1

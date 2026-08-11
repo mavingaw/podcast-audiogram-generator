@@ -84,6 +84,17 @@ hashtags:
   - podcast
   - Pensieriincodice
 
+# Subtitle block position (optional), per format. Fraction of the central area
+# measured from its top; a value below 0.5 is measured from the bottom instead.
+# One text line is worth about 0.07 in a vertical video.
+subtitles:
+  vertical:
+    y_offset: 0.84
+  square:
+    y_offset: 0.15
+  horizontal:
+    y_offset: 0.12
+
 # Subtitles (optional)
 # Burn subtitles directly onto the video
 # Default: true
