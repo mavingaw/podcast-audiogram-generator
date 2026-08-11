@@ -133,6 +133,14 @@ hashtags:
   - podcast
   - tech
 
+subtitles:
+  vertical:
+    y_offset: 0.84      # 0.0-1.0, fraction of the central area from its top
+  square:
+    y_offset: 0.15
+  horizontal:
+    y_offset: 0.12
+
 cta:
   enabled: false
   text: "Link in bio"
@@ -143,6 +151,26 @@ manual_soundbites:
       duration: 30.0
       text: "A very interesting moment"
 ```
+
+### Subtitle position
+
+`show_subtitles: true` burns the transcript onto the video; `subtitles.<format>.y_offset`
+decides **where**. The value is a fraction of the *central area* (the beige band
+between header and footer), measured from its top — not of the whole frame:
+
+| Format | Default | Meaning |
+|---|---|---|
+| `vertical` | `0.84` | near the bottom of the central area |
+| `square` | `0.15` | values below `0.5` are measured from the **bottom** instead |
+| `horizontal` | `0.12` | idem |
+
+One text line is worth roughly `0.07` in a vertical video, so `0.84 -> 0.91`
+moves the block down by about one line. Out-of-range or non-numeric values are
+ignored with a warning, keeping the default.
+
+Only the position is configurable: line count, width, padding and shadow are
+still constants in `rendering/compositor.py`.
+
 
 See `config.yaml.example` for the full annotated reference.
 

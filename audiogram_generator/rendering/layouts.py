@@ -1,5 +1,7 @@
 """Layout definitions and per-frame rendering functions."""
 import numpy as np
+import logging
+
 from PIL import Image, ImageDraw, ImageFont
 from typing import Optional
 
@@ -22,6 +24,8 @@ FORMATS = {
 }
 
 # Line spacing multiplier for multi-line headers
+logger = logging.getLogger(__name__)
+
 HEADER_LINE_SPACING = 1.45
 
 # Per-format layout ratios and parameters
@@ -55,6 +59,40 @@ LAYOUT_CONFIGS = {
         'max_lines': 2,
     },
 }
+
+
+SUBTITLE_Y_OFFSET_DEFAULTS = {
+    fmt: cfg['transcript_y_offset'] for fmt, cfg in LAYOUT_CONFIGS.items()
+}
+
+
+def apply_subtitle_overrides(config):
+    """Apply the user's `subtitles.<format>.y_offset` on top of LAYOUT_CONFIGS.
+
+    The CTA config is threaded from the CLI down to the renderer as a parameter;
+    doing the same here would mean touching a dozen signatures across pipeline,
+    facade and encoder for a single float. This writes into the layout table at
+    startup instead, and resets to the built-in defaults every call so repeated
+    runs in one process (tests) do not accumulate.
+    """
+    subtitles = (config or {}).get('subtitles') or {}
+    for fmt, default in SUBTITLE_Y_OFFSET_DEFAULTS.items():
+        override = (subtitles.get(fmt) or {}).get('y_offset', default)
+        try:
+            value = float(override)
+        except (TypeError, ValueError):
+            logger.warning(
+                "subtitles.%s.y_offset is not a number (%r): keeping %.2f",
+                fmt, override, default,
+            )
+            value = default
+        if not 0.0 <= value <= 1.0:
+            logger.warning(
+                "subtitles.%s.y_offset out of range (%s): keeping %.2f",
+                fmt, value, default,
+            )
+            value = default
+        LAYOUT_CONFIGS[fmt]['transcript_y_offset'] = value
 
 
 def _resolve_header_text(podcast_title, episode_title, header_title_source, header_soundbite_title):

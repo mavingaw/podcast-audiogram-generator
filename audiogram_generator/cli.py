@@ -12,6 +12,7 @@ import os
 import sys
 import argparse
 
+from .rendering.layouts import apply_subtitle_overrides
 from .config import Config
 from .core import (  # noqa: F401 – re-exported for tests
     parse_srt_time,
@@ -115,6 +116,9 @@ def main() -> int:
     verify_ssl = config.get('verify_ssl', True)
     full_episode = bool(config.get('full_episode', False))
     cta = config.get('cta')
+    # La posizione dei sottotitoli vive nella tabella di layout: la sovrascrivo
+    # qui invece di passarla giu' per quattro livelli come il cta.
+    apply_subtitle_overrides(config)
     force = bool(config.get('force', False))
     limit = config.get('limit')
 
