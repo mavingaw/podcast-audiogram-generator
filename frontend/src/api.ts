@@ -65,11 +65,16 @@ export type Gpu = {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
-    headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-    ...init
+    headers:
+      init?.body instanceof FormData
+        ? undefined
+        : { "Content-Type": "application/json" },
+    ...init,
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ detail: response.statusText }));
+    const payload = await response
+      .json()
+      .catch(() => ({ detail: response.statusText }));
     throw new Error(payload.detail ?? response.statusText);
   }
   return response.json() as Promise<T>;
@@ -78,31 +83,67 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   bootstrapState: () => request<{ initialized: boolean }>("/api/bootstrap"),
   bootstrap: (email: string, password: string) =>
-    request<{ user: User }>("/api/bootstrap", { method: "POST", body: JSON.stringify({ email, password }) }),
+    request<{ user: User }>("/api/bootstrap", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   me: () => request<{ user: User }>("/api/me"),
   login: (email: string, password: string) =>
-    request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    request<{ user: User }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   users: () => request<{ users: User[] }>("/api/users"),
-  createUser: (payload: { email: string; password: string; is_admin: boolean }) =>
-    request<{ user: User }>("/api/users", { method: "POST", body: JSON.stringify(payload) }),
-  updateUser: (userId: string, payload: { is_admin?: boolean; disabled?: boolean; password?: string }) =>
-    request<{ user: User }>(`/api/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  createUser: (payload: {
+    email: string;
+    password: string;
+    is_admin: boolean;
+  }) =>
+    request<{ user: User }>("/api/users", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateUser: (
+    userId: string,
+    payload: { is_admin?: boolean; disabled?: boolean; password?: string },
+  ) =>
+    request<{ user: User }>(`/api/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   gpus: () => request<{ gpus: Gpu[] }>("/api/gpus"),
   gpuSettings: () => request<Record<string, string>>("/api/settings/gpu"),
-  saveGpuSettings: (payload: { transcription_gpu_uuid?: string; encoding_gpu_uuid?: string }) =>
-    request<{ ok: boolean }>("/api/settings/gpu", { method: "PUT", body: JSON.stringify(payload) }),
+  saveGpuSettings: (payload: {
+    transcription_gpu_uuid?: string;
+    encoding_gpu_uuid?: string;
+  }) =>
+    request<{ ok: boolean }>("/api/settings/gpu", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   media: () => request<{ media: MediaAsset[] }>("/api/media"),
   uploadMedia: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<{ media: MediaAsset; jobs: Job[] }>("/api/media/upload", { method: "POST", body: form });
+    return request<{ media: MediaAsset; jobs: Job[] }>("/api/media/upload", {
+      method: "POST",
+      body: form,
+    });
   },
   projects: () => request<{ projects: Project[] }>("/api/projects"),
   createProject: (title: string, media_id?: string) =>
-    request<{ project: Project }>("/api/projects", { method: "POST", body: JSON.stringify({ title, media_id }) }),
+    request<{ project: Project }>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ title, media_id }),
+    }),
   updateProject: (project: Project, updates: Partial<Project>) =>
-    request<{ project: Project }>(`/api/projects/${project.id}`, { method: "PATCH", body: JSON.stringify(updates) }),
-  renderProject: (project: Project) => request<{ job: Job }>(`/api/projects/${project.id}/render`, { method: "POST" }),
-  jobs: () => request<{ jobs: Job[] }>("/api/jobs")
+    request<{ project: Project }>(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    }),
+  renderProject: (project: Project) =>
+    request<{ job: Job }>(`/api/projects/${project.id}/render`, {
+      method: "POST",
+    }),
+  jobs: () => request<{ jobs: Job[] }>("/api/jobs"),
 };
-

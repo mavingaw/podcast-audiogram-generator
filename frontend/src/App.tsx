@@ -1,43 +1,1528 @@
 import { useEffect, useRef, useState } from "react";
-import { AudioLines, ChevronRight, Download, Eye, EyeOff, FileAudio, Film, FolderOpen, Grid2X2, Layers3, LayoutTemplate, Loader2, LogIn, Menu, Move, Play, Plus, RefreshCw, Settings2, Sparkles, Upload, UserPlus, Users, WandSparkles, ZoomIn } from "lucide-react";
+import {
+  AudioLines,
+  ChevronRight,
+  Download,
+  Eye,
+  EyeOff,
+  FileAudio,
+  Film,
+  FolderOpen,
+  Grid2X2,
+  Layers3,
+  LayoutTemplate,
+  Loader2,
+  LogIn,
+  Menu,
+  Move,
+  Play,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Sparkles,
+  Upload,
+  UserPlus,
+  Users,
+  WandSparkles,
+  ZoomIn,
+} from "lucide-react";
 import { api, Gpu, Job, MediaAsset, Project, User } from "./api";
 
 type View = "home" | "quick" | "studio" | "projects" | "templates" | "exports";
 type AuthView = "loading" | "bootstrap" | "login" | "app";
 type Ratio = "9:16" | "1:1" | "4:5" | "16:9";
-type Layer = { id: string; name: string; type: "title" | "artwork" | "waveform" | "captions" | "background"; x: number; y: number; width: number; height: number; visible: boolean; locked: boolean; color?: string };
-const destinations = [{ id: "9:16" as Ratio, name: "Instagram Reel", detail: "Vertical social video", size: "1080 x 1920" }, { id: "1:1" as Ratio, name: "Instagram Feed", detail: "Square episode card", size: "1080 x 1080" }, { id: "4:5" as Ratio, name: "Instagram Portrait", detail: "Feed-first portrait", size: "1080 x 1350" }, { id: "16:9" as Ratio, name: "YouTube", detail: "Full episode canvas", size: "1280 x 720" }];
-const templates = [{ id: "signal", name: "Signal", style: "Dark / bold", background: "#101820", accent: "#23a094" }, { id: "paper", name: "Paper Cut", style: "Editorial / clean", background: "#f3eee5", accent: "#8d3f35" }, { id: "midnight", name: "Midnight", style: "Podcast / contrast", background: "#20202a", accent: "#efbd58" }];
-function defaultLayers(): Layer[] { return [{ id: "background", name: "Background", type: "background", x: 0, y: 0, width: 100, height: 100, visible: true, locked: true }, { id: "artwork", name: "Podcast Artwork", type: "artwork", x: 12, y: 13, width: 76, height: 41, visible: true, locked: false }, { id: "waveform", name: "Waveform", type: "waveform", x: 12, y: 62, width: 76, height: 12, visible: true, locked: false }, { id: "title", name: "Episode Title", type: "title", x: 12, y: 77, width: 76, height: 10, visible: true, locked: false }, { id: "captions", name: "Captions", type: "captions", x: 12, y: 88, width: 76, height: 8, visible: true, locked: false }]; }
-function getLayers(project: Project | null): Layer[] { const layers = project?.scene?.layers; return Array.isArray(layers) && layers.length ? layers as Layer[] : defaultLayers(); }
-
-export function App() {
-  const [auth, setAuth] = useState<AuthView>("loading"); const [user, setUser] = useState<User | null>(null); const [view, setView] = useState<View>("home"); const [media, setMedia] = useState<MediaAsset[]>([]); const [projects, setProjects] = useState<Project[]>([]); const [jobs, setJobs] = useState<Job[]>([]); const [gpus, setGpus] = useState<Gpu[]>([]); const [users, setUsers] = useState<User[]>([]); const [gpuSettings, setGpuSettings] = useState<Record<string, string>>({}); const [selectedId, setSelectedId] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
-  const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null; const selectedMedia = selected ? media.find((m) => m.id === selected.media_id) ?? null : null;
-  async function loadData(active = user) { const [m, p, j, g, s, u] = await Promise.all([api.media(), api.projects(), api.jobs(), api.gpus(), api.gpuSettings(), active?.is_admin ? api.users() : Promise.resolve({ users: [] })]); setMedia(m.media); setProjects(p.projects); setJobs(j.jobs); setGpus(g.gpus); setGpuSettings(s); setUsers(u.users); if (!selectedId && p.projects[0]) setSelectedId(p.projects[0].id); }
-  useEffect(() => { let ignore = false; (async () => { try { const state = await api.bootstrapState(); if (!state.initialized) { if (!ignore) setAuth("bootstrap"); return; } const me = await api.me(); if (!ignore) { setUser(me.user); setAuth("app"); await loadData(me.user); } } catch { if (!ignore) setAuth("login"); } })(); return () => { ignore = true; }; }, []);
-  useEffect(() => { if (auth !== "app") return; const id = window.setInterval(() => { api.jobs().then((r) => setJobs(r.jobs)).catch(() => undefined); }, 2500); return () => window.clearInterval(id); }, [auth]);
-  async function authenticated(next: User) { setUser(next); setAuth("app"); await loadData(next); }
-  async function createProject(item?: MediaAsset, ratio: Ratio = "9:16", template = templates[0]) { const result = await api.createProject(item ? item.original_name.replace(/\.[^.]+$/, "") : "Untitled audiogram", item?.id); const scene = { ...result.project.scene, background: template.background, accent: template.accent, template: template.id, layers: defaultLayers() }; const saved = await api.updateProject(result.project, { aspect_ratio: ratio as Project["aspect_ratio"], scene }); setProjects([saved.project, ...projects]); setSelectedId(saved.project.id); return saved.project; }
-  async function updateProject(updates: Partial<Project>) { if (!selected) return; const result = await api.updateProject(selected, updates); setProjects(projects.map((p) => p.id === result.project.id ? result.project : p)); }
-  if (auth === "loading") return <div className="auth-screen"><Loader2 className="spin" size={28} /></div>; if (auth === "bootstrap" || auth === "login") return <AuthScreen mode={auth} onDone={authenticated} error={error} onError={setError} />;
-  return <div className="app-shell"><Sidebar user={user} view={view} setView={setView} projects={projects} selected={selected} setSelected={(p) => { setSelectedId(p.id); setView("studio"); }} onNew={() => setView("quick")} /><main className="app-main"><header className="app-header"><button className="mobile-menu icon-button" title="Open navigation"><Menu size={18} /></button><div><span className="kicker">Podcast Audiogram Studio</span><h1>{view === "home" ? "What do you want to create?" : view === "quick" ? "Quick Create" : view === "studio" ? selected?.title ?? "Studio Editor" : view[0].toUpperCase() + view.slice(1)}</h1></div><div className="header-actions"><span className="saved-dot">Local workspace</span><button className="icon-button" title="Refresh" onClick={() => loadData()}><RefreshCw size={17} /></button></div></header>{view === "home" && <Home onCreate={() => setView("quick")} onStudio={() => setView("studio")} projects={projects} onOpen={(p) => { setSelectedId(p.id); setView("studio"); }} />}{view === "quick" && <QuickCreate media={media} selectedMedia={selectedMedia} onUpload={async (file) => { await api.uploadMedia(file); await loadData(); }} onCreate={async (r, t, source, start, end) => { const p = await createProject(source, r, t); await api.updateProject(p, { clip_start: start, clip_end: end }); await loadData(); setSelectedId(p.id); setView("studio"); }} />}{view === "studio" && <Studio project={selected} media={selectedMedia} jobs={jobs} onUpdate={updateProject} onRender={async () => { if (selected) { await api.renderProject(selected); await loadData(); } }} />}{view === "projects" && <ProjectBrowser projects={projects} onOpen={(p) => { setSelectedId(p.id); setView("studio"); }} />}{view === "templates" && <TemplateGallery onUse={async (t) => { const p = await createProject(selectedMedia ?? media[0], "9:16", t); setSelectedId(p.id); setView("studio"); }} />}{view === "exports" && <Exports jobs={jobs} />}{user?.is_admin && <AdminStrip users={users} gpus={gpus} values={gpuSettings} onSave={async (v) => { await api.saveGpuSettings(v); setGpuSettings(v); }} onReload={async () => setUsers((await api.users()).users)} />}</main></div>;
+type Layer = {
+  id: string;
+  name: string;
+  type: "title" | "artwork" | "waveform" | "captions" | "background";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  visible: boolean;
+  locked: boolean;
+  color?: string;
+};
+const destinations = [
+  {
+    id: "9:16" as Ratio,
+    name: "Instagram Reel",
+    detail: "Vertical social video",
+    size: "1080 x 1920",
+  },
+  {
+    id: "1:1" as Ratio,
+    name: "Instagram Feed",
+    detail: "Square episode card",
+    size: "1080 x 1080",
+  },
+  {
+    id: "4:5" as Ratio,
+    name: "Instagram Portrait",
+    detail: "Feed-first portrait",
+    size: "1080 x 1350",
+  },
+  {
+    id: "16:9" as Ratio,
+    name: "YouTube",
+    detail: "Full episode canvas",
+    size: "1280 x 720",
+  },
+];
+const templates = [
+  {
+    id: "signal",
+    name: "Signal",
+    style: "Dark / bold",
+    background: "#101820",
+    accent: "#23a094",
+  },
+  {
+    id: "paper",
+    name: "Paper Cut",
+    style: "Editorial / clean",
+    background: "#f3eee5",
+    accent: "#8d3f35",
+  },
+  {
+    id: "midnight",
+    name: "Midnight",
+    style: "Podcast / contrast",
+    background: "#20202a",
+    accent: "#efbd58",
+  },
+];
+function defaultLayers(): Layer[] {
+  return [
+    {
+      id: "background",
+      name: "Background",
+      type: "background",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      visible: true,
+      locked: true,
+    },
+    {
+      id: "artwork",
+      name: "Podcast Artwork",
+      type: "artwork",
+      x: 12,
+      y: 13,
+      width: 76,
+      height: 41,
+      visible: true,
+      locked: false,
+    },
+    {
+      id: "waveform",
+      name: "Waveform",
+      type: "waveform",
+      x: 12,
+      y: 62,
+      width: 76,
+      height: 12,
+      visible: true,
+      locked: false,
+    },
+    {
+      id: "title",
+      name: "Episode Title",
+      type: "title",
+      x: 12,
+      y: 77,
+      width: 76,
+      height: 10,
+      visible: true,
+      locked: false,
+    },
+    {
+      id: "captions",
+      name: "Captions",
+      type: "captions",
+      x: 12,
+      y: 88,
+      width: 76,
+      height: 8,
+      visible: true,
+      locked: false,
+    },
+  ];
+}
+function getLayers(project: Project | null): Layer[] {
+  const layers = project?.scene?.layers;
+  return Array.isArray(layers) && layers.length
+    ? (layers as Layer[])
+    : defaultLayers();
 }
 
-function Sidebar({ user, view, setView, projects, selected, setSelected, onNew }: { user: User | null; view: View; setView: (v: View) => void; projects: Project[]; selected: Project | null; setSelected: (p: Project) => void; onNew: () => void }) { return <aside className="sidebar"><div className="brand"><AudioLines size={26} /><div><strong>Studio</strong><small>{user?.email}</small></div></div><button className="new-project" onClick={onNew}><Plus size={17} /> New creation</button><nav className="main-nav">{([["home", "Home", Grid2X2], ["projects", "Projects", FolderOpen], ["templates", "Templates", LayoutTemplate], ["exports", "Exports", Download]] as const).map(([id, label, Icon]) => <button className={view === id ? "active" : ""} key={id} onClick={() => setView(id)}><Icon size={17} />{label}</button>)}</nav><div className="sidebar-label">Recent projects</div><div className="recent-projects">{projects.slice(0, 5).map((p) => <button className={selected?.id === p.id ? "active" : ""} key={p.id} onClick={() => setSelected(p)}><Film size={14} /><span>{p.title}</span></button>)}</div><div className="sidebar-footer"><span className="status-light" /> Local processing</div></aside>; }
-function Home({ onCreate, onStudio, projects, onOpen }: { onCreate: () => void; onStudio: () => void; projects: Project[]; onOpen: (p: Project) => void }) { const actions = [["Create Audiogram", "Turn a podcast into a social video", Sparkles, onCreate], ["Clip & Caption", "Start from a transcript moment", WandSparkles, onCreate], ["Full Episode Video", "Build a long-form visual episode", Film, onCreate], ["Studio Editor", "Open a blank creative canvas", Settings2, onStudio]] as const; return <div className="home"><section className="welcome"><span className="kicker">Creator workspace</span><h2>Make the moment<br />worth sharing.</h2><p>Choose a starting point. Your projects, captions, and exports stay on your server.</p></section><div className="creation-grid">{actions.map(([title, detail, Icon, action]) => <button className="creation-tile" key={title} onClick={action}><span className="tile-icon"><Icon size={21} /></span><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={18} /></button>)}</div><section className="recent-section"><div className="section-bar"><div><span className="kicker">Workspace</span><h2>Recent projects</h2></div><button className="text-button" onClick={onCreate}>View all <ChevronRight size={15} /></button></div>{projects.length ? <div className="project-cards">{projects.slice(0, 3).map((p) => <button key={p.id} onClick={() => onOpen(p)}><div className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}><AudioLines size={26} /></div><strong>{p.title}</strong><small>{p.aspect_ratio} · Updated recently</small></button>)}</div> : <div className="empty-state"><FileAudio size={28} /><strong>Your next episode starts here.</strong><span>Create a project or upload source media to begin.</span></div>}</section></div>; }
-function QuickCreate({ media, selectedMedia, onUpload, onCreate }: { media: MediaAsset[]; selectedMedia: MediaAsset | null; onUpload: (f: File) => Promise<void>; onCreate: (r: Ratio, t: typeof templates[number], source: MediaAsset, start: number, end: number) => Promise<void> }) { const [step, setStep] = useState(0); const [ratio, setRatio] = useState<Ratio>("9:16"); const [template, setTemplate] = useState(templates[0]); const [sourceId, setSourceId] = useState(selectedMedia?.id ?? media[0]?.id ?? ""); const [start, setStart] = useState(0); const [end, setEnd] = useState(45); const source = media.find((m) => m.id === sourceId) ?? selectedMedia ?? media[0] ?? null; const duration = Math.max(60, source?.duration_seconds ?? 180); const segments = source?.transcript?.segments ?? []; return <div className="quick-flow"><div className="flow-steps">{["Destination", "Source", "Clip", "Template", "Create"].map((name, i) => <button className={step === i ? "current" : step > i ? "done" : ""} key={name} onClick={() => setStep(i)}><span>{i + 1}</span>{name}</button>)}</div>{step === 0 && <div className="flow-pane"><PaneHeading n="01" title="Where will this live?" text="Start with a canvas built for the way people will watch it." /><div className="destination-grid">{destinations.map((d) => <button className={ratio === d.id ? "selected" : ""} key={d.id} onClick={() => setRatio(d.id)}><div className={`destination-preview ratio-${d.id.replace(":", "-")}`}><span>{d.id}</span></div><strong>{d.name}</strong><small>{d.detail} · {d.size}</small></button>)}</div><FlowNext onClick={() => setStep(1)} /></div>}{step === 1 && <div className="flow-pane"><PaneHeading n="02" title="Choose your source" text="Upload local media. Analysis and transcription run in the background." /><label className="upload-drop"><Upload size={26} /><strong>Upload episode media</strong><span>MP3, WAV, FLAC, M4A, MP4, MOV</span><input type="file" accept="audio/*,video/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await onUpload(f); }} /></label>{media.length > 0 && <div className="source-list">{media.map((m) => <button className={source?.id === m.id ? "selected" : ""} key={m.id} onClick={() => setSourceId(m.id)}><FileAudio size={18} /><span>{m.original_name}<small>{m.has_transcript ? "Transcript ready" : "Analyzing media"}</small></span>{source?.id === m.id && <b>✓</b>}</button>)}</div>}<FlowNext disabled={!source} onClick={() => setStep(2)} /></div>}{step === 2 && <div className="flow-pane"><PaneHeading n="03" title="Find the moment" text="Click a transcript line or drag the range to set your clip." /><ClipSelector start={start} end={end} duration={duration} segments={segments} onChange={(s, e) => { setStart(s); setEnd(e); }} /><FlowNext onClick={() => setStep(3)} /></div>}{step === 3 && <div className="flow-pane"><PaneHeading n="04" title="Choose a visual direction" text="Every template stays editable when you open the project in Studio." /><div className="template-grid">{templates.map((t) => <button className={template.id === t.id ? "selected" : ""} key={t.id} onClick={() => setTemplate(t)}><TemplateThumb template={t} /><strong>{t.name}</strong><small>{t.style}</small></button>)}</div><FlowNext label="Review creation" onClick={() => setStep(4)} /></div>}{step === 4 && <div className="flow-pane create-confirm"><span className="success-mark">✓</span><span className="kicker">Ready to create</span><h2>{source?.original_name ?? "Your audiogram"}</h2><p>{ratio} canvas · {template.name} template · {Math.max(0, end - start).toFixed(1)} second clip</p><button className="primary large" disabled={!source} onClick={() => source && onCreate(ratio, template, source, start, end)}><WandSparkles size={18} /> Open in Studio</button></div>}</div>; }
-function PaneHeading({ n, title, text }: { n: string; title: string; text: string }) { return <div className="pane-heading"><span className="kicker">Step {n}</span><h2>{title}</h2><p>{text}</p></div>; }
-function FlowNext({ onClick, label = "Continue", disabled = false }: { onClick: () => void; label?: string; disabled?: boolean }) { return <div className="flow-next"><button className="primary" disabled={disabled} onClick={onClick}>{label}<ChevronRight size={17} /></button></div>; }
-function ClipSelector({ start, end, duration, segments, onChange }: { start: number; end: number; duration: number; segments: { id: number; start: number; end: number; text: string }[]; onChange: (s: number, e: number) => void }) { const bars = Array.from({ length: 72 }, (_, i) => 18 + ((i * 31) % 68)); return <div className="clip-selector"><div className="waveform-editor">{bars.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}<div className="range-overlay" style={{ left: `${start / duration * 100}%`, width: `${(end - start) / duration * 100}%` }} /><input aria-label="Clip start" type="range" min="0" max={duration - 1} step="0.1" value={start} onChange={(e) => onChange(Math.min(Number(e.target.value), end - 0.5), end)} /><input aria-label="Clip end" type="range" min="1" max={duration} step="0.1" value={end} onChange={(e) => onChange(start, Math.max(Number(e.target.value), start + 0.5))} /></div><div className="clip-times"><strong>{formatTime(start)}</strong><span>{formatTime(end - start)} selected</span><strong>{formatTime(end)}</strong></div><div className="transcript-pick">{segments.length ? segments.map((s) => <button key={s.id} onClick={() => onChange(s.start, s.end)}><small>{formatTime(s.start)}</small>{s.text}</button>) : <p className="muted">Transcript is being prepared. The selection controls are ready for the clip.</p>}</div></div>; }
+export function App() {
+  const [auth, setAuth] = useState<AuthView>("loading");
+  const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<View>("home");
+  const [media, setMedia] = useState<MediaAsset[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [gpus, setGpus] = useState<Gpu[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [gpuSettings, setGpuSettings] = useState<Record<string, string>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selected =
+    projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
+  const selectedMedia = selected
+    ? (media.find((m) => m.id === selected.media_id) ?? null)
+    : null;
+  async function loadData(active = user) {
+    const [m, p, j, g, s, u] = await Promise.all([
+      api.media(),
+      api.projects(),
+      api.jobs(),
+      api.gpus(),
+      api.gpuSettings(),
+      active?.is_admin ? api.users() : Promise.resolve({ users: [] }),
+    ]);
+    setMedia(m.media);
+    setProjects(p.projects);
+    setJobs(j.jobs);
+    setGpus(g.gpus);
+    setGpuSettings(s);
+    setUsers(u.users);
+    if (!selectedId && p.projects[0]) setSelectedId(p.projects[0].id);
+  }
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const state = await api.bootstrapState();
+        if (!state.initialized) {
+          if (!ignore) setAuth("bootstrap");
+          return;
+        }
+        const me = await api.me();
+        if (!ignore) {
+          setUser(me.user);
+          setAuth("app");
+          await loadData(me.user);
+        }
+      } catch {
+        if (!ignore) setAuth("login");
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (auth !== "app") return;
+    const id = window.setInterval(() => {
+      api
+        .jobs()
+        .then((r) => setJobs(r.jobs))
+        .catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [auth]);
+  async function authenticated(next: User) {
+    setUser(next);
+    setAuth("app");
+    await loadData(next);
+  }
+  async function createProject(
+    item?: MediaAsset,
+    ratio: Ratio = "9:16",
+    template = templates[0],
+  ) {
+    const result = await api.createProject(
+      item ? item.original_name.replace(/\.[^.]+$/, "") : "Untitled audiogram",
+      item?.id,
+    );
+    const scene = {
+      ...result.project.scene,
+      background: template.background,
+      accent: template.accent,
+      template: template.id,
+      layers: defaultLayers(),
+    };
+    const saved = await api.updateProject(result.project, {
+      aspect_ratio: ratio as Project["aspect_ratio"],
+      scene,
+    });
+    setProjects([saved.project, ...projects]);
+    setSelectedId(saved.project.id);
+    return saved.project;
+  }
+  async function updateProject(updates: Partial<Project>) {
+    if (!selected) return;
+    const result = await api.updateProject(selected, updates);
+    setProjects(
+      projects.map((p) => (p.id === result.project.id ? result.project : p)),
+    );
+  }
+  if (auth === "loading")
+    return (
+      <div className="auth-screen">
+        <Loader2 className="spin" size={28} />
+      </div>
+    );
+  if (auth === "bootstrap" || auth === "login")
+    return (
+      <AuthScreen
+        mode={auth}
+        onDone={authenticated}
+        error={error}
+        onError={setError}
+      />
+    );
+  return (
+    <div className={`app-shell ${navOpen ? "nav-open" : ""}`}>
+      <Sidebar
+        user={user}
+        view={view}
+        setView={setView}
+        projects={projects}
+        selected={selected}
+        setSelected={(p) => {
+          setSelectedId(p.id);
+          setView("studio");
+        }}
+        onNew={() => setView("quick")}
+        onClose={() => setNavOpen(false)}
+      />
+      <main className="app-main">
+        <header className="app-header">
+          <button className="mobile-menu icon-button" title="Open navigation" onClick={() => setNavOpen((value) => !value)}>
+            <Menu size={18} />
+          </button>
+          <div>
+            <span className="kicker">Podcast Audiogram Studio</span>
+            <h1>
+              {view === "home"
+                ? "What do you want to create?"
+                : view === "quick"
+                  ? "Quick Create"
+                  : view === "studio"
+                    ? (selected?.title ?? "Studio Editor")
+                    : view[0].toUpperCase() + view.slice(1)}
+            </h1>
+          </div>
+          <div className="header-actions">
+            <span className="saved-dot">Local workspace</span>
+            <button
+              className="icon-button"
+              title="Refresh"
+              onClick={() => loadData()}
+            >
+              <RefreshCw size={17} />
+            </button>
+          </div>
+        </header>
+        {view === "home" && (
+          <Home
+            onCreate={() => setView("quick")}
+            onStudio={() => setView("studio")}
+            projects={projects}
+            onOpen={(p) => {
+              setSelectedId(p.id);
+              setView("studio");
+            }}
+          />
+        )}
+        {view === "quick" && (
+          <QuickCreate
+            media={media}
+            selectedMedia={selectedMedia}
+            onUpload={async (file) => {
+              await api.uploadMedia(file);
+              await loadData();
+            }}
+            onCreate={async (r, t, source, start, end) => {
+              const p = await createProject(source, r, t);
+              await api.updateProject(p, { clip_start: start, clip_end: end });
+              await loadData();
+              setSelectedId(p.id);
+              setView("studio");
+            }}
+          />
+        )}
+        {view === "studio" && (
+          <Studio
+            project={selected}
+            media={selectedMedia}
+            jobs={jobs}
+            onUpdate={updateProject}
+            onRender={async () => {
+              if (selected) {
+                await api.renderProject(selected);
+                await loadData();
+              }
+            }}
+          />
+        )}
+        {view === "projects" && (
+          <ProjectBrowser
+            projects={projects}
+            onOpen={(p) => {
+              setSelectedId(p.id);
+              setView("studio");
+            }}
+          />
+        )}
+        {view === "templates" && (
+          <TemplateGallery
+            onUse={async (t) => {
+              const p = await createProject(
+                selectedMedia ?? media[0],
+                "9:16",
+                t,
+              );
+              setSelectedId(p.id);
+              setView("studio");
+            }}
+          />
+        )}
+        {view === "exports" && <Exports jobs={jobs} />}
+        {user?.is_admin && (
+          <AdminStrip
+            users={users}
+            gpus={gpus}
+            values={gpuSettings}
+            onSave={async (v) => {
+              await api.saveGpuSettings(v);
+              setGpuSettings(v);
+            }}
+            onReload={async () => setUsers((await api.users()).users)}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
 
-function Studio({ project, media, jobs, onUpdate, onRender }: { project: Project | null; media: MediaAsset | null; jobs: Job[]; onUpdate: (u: Partial<Project>) => Promise<void>; onRender: () => Promise<void> }) { const [layers, setLayers] = useState<Layer[]>(getLayers(project)); const [selectedLayer, setSelectedLayer] = useState("artwork"); const [playhead, setPlayhead] = useState(project?.clip_start ?? 0); const canvasRef = useRef<HTMLDivElement>(null); useEffect(() => setLayers(getLayers(project)), [project?.id]); const active = layers.find((l) => l.id === selectedLayer) ?? layers[0]; const accent = String(project?.scene?.accent ?? "#23a094"); const background = String(project?.scene?.background ?? "#101820"); async function save(next: Layer[]) { setLayers(next); if (project) await onUpdate({ scene: { ...project.scene, layers: next } }); } function drag(e: React.PointerEvent, layer: Layer) { if (layer.locked || !canvasRef.current) return; const rect = canvasRef.current.getBoundingClientRect(); const sx = e.clientX; const sy = e.clientY; const ox = layer.x; const oy = layer.y; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); const move = (event: PointerEvent) => setLayers((current) => current.map((l) => l.id === layer.id ? { ...l, x: Math.max(0, Math.min(100 - l.width, ox + (event.clientX - sx) / rect.width * 100)), y: Math.max(0, Math.min(100 - l.height, oy + (event.clientY - sy) / rect.height * 100)) } : l)); const up = async () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); await save(layers); }; window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); } return <div className="studio-editor"><div className="studio-toolbar"><button className="ghost" onClick={() => setPlayhead(playhead === 0 ? 1 : 0)}><Play size={16} /> Preview</button><span className="toolbar-divider" /><button className="icon-button" title="Zoom canvas"><ZoomIn size={17} /></button><span className="toolbar-spacer" /><button className="ghost"><RefreshCw size={16} /> Undo</button><button className="ghost" onClick={onRender}><Download size={16} /> Export</button></div><div className="studio-grid"><aside className="studio-tools"><span className="sidebar-label">Add to canvas</span>{[[FileAudio, "Media"], [LayoutTemplate, "Templates"], [Sparkles, "Captions"], [AudioLines, "Waveform"]].map(([Icon, label]) => <button key={label as string}><Icon size={17} />{label as string}</button>)}</aside><section className="canvas-area"><div className={`canvas-wrap ratio-${(project?.aspect_ratio ?? "9:16").replace(":", "-")}`}><div className="design-canvas" ref={canvasRef} style={{ background }}><div className="safe-zone" />{layers.filter((l) => l.visible).map((layer) => <div key={layer.id} className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}`} style={{ left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`, color: layer.color ?? "#fff", borderColor: accent }} onPointerDown={(e) => { setSelectedLayer(layer.id); drag(e, layer); }}><LayerContent layer={layer} title={project?.title ?? "Episode title"} media={media} accent={accent} /></div>)}</div></div><div className="canvas-status"><span>{project?.aspect_ratio ?? "9:16"}</span><span>Safe zone guide</span><span>Autosaved locally</span></div></section><aside className="inspector"><div className="inspector-heading"><span className="sidebar-label">Layers</span><button className="icon-button" title="Add layer"><Plus size={16} /></button></div>{layers.slice().reverse().map((layer) => <div className={`layer-row ${selectedLayer === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => setSelectedLayer(layer.id)}><Move size={14} /><span>{layer.name}</span><button className="layer-action" title={layer.visible ? "Hide layer" : "Show layer"} onClick={(e) => { e.stopPropagation(); void save(layers.map((l) => l.id === layer.id ? { ...l, visible: !l.visible } : l)); }}>{layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}</button></div>)}{active && <div className="properties"><span className="sidebar-label">Properties</span><strong>{active.name}</strong><label>Width<input type="range" min="10" max="100" value={active.width} onChange={(e) => void save(layers.map((l) => l.id === active.id ? { ...l, width: Number(e.target.value) } : l))} /></label><label>Height<input type="range" min="5" max="100" value={active.height} onChange={(e) => void save(layers.map((l) => l.id === active.id ? { ...l, height: Number(e.target.value) } : l))} /></label></div>}</aside></div><Timeline project={project} playhead={playhead} setPlayhead={setPlayhead} layers={layers} jobs={jobs} /></div>; }
-function LayerContent({ layer, title, media, accent }: { layer: Layer; title: string; media: MediaAsset | null; accent: string }) { if (layer.type === "artwork") return <div className="artwork-placeholder"><AudioLines size={34} /></div>; if (layer.type === "waveform") return <div className="mini-wave">{Array.from({ length: 32 }).map((_, i) => <i key={i} style={{ height: `${22 + (i * 23) % 72}%`, background: accent }} />)}</div>; if (layer.type === "captions") return <span className="layer-caption">Your story, in motion.</span>; if (layer.type === "title") return <span className="layer-title">{title}</span>; return null; }
-function Timeline({ project, playhead, setPlayhead, layers, jobs }: { project: Project | null; playhead: number; setPlayhead: (n: number) => void; layers: Layer[]; jobs: Job[] }) { const duration = Math.max(60, (project?.clip_end ?? 45) - (project?.clip_start ?? 0)); return <div className="timeline"><div className="timeline-head"><strong>Timeline</strong><span>{formatTime(playhead)} / {formatTime(duration)}</span><span className="timeline-zoom"><ZoomIn size={14} /> 100%</span></div><div className="timeline-body"><div className="track-labels">{layers.slice().reverse().map((l) => <span key={l.id}>{l.name}</span>)}</div><div className="tracks" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPlayhead((e.clientX - r.left) / r.width * duration); }}><div className="ruler">{[0, 15, 30, 45, 60].map((n) => <span key={n} style={{ left: `${n / duration * 100}%` }}>{formatTime(n)}</span>)}</div>{layers.slice().reverse().map((layer, i) => <div className="track" key={layer.id}><div className="track-block" style={{ left: `${i * 2}%`, width: `${Math.max(28, 72 - i * 5)}%` }}>{layer.name}</div></div>)}<div className="playhead" style={{ left: `${playhead / duration * 100}%` }} /></div></div></div>; }
-function ProjectBrowser({ projects, onOpen }: { projects: Project[]; onOpen: (p: Project) => void }) { return <div className="library-page"><div className="page-heading"><span className="kicker">Library</span><h2>Projects</h2><p>Everything you create stays available on this server.</p></div><div className="library-grid">{projects.map((p) => <button key={p.id} onClick={() => onOpen(p)}><div className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}><AudioLines size={27} /></div><strong>{p.title}</strong><small>{p.aspect_ratio} · {(p.clip_end - p.clip_start).toFixed(1)}s</small></button>)}</div></div>; }
-function TemplateThumb({ template }: { template: typeof templates[number] }) { return <div className="template-thumb" style={{ background: template.background }}><div style={{ background: template.accent }} /><span>Episode<br />Title</span></div>; }
-function TemplateGallery({ onUse }: { onUse: (t: typeof templates[number]) => Promise<void> }) { return <div className="library-page"><div className="page-heading"><span className="kicker">Starter library</span><h2>Templates</h2><p>Scene compositions you can adapt in Studio.</p></div><div className="template-grid gallery">{templates.map((t) => <button key={t.id} onClick={() => onUse(t)}><TemplateThumb template={t} /><strong>{t.name}</strong><small>{t.style}</small></button>)}</div></div>; }
-function Exports({ jobs }: { jobs: Job[] }) { const done = jobs.filter((j) => j.kind === "render" && j.status === "complete"); return <div className="library-page"><div className="page-heading"><span className="kicker">Output library</span><h2>Exports</h2><p>Finished renders and caption files from your local queue.</p></div>{done.length ? <div className="export-list">{done.map((j) => <div key={j.id}><div className="export-icon"><Film size={18} /></div><div><strong>{j.message}</strong><small>Ready to download</small></div>{j.result?.downloads?.mp4 && <a href={j.result.downloads.mp4} title="Download MP4"><Download size={17} /></a>}</div>)}</div> : <div className="empty-state"><Download size={28} /><strong>No exports yet.</strong><span>Render a project from Studio to see it here.</span></div>}</div>; }
-function AdminStrip({ users, gpus, values, onSave, onReload }: { users: User[]; gpus: Gpu[]; values: Record<string, string>; onSave: (v: Record<string, string>) => Promise<void>; onReload: () => Promise<void> }) { const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); return <details className="admin-strip"><summary><Users size={16} /> Admin · {users.length} users · {gpus.length} GPUs</summary><div className="admin-content"><form onSubmit={async (e) => { e.preventDefault(); await api.createUser({ email, password, is_admin: false }); setEmail(""); setPassword(""); await onReload(); }}><input aria-label="New user email" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required /><input aria-label="New user password" type="password" placeholder="Password" minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} required /><button className="ghost compact"><UserPlus size={15} /> Add user</button></form><label>Transcription GPU<select value={values.transcription_gpu_uuid ?? ""} onChange={(e) => void onSave({ ...values, transcription_gpu_uuid: e.target.value })}><option value="">CPU / automatic</option>{gpus.map((g) => <option key={g.uuid} value={g.uuid}>{g.name}</option>)}</select></label></div></details>; }
-function AuthScreen({ mode, onDone, error, onError }: { mode: AuthView; onDone: (u: User) => Promise<void>; error: string | null; onError: (e: string | null) => void }) { const [email, setEmail] = useState("admin@example.com"); const [password, setPassword] = useState(""); const [busy, setBusy] = useState(false); return <div className="auth-screen"><form className="auth-form" onSubmit={async (e) => { e.preventDefault(); setBusy(true); onError(null); try { const r = mode === "bootstrap" ? await api.bootstrap(email, password) : await api.login(email, password); await onDone(r.user); } catch (err) { onError(err instanceof Error ? err.message : "Authentication failed"); } finally { setBusy(false); } }}><AudioLines size={34} /><span className="kicker">Private creator workspace</span><h1>{mode === "bootstrap" ? "Create your administrator" : "Welcome back"}</h1><p>{mode === "bootstrap" ? "Set up the first local account to begin." : "Sign in to your self-hosted studio."}</p><label>Email<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" /></label><label>Password<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete={mode === "bootstrap" ? "new-password" : "current-password"} /></label>{error && <p className="error">{error}</p>}<button className="primary large" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <LogIn size={17} />}{mode === "bootstrap" ? "Initialize studio" : "Sign in"}</button></form></div>; }
-function formatTime(s: number) { const m = Math.floor(Math.max(0, s) / 60); return `${m}:${Math.floor(Math.max(0, s) % 60).toString().padStart(2, "0")}`; }
+function Sidebar({
+  user,
+  view,
+  setView,
+  projects,
+  selected,
+  setSelected,
+  onNew,
+  onClose,
+}: {
+  user: User | null;
+  view: View;
+  setView: (v: View) => void;
+  projects: Project[];
+  selected: Project | null;
+  setSelected: (p: Project) => void;
+  onNew: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <AudioLines size={26} />
+        <div>
+          <strong>Studio</strong>
+          <small>{user?.email}</small>
+        </div>
+      </div>
+      <button className="new-project" onClick={() => { onNew(); onClose(); }}>
+        <Plus size={17} /> New creation
+      </button>
+      <nav className="main-nav">
+        {(
+          [
+            ["home", "Home", Grid2X2],
+            ["projects", "Projects", FolderOpen],
+            ["templates", "Templates", LayoutTemplate],
+            ["exports", "Exports", Download],
+          ] as const
+        ).map(([id, label, Icon]) => (
+          <button
+            className={view === id ? "active" : ""}
+            key={id}
+            onClick={() => { setView(id); onClose(); }}
+          >
+            <Icon size={17} />
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className="sidebar-label">Recent projects</div>
+      <div className="recent-projects">
+        {projects.slice(0, 5).map((p) => (
+          <button
+            className={selected?.id === p.id ? "active" : ""}
+            key={p.id}
+                onClick={() => { setSelected(p); onClose(); }}
+          >
+            <Film size={14} />
+            <span>{p.title}</span>
+          </button>
+        ))}
+      </div>
+      <div className="sidebar-footer">
+        <span className="status-light" /> Local processing
+      </div>
+    </aside>
+  );
+}
+function Home({
+  onCreate,
+  onStudio,
+  projects,
+  onOpen,
+}: {
+  onCreate: () => void;
+  onStudio: () => void;
+  projects: Project[];
+  onOpen: (p: Project) => void;
+}) {
+  const actions = [
+    [
+      "Create Audiogram",
+      "Turn a podcast into a social video",
+      Sparkles,
+      onCreate,
+    ],
+    [
+      "Clip & Caption",
+      "Start from a transcript moment",
+      WandSparkles,
+      onCreate,
+    ],
+    ["Full Episode Video", "Build a long-form visual episode", Film, onCreate],
+    ["Studio Editor", "Open a blank creative canvas", Settings2, onStudio],
+  ] as const;
+  return (
+    <div className="home">
+      <section className="welcome">
+        <span className="kicker">Creator workspace</span>
+        <h2>
+          Make the moment
+          <br />
+          worth sharing.
+        </h2>
+        <p>
+          Choose a starting point. Your projects, captions, and exports stay on
+          your server.
+        </p>
+      </section>
+      <div className="creation-grid">
+        {actions.map(([title, detail, Icon, action]) => (
+          <button className="creation-tile" key={title} onClick={action}>
+            <span className="tile-icon">
+              <Icon size={21} />
+            </span>
+            <span>
+              <strong>{title}</strong>
+              <small>{detail}</small>
+            </span>
+            <ChevronRight size={18} />
+          </button>
+        ))}
+      </div>
+      <section className="recent-section">
+        <div className="section-bar">
+          <div>
+            <span className="kicker">Workspace</span>
+            <h2>Recent projects</h2>
+          </div>
+          <button className="text-button" onClick={onCreate}>
+            View all <ChevronRight size={15} />
+          </button>
+        </div>
+        {projects.length ? (
+          <div className="project-cards">
+            {projects.slice(0, 3).map((p) => (
+              <button key={p.id} onClick={() => onOpen(p)}>
+                <div
+                  className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}
+                >
+                  <AudioLines size={26} />
+                </div>
+                <strong>{p.title}</strong>
+                <small>{p.aspect_ratio} · Updated recently</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <FileAudio size={28} />
+            <strong>Your next episode starts here.</strong>
+            <span>Create a project or upload source media to begin.</span>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+function QuickCreate({
+  media,
+  selectedMedia,
+  onUpload,
+  onCreate,
+}: {
+  media: MediaAsset[];
+  selectedMedia: MediaAsset | null;
+  onUpload: (f: File) => Promise<void>;
+  onCreate: (
+    r: Ratio,
+    t: (typeof templates)[number],
+    source: MediaAsset,
+    start: number,
+    end: number,
+  ) => Promise<void>;
+}) {
+  const [step, setStep] = useState(0);
+  const [ratio, setRatio] = useState<Ratio>("9:16");
+  const [template, setTemplate] = useState(templates[0]);
+  const [sourceId, setSourceId] = useState(
+    selectedMedia?.id ?? media[0]?.id ?? "",
+  );
+  const [start, setStart] = useState(0);
+  const [end, setEnd] = useState(45);
+  const source =
+    media.find((m) => m.id === sourceId) ?? selectedMedia ?? media[0] ?? null;
+  const duration = Math.max(60, source?.duration_seconds ?? 180);
+  const segments = source?.transcript?.segments ?? [];
+  return (
+    <div className="quick-flow">
+      <div className="flow-steps">
+        {["Destination", "Source", "Clip", "Template", "Create"].map(
+          (name, i) => (
+            <button
+              className={step === i ? "current" : step > i ? "done" : ""}
+              key={name}
+              onClick={() => setStep(i)}
+            >
+              <span>{i + 1}</span>
+              {name}
+            </button>
+          ),
+        )}
+      </div>
+      {step === 0 && (
+        <div className="flow-pane">
+          <PaneHeading
+            n="01"
+            title="Where will this live?"
+            text="Start with a canvas built for the way people will watch it."
+          />
+          <div className="destination-grid">
+            {destinations.map((d) => (
+              <button
+                className={ratio === d.id ? "selected" : ""}
+                key={d.id}
+                onClick={() => setRatio(d.id)}
+              >
+                <div
+                  className={`destination-preview ratio-${d.id.replace(":", "-")}`}
+                >
+                  <span>{d.id}</span>
+                </div>
+                <strong>{d.name}</strong>
+                <small>
+                  {d.detail} · {d.size}
+                </small>
+              </button>
+            ))}
+          </div>
+          <FlowNext onClick={() => setStep(1)} />
+        </div>
+      )}
+      {step === 1 && (
+        <div className="flow-pane">
+          <PaneHeading
+            n="02"
+            title="Choose your source"
+            text="Upload local media. Analysis and transcription run in the background."
+          />
+          <label className="upload-drop">
+            <Upload size={26} />
+            <strong>Upload episode media</strong>
+            <span>MP3, WAV, FLAC, M4A, MP4, MOV</span>
+            <input
+              type="file"
+              accept="audio/*,video/*"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (f) await onUpload(f);
+              }}
+            />
+          </label>
+          {media.length > 0 && (
+            <div className="source-list">
+              {media.map((m) => (
+                <button
+                  className={source?.id === m.id ? "selected" : ""}
+                  key={m.id}
+                  onClick={() => setSourceId(m.id)}
+                >
+                  <FileAudio size={18} />
+                  <span>
+                    {m.original_name}
+                    <small>
+                      {m.has_transcript
+                        ? "Transcript ready"
+                        : "Analyzing media"}
+                    </small>
+                  </span>
+                  {source?.id === m.id && <b>✓</b>}
+                </button>
+              ))}
+            </div>
+          )}
+          <FlowNext disabled={!source} onClick={() => setStep(2)} />
+        </div>
+      )}
+      {step === 2 && (
+        <div className="flow-pane">
+          <PaneHeading
+            n="03"
+            title="Find the moment"
+            text="Click a transcript line or drag the range to set your clip."
+          />
+          <ClipSelector
+            start={start}
+            end={end}
+            duration={duration}
+            segments={segments}
+            onChange={(s, e) => {
+              setStart(s);
+              setEnd(e);
+            }}
+          />
+          <FlowNext onClick={() => setStep(3)} />
+        </div>
+      )}
+      {step === 3 && (
+        <div className="flow-pane">
+          <PaneHeading
+            n="04"
+            title="Choose a visual direction"
+            text="Every template stays editable when you open the project in Studio."
+          />
+          <div className="template-grid">
+            {templates.map((t) => (
+              <button
+                className={template.id === t.id ? "selected" : ""}
+                key={t.id}
+                onClick={() => setTemplate(t)}
+              >
+                <TemplateThumb template={t} />
+                <strong>{t.name}</strong>
+                <small>{t.style}</small>
+              </button>
+            ))}
+          </div>
+          <FlowNext label="Review creation" onClick={() => setStep(4)} />
+        </div>
+      )}
+      {step === 4 && (
+        <div className="flow-pane create-confirm">
+          <span className="success-mark">✓</span>
+          <span className="kicker">Ready to create</span>
+          <h2>{source?.original_name ?? "Your audiogram"}</h2>
+          <p>
+            {ratio} canvas · {template.name} template ·{" "}
+            {Math.max(0, end - start).toFixed(1)} second clip
+          </p>
+          <button
+            className="primary large"
+            disabled={!source}
+            onClick={() =>
+              source && onCreate(ratio, template, source, start, end)
+            }
+          >
+            <WandSparkles size={18} /> Open in Studio
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+function PaneHeading({
+  n,
+  title,
+  text,
+}: {
+  n: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="pane-heading">
+      <span className="kicker">Step {n}</span>
+      <h2>{title}</h2>
+      <p>{text}</p>
+    </div>
+  );
+}
+function FlowNext({
+  onClick,
+  label = "Continue",
+  disabled = false,
+}: {
+  onClick: () => void;
+  label?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flow-next">
+      <button className="primary" disabled={disabled} onClick={onClick}>
+        {label}
+        <ChevronRight size={17} />
+      </button>
+    </div>
+  );
+}
+function ClipSelector({
+  start,
+  end,
+  duration,
+  segments,
+  onChange,
+}: {
+  start: number;
+  end: number;
+  duration: number;
+  segments: { id: number; start: number; end: number; text: string }[];
+  onChange: (s: number, e: number) => void;
+}) {
+  const bars = Array.from({ length: 72 }, (_, i) => 18 + ((i * 31) % 68));
+  const waveformRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    mode: "new" | "move" | "start" | "end";
+    origin: number;
+    start: number;
+    end: number;
+  } | null>(null);
+  const position = (clientX: number) => {
+    const rect = waveformRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    return Math.max(
+      0,
+      Math.min(duration, ((clientX - rect.left) / rect.width) * duration),
+    );
+  };
+  const begin = (
+    event: React.PointerEvent,
+    mode: "new" | "move" | "start" | "end",
+  ) => {
+    event.preventDefault();
+    const point = position(event.clientX);
+    dragRef.current = { mode, origin: point, start, end };
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+  const move = (event: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const point = position(event.clientX);
+    if (drag.mode === "new")
+      onChange(
+        Math.min(drag.origin, point),
+        Math.max(drag.origin + 0.5, point),
+      );
+    if (drag.mode === "start") onChange(Math.min(point, end - 0.5), end);
+    if (drag.mode === "end") onChange(start, Math.max(start + 0.5, point));
+    if (drag.mode === "move") {
+      const delta = point - drag.origin;
+      const length = drag.end - drag.start;
+      const nextStart = Math.max(
+        0,
+        Math.min(duration - length, drag.start + delta),
+      );
+      onChange(nextStart, nextStart + length);
+    }
+  };
+  const finish = () => {
+    dragRef.current = null;
+  };
+  return (
+    <div className="clip-selector">
+      <div
+        className="waveform-editor"
+        ref={waveformRef}
+        onPointerDown={(e) => begin(e, "new")}
+        onPointerMove={move}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+      >
+        {bars.map((h, i) => (
+          <i key={i} style={{ height: `${h}%` }} />
+        ))}
+        <div
+          className="range-overlay"
+          style={{
+            left: `${(start / duration) * 100}%`,
+            width: `${((end - start) / duration) * 100}%`,
+          }}
+          onPointerDown={(e) => begin(e, "move")}
+        >
+          <button
+            className="range-handle start"
+            aria-label="Drag clip start"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              begin(e, "start");
+            }}
+          />
+          <button
+            className="range-handle end"
+            aria-label="Drag clip end"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              begin(e, "end");
+            }}
+          />
+        </div>
+      </div>
+      <div className="clip-times">
+        <strong>{formatTime(start)}</strong>
+        <span>{formatTime(end - start)} selected</span>
+        <strong>{formatTime(end)}</strong>
+      </div>
+      <div className="transcript-pick">
+        {segments.length ? (
+          segments.map((s) => (
+            <button key={s.id} onClick={() => onChange(s.start, s.end)}>
+              <small>{formatTime(s.start)}</small>
+              {s.text}
+            </button>
+          ))
+        ) : (
+          <p className="muted">
+            Transcript is being prepared. Drag across the waveform to choose a
+            section.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Studio({
+  project,
+  media,
+  jobs,
+  onUpdate,
+  onRender,
+}: {
+  project: Project | null;
+  media: MediaAsset | null;
+  jobs: Job[];
+  onUpdate: (u: Partial<Project>) => Promise<void>;
+  onRender: () => Promise<void>;
+}) {
+  const [layers, setLayers] = useState<Layer[]>(getLayers(project));
+  const [selectedLayer, setSelectedLayer] = useState("artwork");
+  const [playhead, setPlayhead] = useState(project?.clip_start ?? 0);
+  const [playing, setPlaying] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const layersRef = useRef(layers);
+  useEffect(() => { layersRef.current = layers; }, [layers]);
+  useEffect(() => setLayers(getLayers(project)), [project?.id]);
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setPlayhead((current) => {
+      const end = project?.clip_end ?? 45;
+      if (current >= end) { setPlaying(false); return project?.clip_start ?? 0; }
+      return current + 0.1;
+    }), 100);
+    return () => window.clearInterval(timer);
+  }, [playing, project?.clip_end, project?.clip_start]);
+  const active = layers.find((l) => l.id === selectedLayer) ?? layers[0];
+  const accent = String(project?.scene?.accent ?? "#23a094");
+  const background = String(project?.scene?.background ?? "#101820");
+  async function save(next: Layer[]) {
+    layersRef.current = next;
+    setLayers(next);
+    if (project) await onUpdate({ scene: { ...project.scene, layers: next } });
+  }
+  function addLayer(type: Layer["type"], name: string) {
+    const next = [...layersRef.current, { id: `${type}-${Date.now()}`, name, type, x: 20, y: 20, width: 60, height: 10, visible: true, locked: false, color: accent }];
+    setSelectedLayer(next.at(-1)?.id ?? "");
+    void save(next);
+  }
+  function drag(e: React.PointerEvent, layer: Layer) {
+    if (layer.locked || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const ox = layer.x;
+    const oy = layer.y;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const move = (event: PointerEvent) =>
+      setLayers((current) => {
+        const next = current.map((l) =>
+          l.id === layer.id
+            ? {
+                ...l,
+                x: Math.max(
+                  0,
+                  Math.min(
+                    100 - l.width,
+                    ox + ((event.clientX - sx) / rect.width) * 100,
+                  ),
+                ),
+                y: Math.max(
+                  0,
+                  Math.min(
+                    100 - l.height,
+                    oy + ((event.clientY - sy) / rect.height) * 100,
+                  ),
+                ),
+              }
+            : l,
+        );
+        layersRef.current = next;
+        return next;
+      });
+    const up = async () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      await save(layersRef.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  return (
+    <div className="studio-editor">
+      <div className="studio-toolbar">
+        <button
+          className="ghost"
+          onClick={() => setPlaying((value) => !value)}
+        >
+          <Play size={16} /> {playing ? "Pause" : "Preview"}
+        </button>
+        <span className="toolbar-divider" />
+        <button className="icon-button" title="Zoom canvas" onClick={() => setZoom((value) => value >= 1.25 ? 0.85 : value + 0.1)}>
+          <ZoomIn size={17} />
+        </button>
+        <span className="toolbar-spacer" />
+        <button className="ghost" onClick={onRender}>
+          <Download size={16} /> Export
+        </button>
+      </div>
+      <div className="studio-grid">
+        <aside className="studio-tools">
+          <span className="sidebar-label">Add to canvas</span>
+          {[
+            [FileAudio, "Media", "artwork", "Podcast Artwork"],
+            [LayoutTemplate, "Templates", "title", "Episode Title"],
+            [Sparkles, "Captions", "captions", "Captions"],
+            [AudioLines, "Waveform", "waveform", "Waveform"],
+          ].map(([Icon, label, type, name]) => (
+            <button key={label as string} onClick={() => addLayer(type as Layer["type"], name as string)}>
+              <Icon size={17} />
+              {label as string}
+            </button>
+          ))}
+        </aside>
+        <section className="canvas-area">
+          <div
+            className={`canvas-wrap ratio-${(project?.aspect_ratio ?? "9:16").replace(":", "-")}`}
+          >
+            <div
+              className="design-canvas"
+              ref={canvasRef}
+              style={{ background, transform: `scale(${zoom})`, transformOrigin: "center" }}
+            >
+              <div className="safe-zone" />
+              {layers
+                .filter((l) => l.visible)
+                .map((layer) => (
+                  <div
+                    key={layer.id}
+                    className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}`}
+                    style={{
+                      left: `${layer.x}%`,
+                      top: `${layer.y}%`,
+                      width: `${layer.width}%`,
+                      height: `${layer.height}%`,
+                      color: layer.color ?? "#fff",
+                      borderColor: accent,
+                    }}
+                    onPointerDown={(e) => {
+                      setSelectedLayer(layer.id);
+                      drag(e, layer);
+                    }}
+                  >
+                    <LayerContent
+                      layer={layer}
+                      title={project?.title ?? "Episode title"}
+                      media={media}
+                      accent={accent}
+                    />
+                  </div>
+                ))}
+            </div>
+          </div>
+          <div className="canvas-status">
+            <span>{project?.aspect_ratio ?? "9:16"}</span>
+            <span>Safe zone guide</span>
+            <span>Autosaved locally</span>
+          </div>
+        </section>
+        <aside className="inspector">
+          <div className="inspector-heading">
+            <span className="sidebar-label">Layers</span>
+          </div>
+          {layers
+            .slice()
+            .reverse()
+            .map((layer) => (
+              <div
+                className={`layer-row ${selectedLayer === layer.id ? "selected" : ""}`}
+                key={layer.id}
+                onClick={() => setSelectedLayer(layer.id)}
+              >
+                <Move size={14} />
+                <span>{layer.name}</span>
+                <button
+                  className="layer-action"
+                  title={layer.visible ? "Hide layer" : "Show layer"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void save(
+                      layers.map((l) =>
+                        l.id === layer.id ? { ...l, visible: !l.visible } : l,
+                      ),
+                    );
+                  }}
+                >
+                  {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+              </div>
+            ))}
+          {active && (
+            <div className="properties">
+              <span className="sidebar-label">Properties</span>
+              <strong>{active.name}</strong>
+              <label>
+                Width
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  value={active.width}
+                  onChange={(e) =>
+                    void save(
+                      layers.map((l) =>
+                        l.id === active.id
+                          ? { ...l, width: Number(e.target.value) }
+                          : l,
+                      ),
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Height
+                <input
+                  type="range"
+                  min="5"
+                  max="100"
+                  value={active.height}
+                  onChange={(e) =>
+                    void save(
+                      layers.map((l) =>
+                        l.id === active.id
+                          ? { ...l, height: Number(e.target.value) }
+                          : l,
+                      ),
+                    )
+                  }
+                />
+              </label>
+            </div>
+          )}
+        </aside>
+      </div>
+      <Timeline
+        project={project}
+        playhead={playhead}
+        setPlayhead={setPlayhead}
+        layers={layers}
+        jobs={jobs}
+      />
+    </div>
+  );
+}
+function LayerContent({
+  layer,
+  title,
+  media,
+  accent,
+}: {
+  layer: Layer;
+  title: string;
+  media: MediaAsset | null;
+  accent: string;
+}) {
+  if (layer.type === "artwork")
+    return (
+      <div className="artwork-placeholder">
+        <AudioLines size={34} />
+      </div>
+    );
+  if (layer.type === "waveform")
+    return (
+      <div className="mini-wave">
+        {Array.from({ length: 32 }).map((_, i) => (
+          <i
+            key={i}
+            style={{ height: `${22 + ((i * 23) % 72)}%`, background: accent }}
+          />
+        ))}
+      </div>
+    );
+  if (layer.type === "captions")
+    return <span className="layer-caption">Your story, in motion.</span>;
+  if (layer.type === "title")
+    return <span className="layer-title">{title}</span>;
+  return null;
+}
+function Timeline({
+  project,
+  playhead,
+  setPlayhead,
+  layers,
+  jobs,
+}: {
+  project: Project | null;
+  playhead: number;
+  setPlayhead: (n: number) => void;
+  layers: Layer[];
+  jobs: Job[];
+}) {
+  const duration = Math.max(
+    60,
+    (project?.clip_end ?? 45) - (project?.clip_start ?? 0),
+  );
+  return (
+    <div className="timeline">
+      <div className="timeline-head">
+        <strong>Timeline</strong>
+        <span>
+          {formatTime(playhead)} / {formatTime(duration)}
+        </span>
+        <span className="timeline-zoom">
+          <ZoomIn size={14} /> 100%
+        </span>
+      </div>
+      <div className="timeline-body">
+        <div className="track-labels">
+          {layers
+            .slice()
+            .reverse()
+            .map((l) => (
+              <span key={l.id}>{l.name}</span>
+            ))}
+        </div>
+        <div
+          className="tracks"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setPlayhead(((e.clientX - r.left) / r.width) * duration);
+          }}
+        >
+          <div className="ruler">
+            {[0, 15, 30, 45, 60].map((n) => (
+              <span key={n} style={{ left: `${(n / duration) * 100}%` }}>
+                {formatTime(n)}
+              </span>
+            ))}
+          </div>
+          {layers
+            .slice()
+            .reverse()
+            .map((layer, i) => (
+              <div className="track" key={layer.id}>
+                <div
+                  className="track-block"
+                  style={{
+                    left: `${i * 2}%`,
+                    width: `${Math.max(28, 72 - i * 5)}%`,
+                  }}
+                >
+                  {layer.name}
+                </div>
+              </div>
+            ))}
+          <div
+            className="playhead"
+            style={{ left: `${(playhead / duration) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+function ProjectBrowser({
+  projects,
+  onOpen,
+}: {
+  projects: Project[];
+  onOpen: (p: Project) => void;
+}) {
+  return (
+    <div className="library-page">
+      <div className="page-heading">
+        <span className="kicker">Library</span>
+        <h2>Projects</h2>
+        <p>Everything you create stays available on this server.</p>
+      </div>
+      <div className="library-grid">
+        {projects.map((p) => (
+          <button key={p.id} onClick={() => onOpen(p)}>
+            <div
+              className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}
+            >
+              <AudioLines size={27} />
+            </div>
+            <strong>{p.title}</strong>
+            <small>
+              {p.aspect_ratio} · {(p.clip_end - p.clip_start).toFixed(1)}s
+            </small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+function TemplateThumb({ template }: { template: (typeof templates)[number] }) {
+  return (
+    <div className="template-thumb" style={{ background: template.background }}>
+      <div style={{ background: template.accent }} />
+      <span>
+        Episode
+        <br />
+        Title
+      </span>
+    </div>
+  );
+}
+function TemplateGallery({
+  onUse,
+}: {
+  onUse: (t: (typeof templates)[number]) => Promise<void>;
+}) {
+  return (
+    <div className="library-page">
+      <div className="page-heading">
+        <span className="kicker">Starter library</span>
+        <h2>Templates</h2>
+        <p>Scene compositions you can adapt in Studio.</p>
+      </div>
+      <div className="template-grid gallery">
+        {templates.map((t) => (
+          <button key={t.id} onClick={() => onUse(t)}>
+            <TemplateThumb template={t} />
+            <strong>{t.name}</strong>
+            <small>{t.style}</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+function Exports({ jobs }: { jobs: Job[] }) {
+  const done = jobs.filter(
+    (j) => j.kind === "render" && j.status === "complete",
+  );
+  return (
+    <div className="library-page">
+      <div className="page-heading">
+        <span className="kicker">Output library</span>
+        <h2>Exports</h2>
+        <p>Finished renders and caption files from your local queue.</p>
+      </div>
+      {done.length ? (
+        <div className="export-list">
+          {done.map((j) => (
+            <div key={j.id}>
+              <div className="export-icon">
+                <Film size={18} />
+              </div>
+              <div>
+                <strong>{j.message}</strong>
+                <small>Ready to download</small>
+              </div>
+              {j.result?.downloads?.mp4 && (
+                <a href={j.result.downloads.mp4} title="Download MP4">
+                  <Download size={17} />
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <Download size={28} />
+          <strong>No exports yet.</strong>
+          <span>Render a project from Studio to see it here.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+function AdminStrip({
+  users,
+  gpus,
+  values,
+  onSave,
+  onReload,
+}: {
+  users: User[];
+  gpus: Gpu[];
+  values: Record<string, string>;
+  onSave: (v: Record<string, string>) => Promise<void>;
+  onReload: () => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  return (
+    <details className="admin-strip">
+      <summary>
+        <Users size={16} /> Admin · {users.length} users · {gpus.length} GPUs
+      </summary>
+      <div className="admin-content">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await api.createUser({ email, password, is_admin: false });
+            setEmail("");
+            setPassword("");
+            await onReload();
+          }}
+        >
+          <input
+            aria-label="New user email"
+            type="email"
+            placeholder="user@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            aria-label="New user password"
+            type="password"
+            placeholder="Password"
+            minLength={10}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button className="ghost compact">
+            <UserPlus size={15} /> Add user
+          </button>
+        </form>
+        <label>
+          Transcription GPU
+          <select
+            value={values.transcription_gpu_uuid ?? ""}
+            onChange={(e) =>
+              void onSave({ ...values, transcription_gpu_uuid: e.target.value })
+            }
+          >
+            <option value="">CPU / automatic</option>
+            {gpus.map((g) => (
+              <option key={g.uuid} value={g.uuid}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </details>
+  );
+}
+function AuthScreen({
+  mode,
+  onDone,
+  error,
+  onError,
+}: {
+  mode: AuthView;
+  onDone: (u: User) => Promise<void>;
+  error: string | null;
+  onError: (e: string | null) => void;
+}) {
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="auth-screen">
+      <form
+        className="auth-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          onError(null);
+          try {
+            const r =
+              mode === "bootstrap"
+                ? await api.bootstrap(email, password)
+                : await api.login(email, password);
+            await onDone(r.user);
+          } catch (err) {
+            onError(
+              err instanceof Error ? err.message : "Authentication failed",
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <AudioLines size={34} />
+        <span className="kicker">Private creator workspace</span>
+        <h1>
+          {mode === "bootstrap" ? "Create your administrator" : "Welcome back"}
+        </h1>
+        <p>
+          {mode === "bootstrap"
+            ? "Set up the first local account to begin."
+            : "Sign in to your self-hosted studio."}
+        </p>
+        <label>
+          Email
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="email"
+          />
+        </label>
+        <label>
+          Password
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete={
+              mode === "bootstrap" ? "new-password" : "current-password"
+            }
+          />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <button className="primary large" disabled={busy}>
+          {busy ? <Loader2 className="spin" size={17} /> : <LogIn size={17} />}
+          {mode === "bootstrap" ? "Initialize studio" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+function formatTime(s: number) {
+  const m = Math.floor(Math.max(0, s) / 60);
+  return `${m}:${Math.floor(Math.max(0, s) % 60)
+    .toString()
+    .padStart(2, "0")}`;
+}
