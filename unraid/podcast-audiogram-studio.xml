@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Podcast-Audiogram-Studio</Name>
+  <Repository>ghcr.io/YOUR_GITHUB_OWNER/podcast-audiogram-studio:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/YOUR_GITHUB_OWNER/podcast-audiogram-studio/issues</Support>
+  <Project>https://github.com/YOUR_GITHUB_OWNER/podcast-audiogram-studio</Project>
+  <Overview>Self-hosted podcast audiogram editor with local transcription, clip design, and FFmpeg rendering.</Overview>
+  <Category>MediaApp:Video MediaApp:Music Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/YOUR_GITHUB_OWNER/podcast-audiogram-studio/main/unraid/podcast-audiogram-studio.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_OWNER/podcast-audiogram-studio/main/unraid/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>NVIDIA Driver plugin when GPU transcription or NVENC rendering is enabled.</Requires>
+  <Config Name="WebUI" Target="8080" Default="8080" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/podcast-audiogram-studio" Mode="rw" Description="Database, models, settings, and secrets" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/podcast-audiogram-studio</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/media/podcast-audiogram-studio" Mode="rw" Description="Uploads, working files, and rendered output" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/podcast-audiogram-studio</Config>
+  <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="Expose NVIDIA GPUs to the container" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+  <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,utility,video" Mode="" Description="Required for CUDA, NVML, and NVENC" Type="Variable" Display="advanced" Required="false" Mask="false">compute,utility,video</Config>
+</Container>
+

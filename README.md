@@ -1,238 +1,54 @@
-# Podcast Audiogram Generator
+# Podcast Audiogram Studio
 
-> **Vibe Coding experiment** — This project was built through iterative, AI-assisted development where the human steers intent and the AI writes most of the code. It works, it's tested, but it is first and foremost an experiment. Expect rough edges, quick evolution, and the occasional surprise. Issues and PRs are welcome.
+Self-hosted audiogram studio scaffold based on `deep-research-report.md`.
 
-Automatic audiogram generator for podcasts. Downloads episodes from an RSS feed, extracts soundbites with their transcripts, and renders videos optimized for the major social platforms.
+This first build is a working appliance foundation:
 
----
+- FastAPI backend with SQLite persistence under `runtime/config`
+- React editor workspace with setup, login, uploads, projects, clip controls, GPU assignment, and render queue
+- Background job worker for media analysis, placeholder transcription, model setup, and CPU placeholder rendering
+- GPU inventory through `nvidia-smi` when NVIDIA devices are visible
+- Docker and Unraid release files for the intended single-container deployment path
 
-## How it works
+## Local Development
 
-The tool parses a podcast RSS feed, downloads the episode audio and transcript (SRT), then renders audiogram videos for the selected soundbites. Each video includes an animated waveform, a live transcript overlay, and a customizable header/footer. Output formats are vertical (9:16), square (1:1), and horizontal (16:9).
+Backend:
 
----
-
-## Requirements
-
-- Python >= 3.8
-- FFmpeg
-
-### Install FFmpeg
-
-```bash
-# macOS
-brew install ffmpeg
-
-# Linux (Ubuntu/Debian)
-sudo apt-get install ffmpeg
-
-# Windows
-# Download from https://ffmpeg.org/download.html and add ffmpeg to your PATH
+```powershell
+cd C:\Users\mavin\Downloads\podcast-audiogram-studio\backend
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8080
 ```
 
----
+Frontend:
 
-## Installation
-
-```bash
-git clone https://github.com/vgalano/podcast-audiogram-generator.git
-cd podcast-audiogram-generator
-
-python3 -m venv .venv
-.venv/bin/pip install -U pip
-.venv/bin/pip install -r requirements.txt
-
-cp config.yaml.example config.yaml
-# Edit config.yaml and set feed_url and any other options
+```powershell
+cd C:\Users\mavin\Downloads\podcast-audiogram-studio\frontend
+npm install
+npm run dev
 ```
 
----
+Open `http://localhost:5173`.
 
-## Usage
+## Production Container
 
-All configuration lives in `config.yaml`. Once the file is set up, run:
-
-```bash
-.venv/bin/python -m audiogram_generator
+```powershell
+cd C:\Users\mavin\Downloads\podcast-audiogram-studio
+docker build -t podcast-audiogram-studio:local .
+docker run --rm -p 8080:8080 -v ${PWD}\runtime\config:/config -v ${PWD}\runtime\data:/data podcast-audiogram-studio:local
 ```
 
-CLI flags are available for lightweight overrides and debugging:
+For Unraid with NVIDIA runtime, pass GPU capabilities through the container runtime and mount `/config` and `/data` to persistent shares.
 
-| Flag | Description |
-|---|---|
-| `--config PATH` | Path to a YAML configuration file (default: `./config.yaml`) |
-| `--episode N` | Override the episode selection: `5`, `1,3,5`, `all`, or `last` |
-| `--soundbites N` | Override the soundbite selection: `1`, `1,3`, or `all` |
-| `--log-level LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
-| `--dry-run` | Preview timings and subtitles — no files generated |
-| `--force` | Overwrite existing output files instead of skipping them |
-| `--limit N` | Process at most N soundbites per episode per run |
+## Current Scope
 
-### Examples
+This is not yet the full Headliner/Adobe-parity implementation. The next engineering milestones are:
 
-```bash
-# Use defaults from config.yaml
-.venv/bin/python -m audiogram_generator
+- Replace placeholder transcription with Faster-Whisper/CTranslate2 model execution
+- Add real waveform peak generation and Wavesurfer-based timeline regions
+- Replace placeholder FFmpeg output with scene-driven caption/waveform rendering
+- Add Alembic migrations instead of `create_all`
+- Harden RSS ingestion with DNS/IP redirect policy and download limits
+- Add Playwright coverage for the editor workflow
 
-# Override episode and soundbites at the command line
-.venv/bin/python -m audiogram_generator --episode 142 --soundbites all
-
-# Most recent episode, dry run to preview timings
-.venv/bin/python -m audiogram_generator --episode last --soundbites all --dry-run
-
-# Re-generate only the first 3 soundbites of episode 142, overwriting existing files
-.venv/bin/python -m audiogram_generator --episode 142 --soundbites all --limit 3 --force
-
-# Use a different config file
-.venv/bin/python -m audiogram_generator --config config.staging.yaml
-```
-
----
-
-## Configuration
-
-```bash
-cp config.yaml.example config.yaml
-```
-
-Key options in `config.yaml`:
-
-```yaml
-feed_url: https://example.com/podcast/feed.xml
-output_dir: ./output
-temp_dir: ./temp
-episode: last           # last | all | 142 | "1,3,5"
-soundbites: "all"       # all | 1 | "1,3"
-dry_run: false
-full_episode: false
-show_subtitles: true
-use_episode_cover: false
-header_title_source: auto   # auto | podcast | episode | soundbite | none
-
-colors:
-  primary: [242, 101, 34]
-  background: [235, 213, 197]
-  text: [255, 255, 255]
-  transcript_bg: [0, 0, 0]
-
-formats:
-  vertical:
-    width: 1080
-    height: 1920
-    enabled: true
-  square:
-    width: 1080
-    height: 1080
-    enabled: true
-  horizontal:
-    width: 1920
-    height: 1080
-    enabled: false
-
-hashtags:
-  - podcast
-  - tech
-
-subtitles:
-  vertical:
-    y_offset: 0.84      # 0.0-1.0, fraction of the central area from its top
-  square:
-    y_offset: 0.15
-  horizontal:
-    y_offset: 0.12
-
-cta:
-  enabled: false
-  text: "Link in bio"
-
-manual_soundbites:
-  "142":
-    - start: 120.5
-      duration: 30.0
-      text: "A very interesting moment"
-```
-
-### Subtitle position
-
-`show_subtitles: true` burns the transcript onto the video; `subtitles.<format>.y_offset`
-decides **where**. The value is a fraction of the *central area* (the beige band
-between header and footer), measured from its top — not of the whole frame:
-
-| Format | Default | Meaning |
-|---|---|---|
-| `vertical` | `0.84` | near the bottom of the central area |
-| `square` | `0.15` | values below `0.5` are measured from the **bottom** instead |
-| `horizontal` | `0.12` | idem |
-
-One text line is worth roughly `0.07` in a vertical video, so `0.84 -> 0.91`
-moves the block down by about one line. Out-of-range or non-numeric values are
-ignored with a warning, keeping the default.
-
-Only the position is configurable: line count, width, padding and shadow are
-still constants in `rendering/compositor.py`.
-
-
-See `config.yaml.example` for the full annotated reference.
-
----
-
-## Output structure
-
-```
-output/
-└── ep142/
-    ├── ep142.mp3
-    ├── ep142.srt
-    ├── sb1/
-    │   ├── ep142_sb1.mp3
-    │   ├── ep142_sb1.srt
-    │   ├── ep142_sb1_caption.txt
-    │   ├── ep142_sb1_vertical.mp4
-    │   └── ep142_sb1_square.mp4
-    └── sb2/
-        └── ...
-```
-
-When subtitles are disabled, video filenames include a `_nosubs` suffix.
-
----
-
-## Tests
-
-```bash
-.venv/bin/python -m pytest tests/ -v --tb=short
-```
-
----
-
-## Dependencies
-
-- feedparser >= 6.0.10
-- moviepy >= 2, <3
-- pillow >= 10.0.0
-- pydub >= 0.25.1
-- numpy >= 1.24.0
-- requests >= 2.31.0
-- pyyaml >= 6.0
-- audioop-lts >= 0.2.1 (Python 3.13+ only)
-
----
-
-## Roadmap
-
-- Better subtitle configuration documentation
-- Handle hashtags with spaces
-- Support for more than 3 output formats
-- Custom background images
-
----
-
-## Contributing
-
-If you spot a bug or have a suggestion, feel free to open an **Issue** and then a **Pull Request**. All contributions are welcome!
-
----
-
-## License
-
-See the [LICENSE](LICENSE) file for details.

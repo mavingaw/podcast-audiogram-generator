@@ -1,0 +1,13 @@
+services:
+  podcast-audiogram-studio:
+    build: .
+    image: podcast-audiogram-studio:local
+    ports:
+      - "8080:8080"
+    environment:
+      PAS_CONFIG_DIR: /config
+      PAS_DATA_DIR: /data
+    volumes:
+      - ./runtime/config:/config
+      - ./runtime/data:/data
+
