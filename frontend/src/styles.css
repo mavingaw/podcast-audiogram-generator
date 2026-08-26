@@ -389,6 +389,69 @@ select {
   font-size: 12px;
 }
 
+.download-link,
+.download-row a {
+  color: #167b72;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.download-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.user-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.checkbox-line {
+  min-height: 38px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: #17201d;
+}
+
+.checkbox-line input {
+  min-height: auto;
+}
+
+.user-list {
+  margin-top: 14px;
+  display: grid;
+}
+
+.user-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid #ecece6;
+}
+
+.user-row strong,
+.user-row span {
+  display: block;
+}
+
+.user-row strong {
+  overflow-wrap: anywhere;
+}
+
+.user-row span {
+  color: #66736d;
+  font-size: 12px;
+}
+
 progress {
   width: 84px;
   accent-color: #23a094;
@@ -460,7 +523,9 @@ progress {
   }
 
   .controls,
-  .job {
+  .job,
+  .user-form,
+  .user-row {
     grid-template-columns: 1fr;
   }
 }

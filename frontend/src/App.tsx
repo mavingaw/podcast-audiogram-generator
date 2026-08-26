@@ -13,7 +13,9 @@ import {
   RefreshCw,
   Scissors,
   Settings,
-  Upload
+  Upload,
+  UserPlus,
+  Users
 } from "lucide-react";
 import { api, Gpu, Job, MediaAsset, Project, User } from "./api";
 
@@ -28,6 +30,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [gpus, setGpus] = useState<Gpu[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [gpuSettings, setGpuSettings] = useState<Record<string, string>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,19 +38,21 @@ export function App() {
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
   const selectedMedia = selectedProject ? media.find((item) => item.id === selectedProject.media_id) ?? null : null;
 
-  async function loadAppData() {
-    const [mediaResponse, projectResponse, jobResponse, gpuResponse, settingsResponse] = await Promise.all([
+  async function loadAppData(activeUser = user) {
+    const [mediaResponse, projectResponse, jobResponse, gpuResponse, settingsResponse, usersResponse] = await Promise.all([
       api.media(),
       api.projects(),
       api.jobs(),
       api.gpus(),
-      api.gpuSettings()
+      api.gpuSettings(),
+      activeUser?.is_admin ? api.users() : Promise.resolve({ users: [] })
     ]);
     setMedia(mediaResponse.media);
     setProjects(projectResponse.projects);
     setJobs(jobResponse.jobs);
     setGpus(gpuResponse.gpus);
     setGpuSettings(settingsResponse);
+    setUsers(usersResponse.users);
     if (!selectedProjectId && projectResponse.projects.length > 0) {
       setSelectedProjectId(projectResponse.projects[0].id);
     }
@@ -66,7 +71,7 @@ export function App() {
         if (!ignore) {
           setUser(me.user);
           setView("app");
-          await loadAppData();
+          await loadAppData(me.user);
         }
       } catch {
         if (!ignore) setView("login");
@@ -90,7 +95,7 @@ export function App() {
   async function handleAuthenticated(nextUser: User) {
     setUser(nextUser);
     setView("app");
-    await loadAppData();
+    await loadAppData(nextUser);
   }
 
   async function createProjectFromMedia(item?: MediaAsset) {
@@ -152,7 +157,7 @@ export function App() {
             <p className="eyebrow">Local creator workflow</p>
             <h1>{selectedProject?.title ?? "No project selected"}</h1>
           </div>
-          <button className="ghost" onClick={loadAppData}>
+          <button className="ghost" onClick={() => loadAppData()}>
             <RefreshCw size={16} /> Refresh
           </button>
         </header>
@@ -185,6 +190,16 @@ export function App() {
               await api.saveGpuSettings(values);
               setGpuSettings(values);
             }} />
+            {user?.is_admin && (
+              <UserAdmin
+                users={users}
+                currentUserId={user.id}
+                onReload={async () => {
+                  const response = await api.users();
+                  setUsers(response.users);
+                }}
+              />
+            )}
           </section>
         </div>
       </section>
@@ -421,9 +436,104 @@ function RenderQueue({ jobs, onRender, canRender }: { jobs: Job[]; onRender: () 
             <span>{job.status}</span>
           </div>
           <progress value={job.progress} max={100} />
-          {job.status === "complete" && <Download size={16} />}
+          {job.status === "complete" && job.result?.downloads?.mp4 ? (
+            <a className="download-link" href={job.result.downloads.mp4} title="Download MP4">
+              <Download size={16} />
+            </a>
+          ) : (
+            <span />
+          )}
+          {job.status === "complete" && job.result?.downloads && (
+            <div className="download-row">
+              <a href={job.result.downloads.mp4}>MP4</a>
+              <a href={job.result.downloads.srt}>SRT</a>
+              <a href={job.result.downloads.vtt}>VTT</a>
+              <a href={job.result.downloads.manifest}>JSON</a>
+            </div>
+          )}
         </div>
       ))}
+    </section>
+  );
+}
+
+function UserAdmin({
+  users,
+  currentUserId,
+  onReload
+}: {
+  users: User[];
+  currentUserId: string;
+  onReload: () => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function create(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api.createUser({ email, password, is_admin: isAdmin });
+      setEmail("");
+      setPassword("");
+      setIsAdmin(false);
+      await onReload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="tool-section">
+      <div className="section-heading">
+        <h2>User database</h2>
+        <Users size={17} />
+      </div>
+      <form className="user-form" onSubmit={create}>
+        <label>
+          Email
+          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
+        </label>
+        <label>
+          Password
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            minLength={10}
+            required
+          />
+        </label>
+        <label className="checkbox-line">
+          <input type="checkbox" checked={isAdmin} onChange={(event) => setIsAdmin(event.target.checked)} />
+          Admin
+        </label>
+        <button className="primary compact" disabled={busy}>
+          <UserPlus size={16} /> Add user
+        </button>
+      </form>
+      <div className="user-list">
+        {users.map((item) => (
+          <div className="user-row" key={item.id}>
+            <div>
+              <strong>{item.email}</strong>
+              <span>{item.is_admin ? "Admin" : "User"} · {item.disabled ? "Disabled" : "Active"}</span>
+            </div>
+            <button
+              className="ghost compact"
+              disabled={item.id === currentUserId}
+              onClick={async () => {
+                await api.updateUser(item.id, { disabled: !item.disabled });
+                await onReload();
+              }}
+            >
+              {item.disabled ? "Enable" : "Disable"}
+            </button>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

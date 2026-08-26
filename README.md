@@ -31,6 +31,20 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+## Database and Users
+
+The app stores its local SQLite database in `runtime/config/app.db` by default. Tables are created automatically when the backend starts, and the first browser run shows an admin bootstrap form.
+
+You can also initialize the database and create/reset an admin from PowerShell:
+
+```powershell
+cd C:\Users\mavin\Downloads\podcast-audiogram-studio
+.\scripts\init-db.ps1
+.\scripts\create-admin.ps1 -Email admin@example.com -Password "change-this-password"
+```
+
+After signing in as an admin, use the **User database** panel in the WebUI to add users, create admins, and disable or re-enable accounts.
+
 ## Production Container
 
 ```powershell
@@ -47,7 +61,7 @@ This is not yet the full Headliner/Adobe-parity implementation. The next enginee
 
 - Replace placeholder transcription with Faster-Whisper/CTranslate2 model execution
 - Add real waveform peak generation and Wavesurfer-based timeline regions
-- Replace placeholder FFmpeg output with scene-driven caption/waveform rendering
+- Expand scene-driven rendering beyond the current local FFmpeg waveform/caption MP4 renderer
 - Add Alembic migrations instead of `create_all`
 - Harden RSS ingestion with DNS/IP redirect policy and download limits
 - Add Playwright coverage for the editor workflow

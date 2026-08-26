@@ -2,6 +2,8 @@ export type User = {
   id: string;
   email: string;
   is_admin: boolean;
+  disabled: boolean;
+  created_at: string;
 };
 
 export type MediaAsset = {
@@ -46,6 +48,10 @@ export type Job = {
   subject_id: string | null;
   message: string;
   error: string | null;
+  result: {
+    downloads?: Record<string, string>;
+    files?: Record<string, string>;
+  } | null;
 };
 
 export type Gpu = {
@@ -76,6 +82,11 @@ export const api = {
   me: () => request<{ user: User }>("/api/me"),
   login: (email: string, password: string) =>
     request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  users: () => request<{ users: User[] }>("/api/users"),
+  createUser: (payload: { email: string; password: string; is_admin: boolean }) =>
+    request<{ user: User }>("/api/users", { method: "POST", body: JSON.stringify(payload) }),
+  updateUser: (userId: string, payload: { is_admin?: boolean; disabled?: boolean; password?: string }) =>
+    request<{ user: User }>(`/api/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   gpus: () => request<{ gpus: Gpu[] }>("/api/gpus"),
   gpuSettings: () => request<Record<string, string>>("/api/settings/gpu"),
   saveGpuSettings: (payload: { transcription_gpu_uuid?: string; encoding_gpu_uuid?: string }) =>

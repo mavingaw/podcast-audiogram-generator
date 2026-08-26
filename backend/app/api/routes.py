@@ -6,19 +6,19 @@ from typing import Annotated
 
 import feedparser
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_user
+from app.api.deps import current_admin, current_user
 from app.core.config import settings
 from app.db.models import AppSetting, Job, JobKind, MediaAsset, Project, User
 from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
 from app.services.gpu import discover_gpus
 from app.services.jobs import start_worker_once
-from app.services.storage import save_upload
+from app.services.storage import contained_path, save_upload
 
 router = APIRouter(prefix="/api")
 
@@ -31,6 +31,18 @@ class BootstrapRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=10)
+    is_admin: bool = False
+
+
+class UserUpdate(BaseModel):
+    password: str | None = Field(default=None, min_length=10)
+    is_admin: bool | None = None
+    disabled: bool | None = None
 
 
 class ProjectCreate(BaseModel):
@@ -56,7 +68,13 @@ class RssPreviewRequest(BaseModel):
 
 
 def serialize_user(user: User) -> dict:
-    return {"id": user.id, "email": user.email, "is_admin": user.is_admin}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "disabled": user.disabled,
+        "created_at": user.created_at.isoformat(),
+    }
 
 
 def serialize_media(media: MediaAsset) -> dict:
@@ -148,6 +166,50 @@ def logout(
 
 @router.get("/me")
 def me(user: Annotated[User, Depends(current_user)]) -> dict:
+    return {"user": serialize_user(user)}
+
+
+@router.get("/users")
+def list_users(db: Annotated[Session, Depends(get_db)], _: Annotated[User, Depends(current_admin)]) -> dict:
+    users = db.scalars(select(User).order_by(User.created_at.asc())).all()
+    return {"users": [serialize_user(user) for user in users]}
+
+
+@router.post("/users")
+def create_user(
+    payload: UserCreate,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(current_admin)],
+) -> dict:
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(status_code=409, detail="A user with that email already exists")
+    user = User(email=email, password_hash=hash_password(payload.password), is_admin=payload.is_admin)
+    db.add(user)
+    db.commit()
+    return {"user": serialize_user(user)}
+
+
+@router.patch("/users/{user_id}")
+def update_user(
+    user_id: str,
+    payload: UserUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    admin: Annotated[User, Depends(current_admin)],
+) -> dict:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("disabled") is True and user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot disable your own account")
+    if updates.get("is_admin") is False and user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot remove your own admin access")
+    if "password" in updates and updates["password"]:
+        user.password_hash = hash_password(updates.pop("password"))
+    for key, value in updates.items():
+        setattr(user, key, value)
+    db.commit()
     return {"user": serialize_user(user)}
 
 
@@ -278,6 +340,31 @@ def render_project(project_id: str, db: Annotated[Session, Depends(get_db)], use
     db.commit()
     start_worker_once()
     return {"job": serialize_job(job)}
+
+
+@router.get("/projects/{project_id}/outputs/{filename}")
+def download_project_output(
+    project_id: str,
+    filename: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+):
+    allowed = {"audiogram.mp4", "captions.srt", "captions.vtt", "render-manifest.json"}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Output not found")
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    output_path = contained_path(settings.outputs_dir, settings.outputs_dir / project.id / filename)
+    if not output_path.exists():
+        raise HTTPException(status_code=404, detail="Output not found")
+    media_type = {
+        ".mp4": "video/mp4",
+        ".srt": "application/x-subrip",
+        ".vtt": "text/vtt",
+        ".json": "application/json",
+    }.get(output_path.suffix, "application/octet-stream")
+    return FileResponse(output_path, media_type=media_type, filename=filename)
 
 
 @router.get("/jobs")
