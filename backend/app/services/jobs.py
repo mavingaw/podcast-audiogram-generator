@@ -285,6 +285,8 @@ def _dimensions(aspect_ratio: str) -> tuple[int, int]:
         return 1280, 720
     if aspect_ratio == "1:1":
         return 1080, 1080
+    if aspect_ratio == "4:5":
+        return 1080, 1350
     return 1080, 1920
 
 

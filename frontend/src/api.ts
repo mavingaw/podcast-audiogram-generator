@@ -36,7 +36,7 @@ export type Project = {
   title: string;
   clip_start: number;
   clip_end: number;
-  aspect_ratio: "9:16" | "1:1" | "16:9";
+  aspect_ratio: "9:16" | "1:1" | "4:5" | "16:9";
   scene: Record<string, unknown>;
 };
 

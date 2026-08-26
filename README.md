@@ -1,12 +1,14 @@
 # Podcast Audiogram Studio
 
-Self-hosted audiogram studio scaffold based on `deep-research-report.md`.
+Self-hosted podcast video and audiogram studio for local creative work on Unraid or a desktop LAN.
 
 This first build is a working appliance foundation:
 
 - FastAPI backend with SQLite persistence under `runtime/config`
-- React editor workspace with setup, login, uploads, projects, clip controls, GPU assignment, and render queue
-- Background job worker for media analysis, placeholder transcription, model setup, and CPU placeholder rendering
+- React creator workspace with Home, Quick Create, Projects, Templates, Exports, and Studio Editor views
+- Guided destination, source, transcript clip, and template workflow that creates the same editable Studio project
+- Direct-manipulation canvas with draggable layers, safe-zone guide, layer visibility, property controls, and timeline playhead
+- Background job worker for media analysis, local transcript fixture generation, and real FFmpeg audiogram rendering
 - GPU inventory through `nvidia-smi` when NVIDIA devices are visible
 - Docker and Unraid release files for the intended single-container deployment path
 
@@ -55,14 +57,14 @@ docker run --rm -p 8080:8080 -v ${PWD}\runtime\config:/config -v ${PWD}\runtime\
 
 For Unraid with NVIDIA runtime, pass GPU capabilities through the container runtime and mount `/config` and `/data` to persistent shares.
 
-## Current Scope
+## Current Scope and Limitations
 
-This is not yet the full Headliner/Adobe-parity implementation. The next engineering milestones are:
+The core local workflow is functional, but this is not yet full Headliner/Adobe parity. Current limitations are:
 
-- Replace placeholder transcription with Faster-Whisper/CTranslate2 model execution
-- Add real waveform peak generation and Wavesurfer-based timeline regions
-- Expand scene-driven rendering beyond the current local FFmpeg waveform/caption MP4 renderer
-- Add Alembic migrations instead of `create_all`
-- Harden RSS ingestion with DNS/IP redirect policy and download limits
-- Add Playwright coverage for the editor workflow
+- Transcription currently uses a deterministic local fixture; Faster-Whisper/CTranslate2 model execution is the next AI milestone.
+- Browser waveform bars are generated UI data; server-side peaks and a mature waveform library are the next timeline milestone.
+- The renderer currently exports a real FFmpeg MP4 plus SRT/VTT/manifest from the canonical project scene; arbitrary canvas layers are not yet rendered server-side.
+- SQLite tables are created automatically; Alembic migrations, richer RSS persistence, brand kits, variants, and cancellation remain follow-up work.
+
+The app does not require a cloud AI API. The existing GPU panel stores UUID-based assignments and reports visible NVIDIA devices; the local development renderer remains CPU-first until the NVIDIA production image is enabled.
 
