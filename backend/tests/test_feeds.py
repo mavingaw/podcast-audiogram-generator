@@ -436,3 +436,33 @@ def test_a_failing_feed_is_recorded_rather_than_crashing(monkeypatch, tmp_path):
         assert "host is down" in (feed.last_error or "")
         # And it was still marked as checked, so it is not retried in a tight loop.
         assert feed.last_checked is not None
+
+
+def test_check_now_does_not_wait_for_the_interval(monkeypatch, tmp_path):
+    """The button said 'now'. The job applied the polling interval anyway, so
+    pressing it within fifteen minutes of the last check did nothing, silently."""
+    client = signed_in(monkeypatch, tmp_path)
+    stub_feed(monkeypatch)
+    client.post("/api/feeds", json={"url": "https://example.com/f.xml"})
+
+    from datetime import datetime, timezone
+
+    import app.services.feeds as service
+    import app.services.jobs as jobs
+    from app.db.models import Feed, Job, JobKind
+    from app.db.session import SessionLocal
+
+    calls = []
+    monkeypatch.setattr(
+        service, "fetch",
+        lambda url, etag=None, modified=None: (calls.append(url), Parsed([entry()]), None, None, True, FEED_XML)[1:],
+    )
+    with SessionLocal() as db:
+        db.query(Feed).first().last_checked = datetime.now(timezone.utc)
+        db.commit()
+
+    client.post("/api/feeds/check")
+    with SessionLocal() as db:
+        job = db.query(Job).filter(Job.kind == JobKind.check_feeds).order_by(Job.created_at.desc()).first()
+        jobs._check_feeds(db, job)
+    assert calls, "the feed was skipped as not yet due"

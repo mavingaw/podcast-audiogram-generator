@@ -1571,6 +1571,14 @@ def check_feeds_now(
     user: Annotated[User, Depends(current_user)],
 ) -> dict:
     """Read every watched feed now, without waiting for the schedule."""
+    # The docstring was a lie until this: the job applied the polling interval
+    # regardless, so pressing "check now" within fifteen minutes of the last
+    # check did nothing at all, silently. Clearing the timestamp is what makes
+    # the feed due.
+    for feed in db.scalars(
+        select(Feed).where(Feed.owner_id == user.id, Feed.active.is_(True))
+    ).all():
+        feed.last_checked = None
     job = Job(owner_id=user.id, kind=JobKind.check_feeds, message="Checking feeds")
     db.add(job)
     db.commit()
