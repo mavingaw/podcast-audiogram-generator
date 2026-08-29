@@ -248,4 +248,9 @@ class FeedEpisode(Base):
     )
     status: Mapped[str] = mapped_column(String(32), default="pending")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Moments the podcaster marked with <podcast:soundbite>, stored when the
+    # feed is read: by the time the audio has downloaded and transcribed, the
+    # publisher may have edited the feed, and these are worth more than any
+    # clip this application can pick on its own.
+    soundbites_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)

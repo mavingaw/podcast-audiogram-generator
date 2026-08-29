@@ -215,6 +215,51 @@ await step("studio-canvas", async () => {
   if ((await inspector.count()) === 0) problems.push("studio-canvas: no design panel");
 });
 
+// Cutting words out of the clip is the one feature where the browser and the
+// renderer have to agree about time, and a wrong answer is silent: the export
+// is simply a few seconds off with captions that drift. The click is driven
+// here so at least the panel's own arithmetic is exercised on every deploy.
+await step("transcript-cuts", async () => {
+  const words = page.locator(".cuts-line .word");
+  const available = await words.count();
+  if (available === 0) {
+    // No word timings in this clip's transcript. The panel must say which of
+    // the two situations it is in rather than rendering an empty box.
+    const message = await page.locator(".transcript-cuts .muted, .transcript-editor .muted")
+      .first().innerText().catch(() => "");
+    if (!message.trim()) problems.push("transcript-cuts: empty with no explanation");
+    return;
+  }
+
+  const summary = page.locator(".cuts-summary span").first();
+  const before = await summary.innerText();
+  if (!/Nothing cut|cut/i.test(before)) {
+    problems.push(`transcript-cuts: unexpected summary "${before}"`);
+  }
+
+  await words.nth(Math.min(3, available - 1)).click();
+  await page.waitForTimeout(900);
+
+  const after = await summary.innerText();
+  if (after === before) {
+    problems.push("transcript-cuts: cutting a word changed nothing");
+  }
+  const struck = await page.locator(".cuts-line .word.cut").count();
+  if (struck === 0) problems.push("transcript-cuts: no word was struck out");
+
+  // Put it back, so the smoke run does not leave an edit on a real project.
+  const restore = page.locator('.cuts-summary button:has-text("Restore all")');
+  if (await restore.count()) {
+    await restore.click();
+    await page.waitForTimeout(900);
+    if ((await page.locator(".cuts-line .word.cut").count()) !== 0) {
+      problems.push("transcript-cuts: Restore all left cuts behind");
+    }
+  } else {
+    problems.push("transcript-cuts: no way to restore what was cut");
+  }
+});
+
 await step("timeline-zoom", async () => {
   // A forty-five second clip across 700px is fifteen pixels a second, which is
   // not enough to place a block against a word. Zoom has to actually narrow the

@@ -69,6 +69,7 @@ import {
   User,
 } from "./api";
 import { DesignPanel } from "./DesignPanel";
+import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./TranscriptCuts";
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
 import { TranscriptionPanel } from "./TranscriptionSettings";
@@ -1950,7 +1951,19 @@ function Studio({
   }, [project?.id, clipStart]);
   const accent = String(project?.scene?.accent ?? DEFAULT_ACCENT);
   const background = String(project?.scene?.background ?? DEFAULT_BACKGROUND);
-  const clipDuration = Math.max(0.5, clipEnd - clipStart);
+  // Cuts live on the scene, in source time, and the renderer removes them in a
+  // pre-pass before anything else runs.
+  const sceneCuts = useMemo(
+    () => (project?.scene?.cuts as CutRange[] | undefined) ?? [],
+    [project?.scene?.cuts],
+  );
+  // What the export will actually be, which is the clip minus whatever has
+  // been cut out of it. The preview transport shows this rather than the raw
+  // range, so the number on screen is the number you get.
+  const clipDuration = Math.max(
+    0.5,
+    clipEnd - clipStart - cutDuration(sceneCuts),
+  );
   const localPlayhead = Math.max(0, playhead - clipStart);
   // Split the transcript the same way the renderer will, then show whichever
   // line covers the playhead — so the preview reads like the export.
@@ -1986,6 +1999,14 @@ function Studio({
   async function saveScene(patch: Record<string, unknown>) {
     if (!project) return;
     await onUpdate({ scene: { ...project.scene, ...patch } });
+  }
+  async function saveCuts(next: CutRange[]) {
+    if (!project) return;
+    const cuts = mergeCuts(next);
+    // A cut clip is a different render, so a stale export would be wrong
+    // rather than merely old; the fingerprint covers the scene, so this is
+    // enough to make the next export produce a new file.
+    await onUpdate({ scene: { ...project.scene, cuts } });
   }
   async function saveMusicBed(next: MusicBed | null) {
     if (!project) return;
@@ -2539,7 +2560,20 @@ function Studio({
           )}
           <div className="transcript-editor">
             <div className="inspector-heading">
-              <span className="sidebar-label">Transcript</span>
+              <span className="sidebar-label">Cut the clip</span>
+            </div>
+            <TranscriptCuts
+              transcript={transcriptDraft}
+              clipStart={clipStart}
+              clipEnd={clipEnd}
+              cuts={sceneCuts}
+              onChange={(next) => void saveCuts(next)}
+              onSeek={seek}
+            />
+          </div>
+          <div className="transcript-editor">
+            <div className="inspector-heading">
+              <span className="sidebar-label">Full transcript</span>
               {transcriptDraft && (
                 <button className="ghost compact" onClick={() => void saveTranscript()}>
                   Save

@@ -20,6 +20,60 @@ class Entry(dict):
     """feedparser returns attribute-and-key hybrids; a dict is close enough."""
 
 
+
+class _Response:
+    """The bit of an urlopen result that `fetch` uses."""
+
+    def __init__(self, body: bytes, headers: dict | None = None):
+        self._body = body
+        self.headers = headers or {}
+
+    def read(self, size=-1):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def stub_http(monkeypatch, body=b"", headers=None, error=None):
+    """Answer the feed request without a network.
+
+    `fetch` performs its own transfer so that the raw XML survives for the
+    soundbite parser, so the seam moved from feedparser down to urlopen.
+    """
+    import urllib.request
+
+    def fake_urlopen(request, timeout=None):
+        if error is not None:
+            raise error
+        # The conditional-GET tokens have to actually be sent, or the polite
+        # behaviour this module advertises is not happening.
+        stub_http.headers = dict(request.headers)
+        return _Response(body, headers)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(feeds, "_validate_feed_url", lambda url: None)
+
+
+FEED_XML = b"""<?xml version="1.0"?>
+<rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>A show</title>
+    <item>
+      <title>An episode</title>
+      <guid>g1</guid>
+      <pubDate>Mon, 01 Jan 2026 00:00:00 GMT</pubDate>
+      <enclosure url="https://example.com/ep1.mp3" type="audio/mpeg" length="1000"/>
+      <podcast:soundbite startTime="73.5" duration="42.25">The best bit</podcast:soundbite>
+      <podcast:soundbite startTime="600" duration="30"/>
+    </item>
+  </channel>
+</rss>"""
+
+
 def entry(guid="g1", title="An episode", url="https://example.com/ep1.mp3",
           kind="audio/mpeg", published="Mon, 01 Jan 2026 00:00:00 GMT"):
     return Entry({
@@ -107,40 +161,50 @@ def test_naive_timestamps_are_treated_as_utc():
 
 def test_a_not_modified_response_reports_no_change(monkeypatch):
     """The whole point of sending the etag."""
-    import sys, types
+    import urllib.error
 
-    module = types.ModuleType("feedparser")
-    module.parse = lambda url, etag=None, modified=None: Parsed([], status=304)
-    monkeypatch.setitem(sys.modules, "feedparser", module)
-    monkeypatch.setattr(feeds, "_validate_feed_url", lambda url: None)
+    stub_http(monkeypatch, error=urllib.error.HTTPError(
+        "https://example.com/f.xml", 304, "Not Modified", {}, None
+    ))
 
-    _, etag, modified, changed = feeds.fetch("https://example.com/f.xml", "tag", "date")
+    parsed, etag, modified, changed, raw = feeds.fetch(
+        "https://example.com/f.xml", "tag", "date"
+    )
     assert changed is False
     assert (etag, modified) == ("tag", "date")
+    assert parsed is None and raw is None
+
+
+def test_the_conditional_tokens_are_actually_sent(monkeypatch):
+    """A 304 can only happen if we asked for one."""
+    stub_http(monkeypatch, body=FEED_XML)
+    feeds.fetch("https://example.com/f.xml", "tag-123", "Mon, 01 Jan 2026 00:00:00 GMT")
+    sent = {k.lower(): v for k, v in stub_http.headers.items()}
+    assert sent.get("If-none-match".lower()) == "tag-123"
+    assert sent.get("If-modified-since".lower()) == "Mon, 01 Jan 2026 00:00:00 GMT"
 
 
 def test_an_http_error_is_reported(monkeypatch):
-    import sys, types
+    import urllib.error
 
-    module = types.ModuleType("feedparser")
-    module.parse = lambda url, etag=None, modified=None: Parsed([], status=503)
-    monkeypatch.setitem(sys.modules, "feedparser", module)
-    monkeypatch.setattr(feeds, "_validate_feed_url", lambda url: None)
-
+    stub_http(monkeypatch, error=urllib.error.HTTPError(
+        "https://example.com/f.xml", 503, "Service Unavailable", {}, None
+    ))
     with pytest.raises(feeds.FeedError):
         feeds.fetch("https://example.com/f.xml")
 
 
 def test_something_that_is_not_a_feed_is_refused(monkeypatch):
-    import sys, types
-
-    module = types.ModuleType("feedparser")
-    module.parse = lambda url, etag=None, modified=None: Parsed([], status=200, bozo=1)
-    monkeypatch.setitem(sys.modules, "feedparser", module)
-    monkeypatch.setattr(feeds, "_validate_feed_url", lambda url: None)
-
+    stub_http(monkeypatch, body=b"<html><body>Not a feed</body></html>")
     with pytest.raises(feeds.FeedError):
         feeds.fetch("https://example.com/index.html")
+
+
+def test_an_implausibly_large_document_is_refused(monkeypatch):
+    """A feed is a text file; a gigabyte of it is somebody else's problem."""
+    stub_http(monkeypatch, body=b"x" * (feeds.MAX_FEED_BYTES + 10))
+    with pytest.raises(feeds.FeedError, match="implausibly large"):
+        feeds.fetch("https://example.com/f.xml")
 
 
 # --------------------------------------------------------------------------
@@ -283,7 +347,9 @@ def test_checking_queues_new_episodes_once(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         service, "fetch",
-        lambda url, etag=None, modified=None: (Parsed([entry()]), "tag", "date", True),
+        lambda url, etag=None, modified=None: (
+            Parsed([entry()]), "tag", "date", True, FEED_XML
+        ),
     )
 
     def run_check():
@@ -327,7 +393,7 @@ def test_a_first_sight_takes_only_the_newest(monkeypatch, tmp_path):
     many = [entry(guid=f"g{index}", title=f"Episode {index}") for index in range(40)]
     monkeypatch.setattr(
         service, "fetch",
-        lambda url, etag=None, modified=None: (Parsed(many), None, None, True),
+        lambda url, etag=None, modified=None: (Parsed(many), None, None, True, None),
     )
 
     with SessionLocal() as db:

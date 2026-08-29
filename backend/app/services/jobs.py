@@ -379,7 +379,7 @@ def _check_feeds(db, job: Job) -> None:
             continue
         _step(db, job, 10 + int(80 * index / max(1, len(watched))), f"Reading {feed.title}")
         try:
-            parsed, etag, modified, changed = feedservice.fetch(
+            parsed, etag, modified, changed, raw = feedservice.fetch(
                 feed.url, feed.etag, feed.last_modified
             )
         except Exception as error:
@@ -393,7 +393,7 @@ def _check_feeds(db, job: Job) -> None:
         feed.etag, feed.last_modified = etag, modified
         feed.last_checked = datetime.now(timezone.utc)
         feed.last_error = None
-        if getattr(parsed.feed, "title", None):
+        if parsed is not None and getattr(parsed.feed, "title", None):
             feed.title = str(parsed.feed.title)[:200]
 
         if changed:
@@ -403,7 +403,7 @@ def _check_feeds(db, job: Job) -> None:
                     select(FeedEpisode).where(FeedEpisode.feed_id == feed.id)
                 ).all()
             }
-            found = feedservice.episodes_of(parsed)
+            found = feedservice.episodes_of(parsed, raw)
             fresh = [item for item in found if item.guid not in known]
 
             # First sight of a feed: take only the newest. Subscribing to a show
@@ -415,6 +415,14 @@ def _check_feeds(db, job: Job) -> None:
                 record = FeedEpisode(
                     feed_id=feed.id, guid=item.guid, title=item.title,
                     published=item.published, enclosure_url=item.url,
+                    # Kept on the episode so the import can use them after the
+                    # audio arrives, without re-reading the feed — by then the
+                    # publisher may have edited or removed the tag.
+                    soundbites_json=json.dumps([
+                        {"start": bite.start, "duration": bite.duration,
+                         "title": bite.title}
+                        for bite in item.soundbites
+                    ]) if item.soundbites else None,
                 )
                 db.add(record)
                 db.flush()
@@ -654,6 +662,7 @@ def _auto_clip(db, job: Job, media: MediaAsset) -> int:
             render=feed.auto_render,
             source="feed",
             review_state="pending",
+            soundbites=json.loads(episode.soundbites_json or "[]"),
         )
         return len(made)
     except Exception as error:

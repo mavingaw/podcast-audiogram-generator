@@ -31,12 +31,47 @@ class BatchError(RuntimeError):
     """Raised when a batch cannot be made. Carries a reason worth showing."""
 
 
-def suggestions_for(media: MediaAsset, transcript: dict, count: int) -> list[dict]:
-    """The best moments in an episode, ranked."""
+def suggestions_for(
+    media: MediaAsset,
+    transcript: dict,
+    count: int,
+    soundbites: list[dict] | None = None,
+) -> list[dict]:
+    """The best moments in an episode, ranked.
+
+    Anything the podcaster marked with `<podcast:soundbite>` goes first and is
+    not reordered. Every other suggestion in this application is a guess —
+    heuristics about sentence boundaries, a language model reading a shortlist
+    — and a soundbite is not a guess: the person who made the episode said
+    which part was the good part. Ranking that below our own opinion of it
+    would be absurd.
+    """
     from app.services import llm
+
+    picked: list[dict] = []
+    for bite in soundbites or []:
+        try:
+            start = float(bite["start"])
+            end = start + float(bite["duration"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if end - start < 1.0:
+            continue
+        picked.append({
+            "start": start,
+            "end": end,
+            "title": (bite.get("title") or "").strip() or "Soundbite",
+            "score": 1.0,
+            "reasons": ["the podcaster marked this moment in the feed"],
+            "source": "soundbite",
+        })
+    picked = picked[:count]
+    if len(picked) >= count:
+        return picked
 
     raw = decode_peaks(media.peaks_json) if media.peaks_json else None
     peaks = [value / 255.0 for value in raw] if raw else []
+    wanted = count - len(picked)
     found = find_clips(
         transcript,
         peaks=peaks,
@@ -44,9 +79,25 @@ def suggestions_for(media: MediaAsset, transcript: dict, count: int) -> list[dic
         # A wider net when a model can read them: the heuristics decide what is
         # shaped like a clip, the model decides which are worth watching, and it
         # needs choices to choose between.
-        limit=count * 2 if llm.available() else count,
+        limit=wanted * 2 if llm.available() else wanted,
     )
-    return llm.rerank(found)[:count]
+    ranked = llm.rerank(found)
+
+    # Do not suggest a moment the podcaster already marked. Compared against
+    # the soundbites only: comparing against everything picked so far would
+    # make the heuristic suggestions eliminate each other, and overlapping
+    # candidates are normal — two good clips often share a sentence.
+    marked = list(picked)
+    for suggestion in ranked:
+        if any(
+            suggestion["start"] < bite["end"] and suggestion["end"] > bite["start"]
+            for bite in marked
+        ):
+            continue
+        picked.append(suggestion)
+        if len(picked) >= count:
+            break
+    return picked
 
 
 def make_clips(
@@ -59,6 +110,7 @@ def make_clips(
     render: bool = True,
     source: str = "manual",
     review_state: str = "approved",
+    soundbites: list[dict] | None = None,
 ) -> list[Project]:
     """Create clip projects from an episode's best moments.
 
@@ -70,7 +122,7 @@ def make_clips(
     if not transcript or not transcript.get("segments"):
         raise BatchError("Transcribe this media first")
 
-    suggestions = suggestions_for(media, transcript, count)
+    suggestions = suggestions_for(media, transcript, count, soundbites)
     if not suggestions:
         raise BatchError(
             "No passage in this audio is both long enough and self-contained "

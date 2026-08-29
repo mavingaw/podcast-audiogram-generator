@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,9 @@ log = logging.getLogger(__name__)
 # How often a feed is worth re-reading. Fifteen minutes is well inside what any
 # host considers polite and far finer than podcast release schedules need.
 CHECK_INTERVAL = timedelta(minutes=int(os.getenv("PAS_FEED_INTERVAL_MINUTES", "15")))
+
+# Reading the feed document itself, which is small.
+FEED_TIMEOUT = int(os.getenv("PAS_FEED_XML_TIMEOUT", "30"))
 
 # An episode is a big file on somebody else's server.
 DOWNLOAD_TIMEOUT = int(os.getenv("PAS_FEED_TIMEOUT", "900"))
@@ -49,6 +53,25 @@ class FeedError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class Soundbite:
+    """A moment the podcaster marked as worth pulling out.
+
+    From the Podcasting 2.0 `<podcast:soundbite>` tag. It is the only clip
+    suggestion in this application that does not have to be guessed: the person
+    who made the episode said which part was the good part, and no amount of
+    heuristics or language modelling beats being told.
+    """
+
+    start: float
+    duration: float
+    title: str = ""
+
+    @property
+    def end(self) -> float:
+        return self.start + self.duration
+
+
 @dataclass
 class Episode:
     guid: str
@@ -56,6 +79,9 @@ class Episode:
     published: str | None
     url: str
     length: int | None = None
+    # Empty for the great majority of feeds; the tag is young and few hosts
+    # write it. Nothing depends on its presence.
+    soundbites: tuple[Soundbite, ...] = ()
 
 
 def _enclosure(entry) -> tuple[str, int | None] | None:
@@ -95,53 +121,169 @@ def episode_id(entry) -> str:
     return (entry.get("title") or "")[:512]
 
 
+# A feed document. Bigger than this is not a podcast feed.
+MAX_FEED_BYTES = int(os.getenv("PAS_FEED_MAX_XML_BYTES", str(32 * 1024 * 1024)))
+
+
 def fetch(url: str, etag: str | None = None, modified: str | None = None):
     """Read a feed, using a conditional GET when we have the tokens for one.
 
-    Returns (parsed, etag, modified, changed). `changed` is False when the host
-    answered 304, which is the whole point of sending the tokens.
+    Returns (parsed, etag, modified, changed, raw). `changed` is False when the
+    host answered 304, which is the whole point of sending the tokens, and
+    `raw` is then None because nothing was sent.
+
+    The transfer is done here rather than left to feedparser so that the raw
+    bytes survive. feedparser flattens repeated namespaced elements, which
+    loses all but the last `<podcast:soundbite>` on an episode, and those are
+    the best clip suggestions available — the podcaster's own. Doing our own
+    request also means the URL goes through `_validate_feed_url` and is
+    actually fetched under that check, rather than validated here and fetched
+    again inside a library.
     """
     import feedparser
 
     _validate_feed_url(url)
+
+    headers = {"User-Agent": "Kinder/1.0", "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8"}
+    if etag:
+        headers["If-None-Match"] = etag
+    if modified:
+        headers["If-Modified-Since"] = modified
+
+    request = urllib.request.Request(url, headers=headers)
     try:
-        parsed = feedparser.parse(url, etag=etag, modified=modified)
+        with urllib.request.urlopen(request, timeout=FEED_TIMEOUT) as response:
+            raw = response.read(MAX_FEED_BYTES + 1)
+            if len(raw) > MAX_FEED_BYTES:
+                raise FeedError("That feed document is implausibly large")
+            new_etag = response.headers.get("ETag") or etag
+            new_modified = response.headers.get("Last-Modified") or modified
+    except urllib.error.HTTPError as error:
+        if error.code == 304:
+            # Unchanged since last time, which is the polite outcome.
+            return None, etag, modified, False, None
+        raise FeedError(f"The feed returned HTTP {error.code}") from error
+    except FeedError:
+        raise
+    except Exception as error:
+        raise FeedError(f"Could not read the feed: {error}") from error
+
+    try:
+        parsed = feedparser.parse(raw)
     except Exception as error:  # feedparser is broad about what it raises
         raise FeedError(f"Could not read the feed: {error}") from error
 
-    status = getattr(parsed, "status", None)
-    if status == 304:
-        return parsed, etag, modified, False
-    if status and status >= 400:
-        raise FeedError(f"The feed returned HTTP {status}")
+    # feedparser is forgiving to a fault: handed a page of HTML it returns
+    # bozo=False with no entries and an empty `version`, which is how "this is
+    # not a feed at all" is distinguished from "this feed has no episodes yet".
+    # A new show with an empty feed is legitimate and must still be watchable.
+    if not parsed.entries and not getattr(parsed, "version", ""):
+        raise FeedError("That URL did not parse as a podcast feed")
     if getattr(parsed, "bozo", 0) and not parsed.entries:
         raise FeedError("That URL did not parse as a podcast feed")
 
-    return (
-        parsed,
-        getattr(parsed, "etag", None) or etag,
-        getattr(parsed, "modified", None) or modified,
-        True,
-    )
+    return parsed, new_etag, new_modified, True, raw
 
 
-def episodes_of(parsed) -> list[Episode]:
-    """Every entry in a feed that actually carries audio, newest first."""
+def episodes_of(parsed, raw: bytes | str | None = None) -> list[Episode]:
+    """Every entry in a feed that actually carries audio, newest first.
+
+    `raw` is the feed document, when it is available: soundbites are read from
+    it because feedparser cannot keep more than one of them.
+    """
+    if parsed is None:
+        return []
+    bites = soundbites_of(raw)
     found: list[Episode] = []
     for entry in parsed.entries or []:
         enclosure = _enclosure(entry)
         if not enclosure:
             continue
         url, length = enclosure
+        guid = episode_id(entry)
         found.append(
             Episode(
-                guid=episode_id(entry),
+                guid=guid,
                 title=(entry.get("title") or "Episode")[:400],
                 published=(entry.get("published") or entry.get("updated") or None),
                 url=url,
                 length=length,
+                # Keyed on the feed's own guid element, which is what
+                # `episode_id` prefers too, so the two agree for any feed that
+                # has one. A feed without guids gets no soundbites rather than
+                # the wrong episode's.
+                soundbites=bites.get(guid, ()),
             )
         )
+    return found
+
+
+# The Podcasting 2.0 namespace, which is written both ways in the wild: the
+# specification moved to https and plenty of feeds still declare http.
+PODCAST_NS = (
+    "https://podcastindex.org/namespace/1.0",
+    "http://podcastindex.org/namespace/1.0",
+)
+
+
+def _seconds(value) -> float | None:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds == seconds and seconds >= 0 else None
+
+
+def soundbites_of(raw: bytes | str | None) -> dict[str, tuple[Soundbite, ...]]:
+    """Read every `<podcast:soundbite>` out of a feed, keyed by episode GUID.
+
+    Parsed from the XML rather than taken from feedparser, which flattens
+    repeated elements: given three soundbites on an episode it keeps the last
+    one and discards its text. Since the entire value of the tag is that the
+    podcaster marked *the moments*, keeping one of them is not much better than
+    keeping none.
+
+    A malformed feed yields nothing rather than raising. Soundbites are a bonus
+    on top of a feed that is otherwise working, and failing an import over an
+    optional tag would be a poor trade.
+    """
+    if not raw:
+        return {}
+    try:
+        from xml.etree import ElementTree
+
+        root = ElementTree.fromstring(raw)
+    except Exception:
+        log.debug("could not parse feed XML for soundbites", exc_info=True)
+        return {}
+
+    found: dict[str, tuple[Soundbite, ...]] = {}
+    for item in root.iter("item"):
+        guid = (item.findtext("guid") or item.findtext("link") or "").strip()
+        if not guid:
+            continue
+        bites: list[Soundbite] = []
+        for child in item:
+            tag = child.tag
+            if "}" in tag:
+                namespace, _, name = tag.partition("}")
+                if namespace.lstrip("{") not in PODCAST_NS:
+                    continue
+            else:
+                name = tag
+            if name != "soundbite":
+                continue
+            start = _seconds(child.get("startTime"))
+            duration = _seconds(child.get("duration"))
+            # Both are required by the specification, and a soundbite without
+            # them cannot be turned into a clip.
+            if start is None or duration is None or duration <= 0:
+                continue
+            bites.append(
+                Soundbite(start, duration, (child.text or "").strip()[:200])
+            )
+        if bites:
+            found[guid] = tuple(bites)
     return found
 
 

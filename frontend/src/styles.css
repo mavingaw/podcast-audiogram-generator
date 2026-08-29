@@ -2273,3 +2273,50 @@
     transition: width 180ms ease-out;
   }
 }
+
+@layer views {
+  /* Editing the clip by editing its words. Cut words stay legible — you have
+     to be able to read what you removed to decide to put it back. */
+  .transcript-cuts { display: grid; gap: var(--s-3); }
+  .cuts-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .cuts-runtime { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .cuts-body {
+    max-height: 300px;
+    overflow-y: auto;
+    display: grid;
+    gap: var(--s-3);
+    padding-right: var(--s-1);
+  }
+  .cuts-line { margin: 0; line-height: 1.75; }
+  .cuts-line b {
+    display: block;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .cuts-line .word {
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 1px 0;
+    transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+  }
+  .cuts-line .word:hover { background: var(--hover); }
+  .cuts-line .word:focus-visible { outline: 2px solid var(--accent); }
+  .cuts-line .word.cut {
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+    color: var(--text-muted);
+    opacity: 0.55;
+  }
+  .cuts-line .word-plain { color: var(--text-muted); }
+  .muted.small { font-size: 11.5px; display: flex; align-items: center; gap: 6px; }
+}

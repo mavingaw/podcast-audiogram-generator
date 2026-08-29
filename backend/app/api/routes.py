@@ -45,7 +45,7 @@ from app.services.rss import RssFetchError, parse_feed_url
 from app.services.templates import apply_template, scene_for_template
 from app.services.variants import RATIO_DIMENSIONS, RATIO_PRESETS, remap_scene, variant_title
 from app.services import diarization, llm, speakers, throttle
-from app.services.batching import BatchError, make_clips
+from app.services.batching import BatchError, make_clips, suggestions_for
 from app.services.clipfinder import find as find_clips
 from app.services.fingerprint import fingerprint as fingerprint_project
 from app.services.snapping import snap as snap_clip_range
@@ -690,6 +690,24 @@ def _load_transcript(media: MediaAsset) -> dict:
     return json.loads(media.transcript_json) if media.transcript_json else {"segments": []}
 
 
+def _soundbites_for(db, media: MediaAsset) -> list[dict]:
+    """Any moments the podcaster marked, if this media came from a feed.
+
+    Read for the manual suggestion path too, not only the automatic one: a
+    soundbite is the podcaster's own choice of the best passage, and hiding it
+    from the person who pressed the button would be perverse.
+    """
+    from app.db.models import FeedEpisode
+
+    episode = db.scalar(select(FeedEpisode).where(FeedEpisode.media_id == media.id))
+    if not episode or not episode.soundbites_json:
+        return []
+    try:
+        return json.loads(episode.soundbites_json)
+    except ValueError:
+        return []
+
+
 def _owned_media(db: Session, media_id: str, user: User) -> MediaAsset:
     media = db.get(MediaAsset, media_id)
     if not media or media.owner_id != user.id:
@@ -897,6 +915,7 @@ def batch_clips(
             owner_id=user.id,
             media=media,
             count=payload.count,
+            soundbites=_soundbites_for(db, media),
             aspect_ratio=payload.aspect_ratio,
             template_id=payload.template_id,
             render=payload.render,
@@ -945,19 +964,12 @@ def suggest_clips(
         return {"ready": False, "clips": [],
                 "reason": "The transcript is still being prepared."}
 
-    raw = decode_peaks(media.peaks_json) if media.peaks_json else None
-    # Stored as bytes; the scorer reasons in 0..1.
-    peaks = [value / 255.0 for value in raw] if raw else []
-    clips = find_clips(
-        transcript,
-        peaks=peaks,
-        duration=media.duration_seconds or transcript.get("duration"),
-        # Ask for a wider net than requested when a model can read them: the
-        # heuristics decide what is *shaped* like a clip, the model decides
-        # which of those is worth watching, and it needs choices to choose from.
-        limit=limit * 2 if llm.available() else limit,
+    # The same function the batch button and the feed watcher use, so a clip
+    # suggested here is the clip those would have made. It puts anything the
+    # podcaster marked with <podcast:soundbite> first.
+    clips = suggestions_for(
+        media, transcript, limit, soundbites=_soundbites_for(db, media)
     )
-    clips = llm.rerank(clips)[:limit]
     if not clips:
         return {"ready": True, "clips": [],
                 "reason": "No passage in this audio is both long enough and "
