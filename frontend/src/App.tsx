@@ -1838,6 +1838,7 @@ function Studio({
     media?.transcript ?? null,
   );
   const canvasRef = useRef<HTMLDivElement>(null);
+  const textFieldRef = useRef<HTMLTextAreaElement>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const layersRef = useRef(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
@@ -2470,13 +2471,47 @@ function Studio({
                 />
               </label>
               {["title", "captions"].includes(active.type) && (
-                <label>
-                  Text
-                  <textarea
-                    value={active.text ?? ""}
-                    onChange={(e) => updateLayer(active.id, { text: e.target.value })}
-                  />
-                </label>
+                <>
+                  <label>
+                    Text
+                    <textarea
+                      ref={textFieldRef}
+                      value={active.text ?? ""}
+                      onChange={(e) => updateLayer(active.id, { text: e.target.value })}
+                    />
+                  </label>
+                  {active.type === "title" && (
+                    <div className="token-help">
+                      <span className="muted small">
+                        Insert something that changes with the clip:
+                      </span>
+                      <div className="token-chips">
+                        {TOKENS.map(([name, description]) => (
+                          <button
+                            key={name}
+                            className="token-chip"
+                            title={description}
+                            onClick={() => {
+                              // Inserted at the caret rather than appended, so a
+                              // token can go in the middle of a line somebody has
+                              // already written.
+                              const field = textFieldRef.current;
+                              const current = active.text ?? "";
+                              const at = field?.selectionStart ?? current.length;
+                              const next =
+                                current.slice(0, at) + `{{${name}}}` + current.slice(
+                                  field?.selectionEnd ?? at,
+                                );
+                              updateLayer(active.id, { text: next });
+                            }}
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
               <label>
                 Color
@@ -2630,6 +2665,23 @@ function Studio({
     </div>
   );
 }
+/**
+ * Text that fills itself in from the episode.
+ *
+ * Keep in step with TOKENS in backend/app/services/tokens.py — the backend is
+ * where they are actually resolved, and a chip offering one it does not know
+ * would put literal braces on a video.
+ */
+const TOKENS: [string, string][] = [
+  ["episode", "Episode title, from the feed"],
+  ["show", "Show name, from the feed"],
+  ["date", "Episode publication date"],
+  ["speaker", "Who is speaking at the start of the clip"],
+  ["title", "The clip's own title"],
+  ["timecode", "Where the clip starts in the episode"],
+  ["duration", "Clip length in seconds"],
+];
+
 function LayerContent({
   layer,
   title,

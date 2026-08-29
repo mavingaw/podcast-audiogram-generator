@@ -14,7 +14,7 @@ from sqlalchemy import func, select, update
 from app.core.config import settings
 from app.db.models import AppSetting, Job, JobKind, JobStatus, MediaAsset, Project, SoundAsset
 from app.db.session import SessionLocal
-from app.services import cancellation, cuts, loudness
+from app.services import cancellation, cuts, loudness, tokens as token_service
 from app.services.cancellation import JobCancelled
 from app.services.encoders import select as select_encoder
 from app.services.gpu import discover_gpus
@@ -1128,6 +1128,7 @@ def build_render_command(
     gpu_index: str | None = None,
     plates: "Plates | None" = None,
     loudness_measurement: dict | None = None,
+    token_context: dict[str, str] | None = None,
 ) -> list[str]:
     """Assemble the FFmpeg invocation for one audiogram render.
 
@@ -1237,7 +1238,9 @@ def build_render_command(
 
     progress_chain = _progress_filter(parsed, width, height, duration)
     text_chain = _text_filters(
-        parsed, width, height, duration, font_file if font_file is not None else find_font_file()
+        parsed, width, height, duration,
+        font_file if font_file is not None else find_font_file(),
+        token_context,
     )
     audio_chains.append(f"{video_label}ass=captions.ass{progress_chain}{text_chain}[v]")
 
@@ -1467,6 +1470,7 @@ def _text_filters(
     height: int,
     duration: float,
     font_file: Path | None,
+    token_context: dict[str, str] | None = None,
 ) -> str:
     """drawtext filters for the scene's text layers, in stacking order.
 
@@ -1485,8 +1489,16 @@ def _text_filters(
             continue
         x, y, box_width, box_height = layer.pixels(width, height)
         font_size = max(12, int(box_height * 0.62))
+        # `{{episode}}` and friends become what this clip actually is, so a
+        # template can carry the label rather than every clip needing one typed
+        # into it. See services/tokens.py.
+        text = token_service.resolve(layer.text, token_context or {})
+        if not text.strip():
+            # A layer whose entire content was an empty token would otherwise
+            # draw an invisible box and cost a filter pass.
+            continue
         options = [
-            f"text='{escape_drawtext(layer.text)}'",
+            f"text='{escape_drawtext(text)}'",
             f"fontcolor={ffmpeg_color(layer.paint('#ffffff'))}",
             f"fontsize={font_size}",
             # Centre the text inside the box the editor drew, matching how the
@@ -1548,6 +1560,7 @@ def _render_audiogram_mp4(
             gpu_index=gpu_index,
             plates=plates,
             loudness_measurement=measurement,
+            token_context=token_context,
         ),
         cwd=ass_path.parent,
         capture_output=True,

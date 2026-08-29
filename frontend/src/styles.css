@@ -2320,3 +2320,21 @@
   .cuts-line .word-plain { color: var(--text-muted); }
   .muted.small { font-size: 11.5px; display: flex; align-items: center; gap: 6px; }
 }
+
+@layer views {
+  /* A template is only reusable if its words change with the clip, so the
+     tokens have to be findable without reading the documentation. */
+  .token-help { display: grid; gap: var(--s-2); margin-top: calc(var(--s-2) * -1); }
+  .token-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+  .token-chip {
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-family: var(--mono, ui-monospace, monospace);
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm, 5px);
+    cursor: pointer;
+  }
+  .token-chip:hover { color: var(--accent-text); border-color: var(--accent); }
+}
