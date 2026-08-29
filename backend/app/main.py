@@ -27,6 +27,27 @@ def create_app() -> FastAPI:
     )
     # Before the router, so it wraps everything including the static mount.
     app.middleware("http")(vitals.timing_middleware)
+
+    @app.middleware("http")
+    async def cache_policy(request, call_next):
+        """Stop a browser from keeping an old copy of the app past a deploy.
+
+        The bundle files are content-hashed, so they can be cached forever.
+        The page that names them cannot: served with no Cache-Control at all,
+        browsers apply heuristic freshness and can keep serving yesterday's
+        index.html — which loads yesterday's bundle, and every fix shipped
+        since is invisible until somebody thinks to hard-refresh. Reported as
+        "nothing is getting fixed", which from the outside is exactly what it
+        looks like.
+        """
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif not path.startswith("/api/"):
+            # The HTML shell and anything unhashed next to it: always revalidate.
+            response.headers["Cache-Control"] = "no-cache"
+        return response
     app.include_router(router)
 
     static_dir = Path(settings.frontend_dist)

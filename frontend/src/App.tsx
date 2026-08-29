@@ -1605,11 +1605,19 @@ function ClipSelector({
       // A failed snap is not a failed edit; the clip stays where it was put.
     }
   }
-  const applyStart = (value: number) =>
-    onChange(
-      Math.max(0, Math.min(Number.isFinite(value) ? value : 0, end - 0.5)),
-      end,
-    );
+  // Typing a Start beyond the current End used to snap the Start back to
+  // End − 0.5, so entering 120 into a 0–45 clip produced 44.5. The intent of
+  // typing a start time is to start there; the clip keeps its length and the
+  // end moves with it.
+  const applyStart = (value: number) => {
+    const next = Math.max(0, Math.min(Number.isFinite(value) ? value : 0, duration - 0.5));
+    if (next < end) {
+      onChange(next, end);
+      return;
+    }
+    const length = Math.max(0.5, end - start);
+    onChange(next, Math.min(duration, next + length));
+  };
   const applyEnd = (value: number) =>
     onChange(start, Math.min(duration, Math.max(start + 0.5, value)));
   const applyDuration = (value: number) =>
@@ -1687,36 +1695,9 @@ function ClipSelector({
         <strong>{formatTime(end)}</strong>
       </div>
       <div className="clip-fields">
-        <label>
-          Start
-          <input
-            type="number"
-            min="0"
-            step="0.1"
-            value={start.toFixed(1)}
-            onChange={(e) => applyStart(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          End
-          <input
-            type="number"
-            min="0.5"
-            step="0.1"
-            value={end.toFixed(1)}
-            onChange={(e) => applyEnd(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          Duration
-          <input
-            type="number"
-            min="0.5"
-            step="0.1"
-            value={(end - start).toFixed(1)}
-            onChange={(e) => applyDuration(Number(e.target.value))}
-          />
-        </label>
+        <TimeField label="Start" value={start} onCommit={applyStart} />
+        <TimeField label="End" value={end} min={0.5} onCommit={applyEnd} />
+        <TimeField label="Duration" value={end - start} min={0.5} onCommit={applyDuration} />
       </div>
       {snapUndo && (
         <div className="snap-note">
@@ -2046,12 +2027,15 @@ function Studio({
     else delete scene.music;
     await onUpdate({ scene });
   }
-  async function saveProjectMeta() {
+  // Takes the values rather than reading state: a caller that has just called
+  // setClipStart sees the old value here, because React has not re-rendered
+  // yet, and would save the clip as it was before the edit.
+  async function saveProjectMeta(start = clipStart, end = clipEnd) {
     if (!project) return;
     await onUpdate({
       title: titleDraft.trim() || project.title,
-      clip_start: Math.max(0, clipStart),
-      clip_end: Math.max(clipStart + 0.5, clipEnd),
+      clip_start: Math.max(0, start),
+      clip_end: Math.max(start + 0.5, end),
     });
   }
   function addLayer(type: Layer["type"], name: string) {
@@ -2170,7 +2154,7 @@ function Studio({
           aria-label="Project title"
           value={titleDraft}
           onChange={(e) => setTitleDraft(e.target.value)}
-          onBlur={saveProjectMeta}
+          onBlur={() => void saveProjectMeta()}
         />
         <button
           className="ghost"
@@ -2363,28 +2347,32 @@ function Studio({
           <div className="clip-property-block">
             <span className="sidebar-label">Clip</span>
             <div className="mini-fields">
-              <label>
-                Start
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={clipStart.toFixed(1)}
-                  onChange={(e) => setClipStart(Number(e.target.value))}
-                  onBlur={saveProjectMeta}
-                />
-              </label>
-              <label>
-                End
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.1"
-                  value={clipEnd.toFixed(1)}
-                  onChange={(e) => setClipEnd(Number(e.target.value))}
-                  onBlur={saveProjectMeta}
-                />
-              </label>
+              <TimeField
+                label="Start"
+                value={clipStart}
+                onCommit={(value) => {
+                  // Keep the clip's length when the start is moved past the
+                  // end, rather than refusing the start.
+                  const next = Math.max(0, value);
+                  let end = clipEnd;
+                  if (next >= clipEnd) {
+                    end = next + Math.max(0.5, clipEnd - clipStart);
+                    setClipEnd(end);
+                  }
+                  setClipStart(next);
+                  void saveProjectMeta(next, end);
+                }}
+              />
+              <TimeField
+                label="End"
+                value={clipEnd}
+                min={0.5}
+                onCommit={(value) => {
+                  const end = Math.max(clipStart + 0.5, value);
+                  setClipEnd(end);
+                  void saveProjectMeta(clipStart, end);
+                }}
+              />
             </div>
           </div>
           <DesignPanel
@@ -2697,6 +2685,57 @@ const TOKENS: [string, string][] = [
   ["timecode", "Where the clip starts in the episode"],
   ["duration", "Clip length in seconds"],
 ];
+
+/**
+ * A number field for a time in seconds that can be typed into.
+ *
+ * The previous fields were controlled by `value.toFixed(1)` and applied on
+ * every keystroke, so typing "120" went 1.0 → 1.02 → 1.0: the field
+ * reformatted under the caret after each digit and a multi-digit time could
+ * not be entered by keyboard at all. Automated tests never saw it because they
+ * paste the whole value at once.
+ *
+ * This holds the text while it has focus and commits on blur or Enter.
+ */
+function TimeField({
+  label,
+  value,
+  min = 0,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const commit = () => {
+    if (text === null) return;
+    const parsed = Number(text);
+    if (Number.isFinite(parsed)) onCommit(Math.max(min, parsed));
+    setText(null);
+  };
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        min={min}
+        step="0.1"
+        value={text ?? value.toFixed(1)}
+        onFocus={(e) => setText(e.target.value)}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
+  );
+}
 
 function LayerContent({
   layer,

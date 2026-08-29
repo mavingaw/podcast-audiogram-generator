@@ -260,6 +260,25 @@ await step("transcript-cuts", async () => {
   }
 });
 
+// History is the safety net under the destructive-feeling actions — applying a
+// template, cutting words, running a batch. A panel that silently lists nothing
+// would leave those feeling like one-way doors.
+await step("history", async () => {
+  const panel = page.locator(".history-panel");
+  if ((await panel.count()) === 0) {
+    problems.push("history: no panel in the inspector");
+    return;
+  }
+  // Either entries or an explanation; an empty box says neither.
+  const entries = await page.locator(".history-list li").count();
+  if (entries === 0) {
+    const message = await panel.locator(".muted").first().innerText().catch(() => "");
+    if (!message.trim()) problems.push("history: empty with no explanation");
+  } else if ((await page.locator('.history-list button:has-text("Restore")').count()) === 0) {
+    problems.push("history: entries listed with no way to restore one");
+  }
+});
+
 await step("timeline-zoom", async () => {
   // A forty-five second clip across 700px is fifteen pixels a second, which is
   // not enough to place a block against a word. Zoom has to actually narrow the
