@@ -2387,3 +2387,21 @@
   .design-canvas .layer-title { font-family: var(--title-font), "Inter", sans-serif; font-weight: 700; }
   .design-canvas .layer-caption { font-family: var(--caption-font), "Inter", sans-serif; }
 }
+
+
+@layer views {
+  /* One-shot effects placed at points in the clip. */
+  .sfx-panel .sidebar-label { display: flex; align-items: center; gap: 6px; }
+  .sfx-cues { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
+  .sfx-cues li, .sfx-result {
+    display: flex; align-items: center; gap: var(--s-2);
+    padding: 4px var(--s-2); border: 1px solid var(--line); border-radius: var(--r-sm, 6px);
+    background: var(--surface-raised);
+  }
+  .sfx-cues input[type="range"] { width: 70px; flex: 0 0 auto; }
+  .sfx-time { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; padding: 2px 6px;
+    border: 0; border-radius: 4px; background: var(--hover); cursor: pointer; }
+  .sfx-name { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sfx-name small { color: var(--text-muted); }
+  .sfx-results { display: grid; gap: var(--s-1); max-height: 260px; overflow-y: auto; padding-right: var(--s-1); }
+}

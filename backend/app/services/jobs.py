@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 from app.core.config import settings
 from app.db.models import AppSetting, Job, JobKind, JobStatus, MediaAsset, Project, SoundAsset
 from app.db.session import SessionLocal
-from app.services import cancellation, cuts, loudness, tokens as token_service
+from app.services import cancellation, cuts, loudness, sfx as sfx_service, tokens as token_service
 from app.services.cancellation import JobCancelled
 from app.services.encoders import select as select_encoder
 from app.services.gpu import discover_gpus
@@ -902,6 +902,10 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     # say so in the job message the UI displays.
     if scene.get("music") and bed is None:
         warnings.append("music bed skipped: the track is missing from the library")
+    sfx_cues, sfx_credits, sfx_missing = _resolve_sfx(db, scene, duration)
+    if sfx_missing:
+        warnings.append(f"{sfx_missing} sound effect(s) skipped: missing from the library")
+    bed_credits = bed_credits + [c for c in sfx_credits if c not in bed_credits]
     image_paths = _resolve_scene_images(db, parsed_scene, project.owner_id)
     # Still layers are baked once here rather than filtered on every frame.
     plates = bake_plates(
@@ -992,6 +996,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         gpu_index=_encoding_gpu_index(db),
         plates=plates,
         job_id=job.id,
+        sfx=sfx_cues,
         # What {{episode}} and friends mean for this clip.
         token_context=token_service.context_for(
             project=project, media=media, episode=token_episode, feed=token_feed,
@@ -1112,6 +1117,35 @@ def _resolve_scene_images(db, parsed: Scene, owner_id: str) -> dict[str, Path]:
         if path.exists():
             resolved[media_id] = path
     return resolved
+
+
+def _resolve_sfx(db, scene: dict, duration: float):
+    """Library files for the scene's cues, plus any credits their packs need.
+
+    A cue whose sound has gone from the library is skipped and counted, not
+    fatal: the clip is still worth producing without one whoosh.
+    """
+    resolved: list[sfx_service.ResolvedCue] = []
+    credits: list[dict] = []
+    missing = 0
+    cues = sfx_service.parse(scene, duration)
+    if not cues:
+        return resolved, credits, missing
+    from app.services.library import credits_for
+
+    for cue in cues:
+        sound = db.get(SoundAsset, cue.sound_id)
+        path = sound_path(sound) if sound is not None else None
+        if sound is None or path is None or not path.exists():
+            missing += 1
+            continue
+        resolved.append(sfx_service.ResolvedCue(path=path, at=cue.at, gain_db=cue.gain_db))
+    if resolved:
+        try:
+            credits = credits_for(db, [cue.sound_id for cue in cues])
+        except Exception:
+            credits = []
+    return resolved, credits, missing
 
 
 def _resolve_music_bed(db, scene: dict) -> tuple[MusicBed | None, Path | None, list[dict]]:
@@ -1244,6 +1278,7 @@ def build_render_command(
     plates: "Plates | None" = None,
     loudness_measurement: dict | None = None,
     token_context: dict[str, str] | None = None,
+    sfx: "list[sfx_service.ResolvedCue] | None" = None,
 ) -> list[str]:
     """Assemble the FFmpeg invocation for one audiogram render.
 
@@ -1262,20 +1297,12 @@ def build_render_command(
         voice_fade_in=parsed.fade_in,
         voice_fade_out=parsed.fade_out,
     )
-    if loudness_measurement:
-        # Applied to the finished mix, after the bed, because the level the
-        # platform measures is the level of the whole file.
-        audio_chains.append(
-            f"{audio_label}{loudness.apply_filter(loudness_measurement)}[anorm]"
-        )
-        audio_label = "[anorm]"
-
     plates = plates or Plates()
     images = image_paths or {}
     background_path = plates.background
 
     # Input order: 0 source, 1 colour plate, [2 music], [background image],
-    # then one input per artwork layer.
+    # one input per artwork layer, then one per sound-effect cue.
     next_input = 3 if has_music else 2
     background_input = None
     if background_path is not None:
@@ -1284,6 +1311,20 @@ def build_render_command(
 
     image_layers = [layer for layer in parsed.image_layers() if plates.for_layer(layer.id)]
     first_image_input = next_input
+    first_sfx_input = first_image_input + len(image_layers)
+
+    # Effects are folded in before the loudness pass, so the level the
+    # platform measures is the level of the whole mix, stingers included.
+    sfx_chains, audio_label = sfx_service.filters(sfx or [], first_sfx_input, audio_label)
+    audio_chains.extend(sfx_chains)
+
+    if loudness_measurement:
+        # Applied to the finished mix, after the bed, because the level the
+        # platform measures is the level of the whole file.
+        audio_chains.append(
+            f"{audio_label}{loudness.apply_filter(loudness_measurement)}[anorm]"
+        )
+        audio_label = "[anorm]"
 
     video_label = "[1:v]"
 
@@ -1404,6 +1445,8 @@ def build_render_command(
         command += ["-loop", "1", "-i", str(background_path)]
     for layer in image_layers:
         command += ["-loop", "1", "-i", str(plates.for_layer(layer.id))]
+    for cue in sfx or []:
+        command += ["-i", str(cue.path)]
 
     command += [
         "-filter_complex",
@@ -1792,6 +1835,7 @@ def _render_audiogram_mp4(
     plates: Plates | None = None,
     job_id: str | None = None,
     token_context: dict[str, str] | None = None,
+    sfx: "list[sfx_service.ResolvedCue] | None" = None,
 ) -> None:
     # Measure the mix first so the encode can be delivered at a known loudness.
     # A failed measurement is not a failed render: the clip simply goes out at
@@ -1822,6 +1866,7 @@ def _render_audiogram_mp4(
             plates=plates,
             loudness_measurement=measurement,
             token_context=token_context,
+            sfx=sfx,
         ),
         cwd=ass_path.parent,
         capture_output=True,

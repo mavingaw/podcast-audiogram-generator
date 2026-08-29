@@ -183,7 +183,7 @@ attribution obligations are in `docs/AUDIO_LIBRARY.md`.
 | Attribution for licensed audio | (Headliner licenses its own library.) | Every render using a track writes `CREDITS.txt` and repeats the credits in the manifest. | PASS | `backend/app/services/jobs.py`, `backend/app/services/library.py` | Render a project with a bed, confirm `CREDITS.txt` names the pack, licence, author, and track. |
 | Voice-over recording | Record narration in the browser. | Not available. | FAIL | Not implemented. | Record, trim, and mix a voice-over into a project. |
 | Per-track volume automation | Adjust a track's level over time. | Level is constant for the whole clip. | FAIL | Not implemented. | Set two gain points and verify the rendered envelope. |
-| Sound effects on the timeline | Place one-shot effects at points in the timeline. | Effects exist only as interface cues, not as timeline content. | FAIL | Not implemented. | Place an effect at a timecode and hear it in the render. |
+| Sound effects on the timeline | Place one-shot effects at points in the timeline. | Search the 3,400-effect CC0 library in Studio, press + and the effect lands at the playhead; level per cue; heard in the preview as the playhead crosses it; delayed and mixed at unity before the loudness pass on export. | PASS | `backend/app/services/sfx.py`, `frontend/src/SfxPanel.tsx` | 7 tests including a real render: silent clip + one tone cue, audible at 2.15s and silent at 0.5s. |
 
 ## Automatic Audiograms and RSS Automation
 

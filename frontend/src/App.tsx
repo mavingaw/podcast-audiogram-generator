@@ -70,6 +70,7 @@ import {
 } from "./api";
 import { DesignPanel } from "./DesignPanel";
 import { HistoryPanel } from "./HistoryPanel";
+import { SfxCue, SfxPanel } from "./SfxPanel";
 import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./TranscriptCuts";
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
@@ -2060,6 +2061,33 @@ function Studio({
     // enough to make the next export produce a new file.
     await onUpdate({ scene: { ...project.scene, cuts } });
   }
+  const sceneSfx = useMemo(
+    () => ((project?.scene?.sfx as SfxCue[] | undefined) ?? []),
+    [project?.scene?.sfx],
+  );
+  async function saveSfx(next: SfxCue[]) {
+    if (!project) return;
+    await onUpdate({ scene: { ...project.scene, sfx: next } });
+  }
+  // Fire each cue in the preview as the playhead crosses it, so placing an
+  // effect can be judged by ear rather than by exporting. One Audio per cue
+  // per pass; a cue is armed again when playback restarts or seeks back.
+  const firedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!playing) {
+      firedRef.current.clear();
+      return;
+    }
+    sceneSfx.forEach((cue, index) => {
+      if (firedRef.current.has(index)) return;
+      if (localPlayhead >= cue.at && localPlayhead < cue.at + 0.35) {
+        firedRef.current.add(index);
+        const audio = new Audio(`/api/library/sounds/${cue.soundId}/file`);
+        audio.volume = Math.max(0, Math.min(1, Math.pow(10, (cue.gainDb ?? 0) / 20) * 0.8));
+        void audio.play().catch(() => undefined);
+      }
+    });
+  }, [playing, localPlayhead, sceneSfx]);
   async function saveMusicBed(next: MusicBed | null) {
     if (!project) return;
     const scene = { ...project.scene };
@@ -2469,6 +2497,13 @@ function Studio({
             bed={musicBed}
             clipDuration={clipDuration}
             onChange={(next) => void saveMusicBed(next)}
+          />
+          <SfxPanel
+            cues={sceneSfx}
+            playhead={localPlayhead}
+            clipDuration={clipDuration}
+            onChange={(next) => void saveSfx(next)}
+            onSeek={(at) => seek(clipStart + at)}
           />
           <div className="inspector-heading">
             <span className="sidebar-label">Layers</span>
