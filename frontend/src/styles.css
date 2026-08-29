@@ -2366,3 +2366,24 @@
   .history-list small { font-size: 11px; color: var(--text-muted); }
   .history-list button { flex: 0 0 auto; gap: 5px; }
 }
+
+
+/* Bundled OFL faces, the same files the renderer draws with, so the preview
+   shows the typeface the export will have. */
+@font-face { font-family: "Inter"; font-weight: 400; src: url("/fonts/Inter-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 600; src: url("/fonts/Inter-SemiBold.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 700; src: url("/fonts/Inter-Bold.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 800; src: url("/fonts/Inter-ExtraBold.ttf") format("truetype"); }
+@font-face { font-family: "Manrope"; font-weight: 400; src: url("/fonts/Manrope-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Manrope"; font-weight: 700; src: url("/fonts/Manrope-Bold.ttf") format("truetype"); }
+@font-face { font-family: "Manrope"; font-weight: 800; src: url("/fonts/Manrope-ExtraBold.ttf") format("truetype"); }
+@font-face { font-family: "Sora"; font-weight: 400; src: url("/fonts/Sora-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Sora"; font-weight: 700; src: url("/fonts/Sora-Bold.ttf") format("truetype"); }
+@font-face { font-family: "Sora"; font-weight: 800; src: url("/fonts/Sora-ExtraBold.ttf") format("truetype"); }
+@font-face { font-family: "Bebas Neue"; font-weight: 400; src: url("/fonts/BebasNeue-Regular.ttf") format("truetype"); }
+
+@layer views {
+  .design-canvas { --title-font: "Inter"; --caption-font: "Inter"; }
+  .design-canvas .layer-title { font-family: var(--title-font), "Inter", sans-serif; font-weight: 700; }
+  .design-canvas .layer-caption { font-family: var(--caption-font), "Inter", sans-serif; }
+}

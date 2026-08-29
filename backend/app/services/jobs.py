@@ -37,8 +37,12 @@ from app.services.scene import (
     PEAK_SHARE,
     caption_char_budget,
     ENVELOPE_STYLES,
+    DEFAULT_FONT,
+    FONTS_DIR,
     PULSE_STYLES,
     WAVE_STYLES,
+    font_family_for,
+    font_file_for,
     ass_color,
     Scene,
     enable_expression,
@@ -1354,11 +1358,15 @@ def build_render_command(
     progress_chain = _progress_filter(parsed, width, height, duration)
     text_chain = _text_filters(
         parsed, width, height, duration,
-        font_file if font_file is not None else find_font_file(),
+        font_file if font_file is not None else font_file_for(parsed.font, "title"),
         token_context,
         work_dir=output_path.parent,
     )
-    audio_chains.append(f"{video_label}ass=captions.ass{progress_chain}{text_chain}[v]")
+    # fontsdir points libass at the bundled faces so the caption style can
+    # name "Inter" or "Bebas Neue" and get it, wherever the container runs.
+    fonts_dir = escape_drawtext(str(FONTS_DIR)) if FONTS_DIR.is_dir() else ""
+    ass_filter = f"ass=captions.ass:fontsdir='{fonts_dir}'" if fonts_dir else "ass=captions.ass"
+    audio_chains.append(f"{video_label}{ass_filter}{progress_chain}{text_chain}[v]")
 
     command = [
         "ffmpeg",
@@ -1929,7 +1937,7 @@ def _write_ass(
     captions: list[dict],
     aspect_ratio: str,
     parsed: Scene | None = None,
-    font_name: str = "DejaVu Sans",
+    font_name: str | None = None,
 ) -> None:
     """Burn-in caption styling.
 
@@ -1942,6 +1950,8 @@ def _write_ass(
     width, height = _dimensions(aspect_ratio)
     preset = CAPTION_PRESETS[parsed.caption_preset if parsed else "social"]
     colour = parsed.caption_color if parsed else "#ffffff"
+    if font_name is None:
+        font_name = font_family_for(parsed.caption_font if parsed else DEFAULT_FONT)
 
     # Width, not height — see CAPTION_PRESETS for why.
     font_size = max(18, int(width * preset["size_ratio"]))

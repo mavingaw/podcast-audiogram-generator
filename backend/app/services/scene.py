@@ -15,6 +15,7 @@ bars, or a line — rather than our previous single hard-coded look.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 # FFmpeg's drawtext takes a filename or an escaped literal; escaping is safer
 # than writing a temp file per layer, but the escape set is fiddly enough to
@@ -125,6 +126,45 @@ WAVE_STYLE_LABELS = {
 }
 
 RENDERABLE_TEXT_TYPES = {"title", "text", "captions"}
+
+# Fonts that ship inside the application. All four are under the SIL Open
+# Font License, which — unlike the music packs — permits bundling and
+# redistribution, so they live in the repository and the image.
+FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+
+# id -> (family name as libass sees it, file for titles, file for captions)
+FONTS = {
+    "inter": ("Inter", "Inter-Bold.ttf", "Inter-SemiBold.ttf"),
+    "manrope": ("Manrope", "Manrope-ExtraBold.ttf", "Manrope-Bold.ttf"),
+    "sora": ("Sora", "Sora-Bold.ttf", "Sora-Bold.ttf"),
+    "bebas": ("Bebas Neue", "BebasNeue-Regular.ttf", "BebasNeue-Regular.ttf"),
+    "dejavu": ("DejaVu Sans", None, None),
+}
+FONT_LABELS = {
+    "inter": "Inter",
+    "manrope": "Manrope",
+    "sora": "Sora",
+    "bebas": "Bebas Neue (condensed, loud)",
+    "dejavu": "DejaVu Sans (system)",
+}
+DEFAULT_FONT = "inter"
+
+
+def font_file_for(font_id: str, role: str = "title") -> "Path | None":
+    """The bundled file for a font id, or the system fallback."""
+    family = FONTS.get(font_id) or FONTS[DEFAULT_FONT]
+    name = family[1] if role == "title" else family[2]
+    if name:
+        candidate = FONTS_DIR / name
+        if candidate.exists():
+            return candidate
+    return find_font_file()
+
+
+def font_family_for(font_id: str) -> str:
+    return (FONTS.get(font_id) or FONTS[DEFAULT_FONT])[0]
+
+
 
 # The default stack, per shape: artwork, then title, then the caption band,
 # then the waveform. One layout cannot serve every ratio because captions are
@@ -401,6 +441,12 @@ class Scene:
     # began.
     caption_offset: float = 0.0
 
+    # Typefaces, by id into FONTS. Titles and captions are chosen separately:
+    # a condensed display face like Bebas Neue is right for a title and wrong
+    # for four lines of speech.
+    font: str = DEFAULT_FONT
+    caption_font: str = DEFAULT_FONT
+
     # The voice track's own level and edges.
     #
     # A clip cut out of the middle of an episode starts and ends abruptly, and
@@ -501,6 +547,11 @@ def parse(
         # Bounded to a second either way: beyond that the captions belong to a
         # different sentence, which is not a timing problem any more.
         caption_offset=_clamp(_number(scene.get("captionOffset"), 0.0), -1.0, 1.0),
+        font=str(scene.get("font")) if scene.get("font") in FONTS else DEFAULT_FONT,
+        caption_font=(
+            str(scene.get("captionFont")) if scene.get("captionFont") in FONTS
+            else DEFAULT_FONT
+        ),
         # Bounded rather than trusted: a gain of +40dB or a fade longer than the
         # clip is a broken render, and a stored scene is not a promise.
         voice_gain_db=_clamp(_number(scene.get("voiceGainDb"), 0.0), -24.0, 12.0),
@@ -587,6 +638,7 @@ def escape_drawtext(text: str) -> str:
 # default there crashes the process rather than reporting an error, so the file
 # is resolved up front and text layers are skipped if nothing is found.
 _FONT_CANDIDATES = (
+    str(FONTS_DIR / "Inter-SemiBold.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",

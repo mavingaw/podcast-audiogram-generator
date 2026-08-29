@@ -422,7 +422,10 @@ def test_text_layers_are_skipped_when_no_font_is_available(monkeypatch):
     """drawtext without a font aborts the whole encode, so the text is dropped."""
     import app.services.jobs as jobs
 
-    monkeypatch.setattr(jobs, "find_font_file", lambda: None)
+    # Fonts now ship with the application, so this can only happen if the
+    # bundled files and every system fallback are gone; the guard still has
+    # to hold, because the failure it prevents is the whole encode aborting.
+    monkeypatch.setattr(jobs, "font_file_for", lambda font_id, role="title": None)
     scene = {"layers": [{"id": "t", "type": "title", "text": "Hello", "visible": True}]}
     graph = render_graph(scene, font=None)
     assert "drawtext=" not in graph
@@ -780,3 +783,67 @@ def test_live_bars_actually_move(tmp_path):
 
     readings = {luma_at(t) for t in (0.25, 0.75, 1.25)}
     assert len(readings) > 1, f"the bars did not move: {readings}"
+
+
+# --------------------------------------------------------------------------
+# Bundled typefaces
+# --------------------------------------------------------------------------
+
+
+def test_every_offered_font_ships_with_its_licence():
+    """OFL allows bundling; the licence text has to travel with the files."""
+    from app.services.scene import FONTS, FONTS_DIR, FONT_LABELS
+
+    assert FONTS_DIR.is_dir()
+    for font_id, (family, title_file, caption_file) in FONTS.items():
+        assert font_id in FONT_LABELS, f"{font_id} has no label for the picker"
+        for name in (title_file, caption_file):
+            if name:
+                assert (FONTS_DIR / name).exists(), f"{name} is missing"
+    licences = [p.name for p in FONTS_DIR.glob("OFL-*.txt")]
+    assert {"OFL-Inter.txt", "OFL-Manrope.txt", "OFL-Sora.txt", "OFL-BebasNeue.txt"} <= set(licences)
+
+
+def test_the_default_title_font_is_bundled_not_the_system_one():
+    from app.services.scene import font_file_for
+
+    assert font_file_for("inter", "title").name == "Inter-Bold.ttf"
+    assert font_file_for("inter", "caption").name == "Inter-SemiBold.ttf"
+
+
+def test_an_unknown_font_id_falls_back_to_the_default():
+    from app.services.scene import DEFAULT_FONT, font_file_for
+
+    parsed = parse_scene({"font": "comic-sans", "captionFont": 7}, 10.0)
+    assert parsed.font == DEFAULT_FONT and parsed.caption_font == DEFAULT_FONT
+    assert font_file_for("comic-sans").name == font_file_for(DEFAULT_FONT).name
+
+
+def test_titles_and_captions_can_differ():
+    parsed = parse_scene({"font": "bebas", "captionFont": "sora"}, 10.0)
+    assert (parsed.font, parsed.caption_font) == ("bebas", "sora")
+
+
+def test_the_caption_style_names_the_chosen_family(tmp_path):
+    from app.services.jobs import _write_ass
+
+    parsed = parse_scene({"captionFont": "bebas"}, 10.0)
+    path = tmp_path / "c.ass"
+    _write_ass(path, [{"start": 0.0, "end": 1.0, "text": "hi"}], "9:16", parsed)
+    style = next(line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("Style:"))
+    assert style.split(",")[1] == "Bebas Neue"
+
+
+def test_the_render_points_libass_at_the_bundled_fonts(tmp_path):
+    """Naming a family is useless unless libass can find the file."""
+    graph = render_graph({"captionFont": "sora"}, out_dir=tmp_path)
+    assert "ass=captions.ass:fontsdir=" in graph
+    assert "assets" in graph and "fonts" in graph
+
+
+def test_the_title_layer_draws_with_the_chosen_file(tmp_path):
+    scene = {"font": "manrope", "layers": [
+        {"id": "t", "type": "title", "x": 10, "y": 10, "width": 80, "height": 8, "text": "Hi"},
+    ]}
+    graph = render_graph(scene, font=None, out_dir=tmp_path)
+    assert "Manrope-ExtraBold.ttf" in graph

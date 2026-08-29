@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -2236,7 +2236,17 @@ function Studio({
             <div
               className="design-canvas"
               ref={canvasRef}
-              style={{ background, transform: `scale(${zoom})`, transformOrigin: "center" }}
+              style={{
+                background,
+                transform: `scale(${zoom})`,
+                transformOrigin: "center",
+                // The typefaces the export will use, as variables the layer
+                // styles read, so LayerContent needs no new props.
+                ["--title-font" as string]:
+                  FONT_FAMILIES[String(project?.scene?.font ?? "inter")] ?? "Inter",
+                ["--caption-font" as string]:
+                  FONT_FAMILIES[String(project?.scene?.captionFont ?? "inter")] ?? "Inter",
+              } as CSSProperties}
             >
               {backgroundImageUrl && (
                 /* Mirrors the render's plate: cover, blur, darken. The blur is
@@ -2788,6 +2798,16 @@ function TimeField({
     </label>
   );
 }
+
+// Family names as the @font-face rules declare them. Mirrors FONTS in
+// backend/app/services/scene.py.
+const FONT_FAMILIES: Record<string, string> = {
+  inter: "Inter",
+  manrope: "Manrope",
+  sora: "Sora",
+  bebas: "Bebas Neue",
+  dejavu: "DejaVu Sans",
+};
 
 function LayerContent({
   layer,

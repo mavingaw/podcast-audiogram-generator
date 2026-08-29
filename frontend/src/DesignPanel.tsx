@@ -18,6 +18,15 @@ import { play as playSfx } from "./sfx";
  * changes. Nothing in the panel is preview-only.
  */
 
+// Keep in step with FONT_LABELS in backend/app/services/scene.py.
+const FONTS: [string, string][] = [
+  ["inter", "Inter"],
+  ["manrope", "Manrope"],
+  ["sora", "Sora"],
+  ["bebas", "Bebas Neue (condensed, loud)"],
+  ["dejavu", "DejaVu Sans (system)"],
+];
+
 // Keep in step with WAVE_STYLE_LABELS in backend/app/services/scene.py.
 const WAVE_STYLES: [string, string][] = [
   ["pulse", "Live bars"],
@@ -340,6 +349,36 @@ export function DesignPanel({
               <option key={value} value={value}>
                 {label}
               </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="design-group">
+        <span className="sidebar-label">Typeface</span>
+        <p className="muted">
+          Bundled with the app, so the export matches the preview. Bebas Neue
+          is a display face: right for a title, wrong for four lines of speech.
+        </p>
+        <label>
+          Titles
+          <select
+            value={String(scene.font ?? "inter")}
+            onChange={(event) => void onScene({ font: event.target.value })}
+          >
+            {FONTS.map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Captions
+          <select
+            value={String(scene.captionFont ?? "inter")}
+            onChange={(event) => void onScene({ captionFont: event.target.value })}
+          >
+            {FONTS.map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
             ))}
           </select>
         </label>
