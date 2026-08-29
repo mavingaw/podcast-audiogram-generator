@@ -126,6 +126,40 @@ def pack_dir(pack: PackLicense) -> Path:
     return settings.library_dir / pack.kind.value / pack.slug
 
 
+def discover_packs() -> list[PackLicense]:
+    """Every pack on disk: the two known ones, plus any folder with a pack.json.
+
+    The bulk fetcher writes packs the code has never heard of — an FMA
+    download, a Freesound pull — and each declares itself in its manifest.
+    Per-track licence and attribution live in the manifest's tracks, since a
+    catalogue like FMA mixes CC0, CC BY and CC BY-SA in one download.
+    """
+    found: dict[str, PackLicense] = dict(PACKS)
+    for kind in SoundKind:
+        root = settings.library_dir / kind.value
+        if not root.is_dir():
+            continue
+        for directory in sorted(root.iterdir()):
+            manifest_path = directory / "pack.json"
+            if not directory.is_dir() or not manifest_path.exists():
+                continue
+            slug = directory.name
+            if slug in found:
+                continue
+            manifest = _read_manifest(directory)
+            found[slug] = PackLicense(
+                slug=slug,
+                name=str(manifest.get("name") or slug),
+                kind=kind,
+                author=str(manifest.get("author") or "Various"),
+                license_name=str(manifest.get("license") or "See individual tracks"),
+                attribution=str(manifest.get("attribution") or ""),
+                redistributable=bool(manifest.get("redistributable", False)),
+                notes=str(manifest.get("notes") or ""),
+            )
+    return list(found.values())
+
+
 def sound_path(asset: SoundAsset) -> Path:
     return contained_path(settings.library_dir, settings.library_dir / asset.relative_path)
 
@@ -249,7 +283,7 @@ def sync_catalog(db: Session, probe_durations: bool = False) -> dict:
     seen: set[str] = set()
     added, updated = 0, 0
 
-    for pack in PACKS.values():
+    for pack in discover_packs():
         directory = pack_dir(pack)
         if not directory.exists():
             continue
@@ -283,9 +317,18 @@ def sync_catalog(db: Session, probe_durations: bool = False) -> dict:
             asset.pack = pack.slug
             asset.title = f"{title} ({section.title()})" if section else title
             asset.author = meta.get("author") or pack.author
-            asset.attribution = pack.attribution
-            asset.license_name = pack.license_name
-            asset.redistributable = pack.redistributable
+            # A track's own licence outranks the pack's: one FMA download
+            # mixes CC0, CC BY and CC BY-SA, and the credit written into an
+            # export has to be the right one for the track that was used.
+            # Present-but-empty is a real answer: a CC0 track's credit line is
+            # nothing, and falling back to the pack's would write one anyway.
+            asset.attribution = (
+                str(meta["attribution"]) if "attribution" in meta else pack.attribution
+            )
+            asset.license_name = (
+                str(meta["license"]) if meta.get("license") else pack.license_name
+            )
+            asset.redistributable = bool(meta.get("redistributable", pack.redistributable))
             asset.genre = meta.get("genre", "")
             asset.tags_json = json.dumps(meta.get("tags", []))
             asset.duration_seconds = duration
@@ -390,7 +433,7 @@ def credits_for(db: Session, sound_ids: list[str]) -> list[dict]:
 
 def installed_packs(db: Session) -> list[dict]:
     summary = []
-    for pack in PACKS.values():
+    for pack in discover_packs():
         count = len(
             db.scalars(select(SoundAsset.id).where(SoundAsset.pack == pack.slug)).all()
         )
