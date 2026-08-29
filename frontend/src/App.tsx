@@ -280,7 +280,9 @@ function defaultLayers(ratio: Ratio = "9:16"): Layer[] {
       height: LAYOUT[ratio].title.height,
       visible: true,
       locked: false,
-      text: "Episode Title",
+      // The token, not placeholder text: the render fills in the episode's
+      // name, and the preview resolves it below so the two agree.
+      text: "{{episode}}",
       startTime: 0,
       endTime: 45,
     },
@@ -2888,6 +2890,22 @@ const FONT_FAMILIES: Record<string, string> = {
   dejavu: "DejaVu Sans",
 };
 
+/**
+ * What a text layer will say, as far as the preview can know.
+ *
+ * The render resolves {{episode}}, {{show}} and friends from the feed; the
+ * browser only has the project. The project's title is the episode's title
+ * for anything a feed imported, which covers the default layer, and any
+ * token it cannot fill is dropped the way the render drops it.
+ */
+function previewTokens(text: string, title: string): string {
+  return text
+    .replace(/\{\{\s*(episode|title)\s*\}\}/gi, title)
+    .replace(/\{\{\s*[a-z_]+\s*\}\}/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s\-–—·:|]+|[\s\-–—·:|]+$/g, "");
+}
+
 function LayerContent({
   layer,
   title,
@@ -2939,7 +2957,7 @@ function LayerContent({
       </span>
     );
   if (layer.type === "title")
-    return <span className="layer-title">{layer.text ?? title}</span>;
+    return <span className="layer-title">{previewTokens(layer.text ?? title, title)}</span>;
   return null;
 }
 function Timeline({
