@@ -221,3 +221,55 @@ def test_plain_text_layers_still_render_without_any_context():
     graph = build_render_command(Path("a.wav"), Path("o.mp4"), "9:16", 0.0, 10.0, scene=scene)
     chain = graph[graph.index("-filter_complex") + 1]
     assert "A fixed label" in chain
+
+
+# --------------------------------------------------------------------------
+# The real render path
+# --------------------------------------------------------------------------
+#
+# The graph-string tests above all passed while the actual render failed with
+# `name 'token_context' is not defined`: the parameter had been threaded into
+# `build_render_command` but not into the function that calls it. Asserting on
+# a string the builder returns cannot see that, so this runs the encode.
+
+import shutil
+import subprocess
+
+import pytest
+
+ffmpeg_required = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None, reason="ffmpeg is not installed"
+)
+
+
+@ffmpeg_required
+def test_a_render_with_tokens_actually_completes(tmp_path):
+    from app.services.jobs import _render_audiogram_mp4, _write_ass
+
+    source = tmp_path / "voice.wav"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "sine=frequency=220:duration=3",
+         "-ar", "44100", "-ac", "1", str(source)],
+        check=True, capture_output=True,
+    )
+    ass_path = tmp_path / "captions.ass"
+    _write_ass(ass_path, [{"start": 0.0, "end": 2.0, "text": "hello"}], "9:16", None)
+
+    output = tmp_path / "out.mp4"
+    _render_audiogram_mp4(
+        source_path=source,
+        output_path=output,
+        ass_path=ass_path,
+        aspect_ratio="9:16",
+        clip_start=0.0,
+        duration=3.0,
+        scene={"layers": [
+            {"id": "bg", "type": "background", "x": 0, "y": 0,
+             "width": 100, "height": 100},
+            {"id": "t", "type": "title", "x": 8, "y": 10, "width": 84,
+             "height": 7, "text": "{{show}}", "color": "#ffffff"},
+        ]},
+        token_context={"show": "Growing Season"},
+    )
+    assert output.exists() and output.stat().st_size > 1000

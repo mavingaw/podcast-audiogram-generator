@@ -866,6 +866,15 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         _write_credits(credits_path, project.title, bed_credits)
     else:
         credits_path.unlink(missing_ok=True)
+    # Where this clip came from, for the text tokens. A file somebody uploaded
+    # has no feed, and the feed tokens are then empty rather than absent.
+    from app.db.models import Feed, FeedEpisode
+
+    token_episode = db.scalar(
+        select(FeedEpisode).where(FeedEpisode.media_id == media.id)
+    )
+    token_feed = db.get(Feed, token_episode.feed_id) if token_episode else None
+
     _step(db, job, 55, "Rendering audiogram MP4")
     mp4_path = work_dir / "audiogram.mp4"
     if not _ffmpeg_available():
@@ -885,6 +894,11 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         gpu_index=_encoding_gpu_index(db),
         plates=plates,
         job_id=job.id,
+        # What {{episode}} and friends mean for this clip.
+        token_context=token_service.context_for(
+            project=project, media=media, episode=token_episode, feed=token_feed,
+            transcript=transcript, clip_start=clip_start, duration=duration,
+        ),
     )
     _publish_render(work_dir, output_dir)
 
@@ -1531,6 +1545,7 @@ def _render_audiogram_mp4(
     gpu_index: str | None = None,
     plates: Plates | None = None,
     job_id: str | None = None,
+    token_context: dict[str, str] | None = None,
 ) -> None:
     # Measure the mix first so the encode can be delivered at a known loudness.
     # A failed measurement is not a failed render: the clip simply goes out at
