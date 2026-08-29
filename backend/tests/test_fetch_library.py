@@ -277,3 +277,33 @@ def test_the_raw_tracks_decoy_is_not_mistaken_for_the_metadata(tmp_path):
     assert "fma_metadata/raw_tracks.csv" in names
     tracks = fetch.read_fma_tracks(zip_path)
     assert tracks[5]["title"] == "This World"
+
+
+
+def test_a_missing_preview_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """One sound's preview 404'd and took down a run of thousands."""
+    import urllib.error
+    import urllib.request
+
+    library = tmp_path / "library"
+    results = [
+        {"id": 1, "name": "Gone", "username": "a", "previews": {"preview-hq-mp3": "https://x/1.mp3"}, "tags": [], "duration": 1},
+        {"id": 2, "name": "Here", "username": "b", "previews": {"preview-hq-mp3": "https://x/2.mp3"}, "tags": [], "duration": 1},
+    ]
+    monkeypatch.setattr(fetch, "freesound_request", lambda *a, **k: {"results": results, "next": None})
+
+    class _Resp:
+        def read(self): return b"MP3"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def urlopen(request, timeout=None):
+        if request.full_url.endswith("/1.mp3"):
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    report = fetch.fetch_freesound(library, "KEY", ["whoosh"], log=lambda *a: None)
+    assert report["fetched"] == 1 and report["skipped"] == 1
+    manifest = json.loads((library / "sfx" / "freesound" / "pack.json").read_text())
+    assert "2-here" in manifest["tracks"] and "1-gone" not in manifest["tracks"]

@@ -303,20 +303,25 @@ def fetch_freesound(
         except json.JSONDecodeError:
             existing = {}
     tracks: dict[str, dict] = dict(existing)
-    fetched = 0
+    fetched = skipped = 0
 
     for query in queries:
         got, page = 0, 1
         while got < per_query:
-            payload = freesound_request(
-                "search/text/", key,
-                query=query,
-                filter=f"{FREESOUND_LICENSE_FILTER} duration:[{min_seconds} TO {max_seconds}]",
-                fields="id,name,username,license,previews,tags,duration,url",
-                page_size=min(150, per_query - got),
-                page=page,
-                sort="rating_desc",
-            )
+            try:
+                payload = freesound_request(
+                    "search/text/", key,
+                    query=query,
+                    filter=f"{FREESOUND_LICENSE_FILTER} duration:[{min_seconds} TO {max_seconds}]",
+                    fields="id,name,username,license,previews,tags,duration,url",
+                    page_size=min(150, per_query - got),
+                    page=page,
+                    sort="rating_desc",
+                )
+            except Exception as error:
+                # A failed page of results ends this term, not the run.
+                log(f"  {query}: search failed on page {page}: {error}")
+                break
             results = payload.get("results") or []
             if not results:
                 break
@@ -328,8 +333,16 @@ def fetch_freesound(
                     if not preview:
                         continue
                     request = urllib.request.Request(preview, headers={"User-Agent": "Kinder/1.0"})
-                    with urllib.request.urlopen(request, timeout=60) as response:
-                        target.write_bytes(response.read())
+                    try:
+                        with urllib.request.urlopen(request, timeout=60) as response:
+                            target.write_bytes(response.read())
+                    except Exception as error:
+                        # One sound's preview being gone — a 404 on a file the
+                        # search still lists — took down a run of thousands.
+                        # Skip it and carry on; it is not in the manifest.
+                        log(f"  skipped {stem}: {error}")
+                        skipped += 1
+                        continue
                     fetched += 1
                 tracks[stem] = {
                     "title": item.get("name") or stem,
@@ -361,7 +374,7 @@ def fetch_freesound(
         notes="CC0 effects fetched from freesound.org by search term. No credit is required.",
         tracks=tracks,
     )
-    return {"pack": pack.name, "fetched": fetched, "total": len(tracks)}
+    return {"pack": pack.name, "fetched": fetched, "skipped": skipped, "total": len(tracks)}
 
 
 def write_manifest(pack: Path, *, name: str, author: str, license_name: str,
