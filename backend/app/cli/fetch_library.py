@@ -99,8 +99,12 @@ def read_fma_tracks(metadata_zip: Path) -> dict[int, dict]:
     because the position has changed between dataset versions.
     """
     with zipfile.ZipFile(metadata_zip) as archive:
+        # By basename, exactly. The archive also holds raw_tracks.csv, which
+        # ends in "tracks.csv" too and has a completely different header; a
+        # suffix match picked it and failed on the first column lookup.
         member = next(
-            name for name in archive.namelist() if name.endswith("tracks.csv")
+            name for name in archive.namelist()
+            if name.rsplit("/", 1)[-1] == "tracks.csv"
         )
         with archive.open(member) as handle:
             text = io.TextIOWrapper(handle, encoding="utf-8")

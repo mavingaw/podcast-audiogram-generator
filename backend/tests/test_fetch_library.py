@@ -257,3 +257,23 @@ def test_a_fetched_pack_is_discovered_with_per_track_licences(monkeypatch, tmp_p
     assert rows["Freeway"].attribution == ""
     assert rows["Freeway"].pack == "fma-medium"
     assert rows["Freeway"].seamless_loop is False
+
+
+def test_the_raw_tracks_decoy_is_not_mistaken_for_the_metadata(tmp_path):
+    """The archive also holds raw_tracks.csv, which ends in 'tracks.csv' and
+    has a different header. A suffix match picked it on the live box."""
+    zip_path = tmp_path / "meta.zip"
+    metadata_zip(zip_path, [
+        ["5", "This World", "Attribution", "206", "Hip-Hop", "AWOL", "medium"],
+    ])
+    with zipfile.ZipFile(zip_path, "a") as archive:
+        archive.writestr(
+            "fma_metadata/raw_tracks.csv",
+            "track_id,album_id,license_title,track_title\n5,1,Attribution,This World\n",
+        )
+    # The decoy sorts first alphabetically inside the archive listing order
+    # used by zipfile, which is insertion order — so put it first explicitly.
+    names = zipfile.ZipFile(zip_path).namelist()
+    assert "fma_metadata/raw_tracks.csv" in names
+    tracks = fetch.read_fma_tracks(zip_path)
+    assert tracks[5]["title"] == "This World"
