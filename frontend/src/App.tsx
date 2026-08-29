@@ -2502,6 +2502,7 @@ function Studio({
           <MusicPanel
             bed={musicBed}
             clipDuration={clipDuration}
+            playhead={localPlayhead}
             onChange={(next) => void saveMusicBed(next)}
           />
           <SfxPanel

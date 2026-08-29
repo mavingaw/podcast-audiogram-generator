@@ -364,6 +364,8 @@ export type MusicBed = {
   fadeOutSeconds: number;
   startOffsetSeconds: number;
   loop: boolean;
+  /** Level changes over the clip: (clip seconds, dB relative to the level). */
+  automation?: { at: number; gainDb: number }[];
 };
 
 export const defaultMusicBed = (soundId: string): MusicBed => ({

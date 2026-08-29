@@ -2423,3 +2423,11 @@
   .feed-import-older { display: flex; gap: var(--s-2); align-items: center; margin-top: var(--s-2); }
   .feed-import-older select { width: auto; }
 }
+
+@layer views {
+  .music-automation { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+  .automation-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
+  .automation-list li { display: flex; align-items: center; gap: var(--s-2); }
+  .automation-list input[type="range"] { flex: 1; min-width: 0; }
+  .automation-list small { width: 44px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+}

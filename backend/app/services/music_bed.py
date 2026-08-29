@@ -30,6 +30,12 @@ DEFAULT_FADE_OUT = 2.0
 
 GAIN_RANGE = (-40.0, 0.0)
 DUCK_RANGE = (-30.0, 0.0)
+# Relative to the bed's level: a keyframe at 0 dB is the bed as set; -12 is a
+# dip. Bounded so a stored scene cannot ask for a blast.
+AUTOMATION_RANGE = (-40.0, 6.0)
+MAX_KEYFRAMES = 24
+# A backslash, for escaping commas inside a filter-option expression.
+BS = chr(92)
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,11 @@ class MusicBed:
     fade_out: float = DEFAULT_FADE_OUT
     start_offset: float = 0.0
     loop: bool = True
+    # Level changes over the clip, as (clip seconds, dB) keyframes: the bed
+    # rides between them in a straight line. Ducking follows the voice
+    # automatically; this is for the deliberate moves — dip for the quote,
+    # swell under the outro — that a person places.
+    automation: tuple[tuple[float, float], ...] = ()
 
     @property
     def ducking_enabled(self) -> bool:
@@ -69,7 +80,50 @@ def from_scene(scene: dict | None) -> MusicBed | None:
         fade_out=max(0.0, _number(raw.get("fadeOutSeconds"), DEFAULT_FADE_OUT)),
         start_offset=max(0.0, _number(raw.get("startOffsetSeconds"), 0.0)),
         loop=bool(raw.get("loop", True)),
+        automation=_automation(raw.get("automation")),
     )
+
+
+def _automation(raw) -> tuple[tuple[float, float], ...]:
+    """Keyframes, in time order, bounded, at most MAX_KEYFRAMES."""
+    if not isinstance(raw, list):
+        return ()
+    points: list[tuple[float, float]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        at = _number(item.get("at"), -1.0)
+        gain = _number(item.get("gainDb"), 0.0)
+        if at < 0 or at != at:
+            continue
+        points.append((round(at, 3), round(_clamp(gain, *AUTOMATION_RANGE), 2)))
+    points.sort(key=lambda point: point[0])
+    return tuple(points[:MAX_KEYFRAMES])
+
+
+def automation_expression(points, duration: float) -> str | None:
+    """A per-frame gain expression for FFmpeg's volume filter.
+
+    dB is interpolated in straight lines between keyframes, held flat before
+    the first and after the last, and turned into a linear factor at the end.
+    Commas inside the expression are escaped because it sits inside a filter
+    option; the whole thing runs with eval=frame so it is re-evaluated as
+    time passes rather than once at start.
+    """
+    points = [(at, gain) for at, gain in points if at <= duration + 0.001]
+    if not points:
+        return None
+    if len(points) == 1:
+        db = f"{points[0][1]:.2f}"
+    else:
+        # Innermost last: the level after the final keyframe.
+        db = f"{points[-1][1]:.2f}"
+        for (t0, g0), (t1, g1) in reversed(list(zip(points, points[1:]))):
+            span = max(0.001, t1 - t0)
+            segment = f"({g0:.2f}+({g1 - g0:.2f})*(t-{t0:.3f})/{span:.3f})"
+            db = f"if(lt(t{BS},{t1:.3f}){BS},{segment}{BS},{db})"
+        db = f"if(lt(t{BS},{points[0][0]:.3f}){BS},{points[0][1]:.2f}{BS},{db})"
+    return f"volume='pow(10{BS},({db})/20)':eval=frame"
 
 
 def _number(value, fallback: float) -> float:
@@ -154,6 +208,9 @@ def audio_filters(
         f"apad,atrim=duration={duration:.3f},asetpts=PTS-STARTPTS,"
         f"volume={bed.gain_db:.2f}dB"
     )
+    ride = automation_expression(bed.automation, duration)
+    if ride:
+        music += "," + ride
     if fade_in > 0:
         music += f",afade=t=in:st=0:d={fade_in:.3f}"
     if fade_out > 0:

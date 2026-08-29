@@ -14,10 +14,13 @@ export function MusicPanel({
   bed,
   clipDuration,
   onChange,
+  playhead = 0,
 }: {
   bed: MusicBed | null;
   clipDuration: number;
   onChange: (next: MusicBed | null) => void;
+  /** Clip-relative seconds; where a level change is placed. */
+  playhead?: number;
 }) {
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [genres, setGenres] = useState<string[]>([]);
@@ -92,6 +95,14 @@ export function MusicPanel({
   function patch(updates: Partial<MusicBed>) {
     if (!bed) return;
     onChange({ ...bed, ...updates });
+  }
+
+  function addKeyframe(gainDb: number) {
+    if (!bed) return;
+    const at = Math.round(Math.max(0, Math.min(clipDuration, playhead)) * 10) / 10;
+    // One keyframe per moment: setting a level where one exists replaces it.
+    const kept = (bed.automation ?? []).filter((point) => Math.abs(point.at - at) > 0.05);
+    patch({ automation: [...kept, { at, gainDb }].sort((a, b) => a.at - b.at).slice(0, 24) });
   }
 
   return (
@@ -172,6 +183,56 @@ export function MusicPanel({
             />
             Loop to fill the clip
           </label>
+          <div className="music-automation">
+            <span className="sidebar-label">Level changes</span>
+            <p className="muted">
+              Ducking follows the voice on its own. These are the deliberate
+              moves: park the playhead and set what the bed does from there.
+            </p>
+            <div className="mini-fields">
+              <button className="ghost compact" onClick={() => addKeyframe(-12)}>
+                Dip here
+              </button>
+              <button className="ghost compact" onClick={() => addKeyframe(0)}>
+                Full here
+              </button>
+              <button className="ghost compact" onClick={() => addKeyframe(-40)}>
+                Out here
+              </button>
+            </div>
+            {(bed.automation ?? []).length > 0 && (
+              <ul className="automation-list">
+                {(bed.automation ?? []).map((point, index) => (
+                  <li key={`${point.at}-${index}`}>
+                    <span className="sfx-time">{formatClock(point.at)}</span>
+                    <input
+                      type="range"
+                      min={-40}
+                      max={6}
+                      step={1}
+                      value={point.gainDb}
+                      title={`${point.gainDb > 0 ? "+" : ""}${point.gainDb} dB`}
+                      onChange={(event) => {
+                        const next = [...(bed.automation ?? [])];
+                        next[index] = { ...point, gainDb: Number(event.target.value) };
+                        patch({ automation: next });
+                      }}
+                    />
+                    <small>{point.gainDb > 0 ? "+" : ""}{point.gainDb} dB</small>
+                    <button
+                      className="layer-action"
+                      title="Remove"
+                      onClick={() =>
+                        patch({ automation: (bed.automation ?? []).filter((_, i) => i !== index) })
+                      }
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
