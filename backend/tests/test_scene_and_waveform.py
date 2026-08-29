@@ -219,7 +219,26 @@ def test_scene_defaults_when_nothing_is_stored():
     # proportions we control, so they always fill their box.
     assert parsed.wave_style == "envelope"
     assert parsed.wave_scale == "sqrt"
+    # A scene with no layers of its own renders the same default stack the
+    # preview shows. It used to render nothing at all: a clip cut by a feed
+    # came out as bare captions on a background while Studio showed artwork,
+    # a title and a waveform for it.
+    assert {layer.type for layer in parsed.layers} >= {"artwork", "waveform", "captions"}
+    assert parsed.waveform_layer() is not None
+
+
+def test_an_explicit_empty_layer_list_is_a_choice():
+    """Absent means 'use the defaults'; empty means 'draw nothing'."""
+    parsed = parse_scene({"layers": []}, 30.0)
     assert parsed.layers == []
+
+
+def test_the_default_stack_follows_the_shape():
+    """A 16:9 frame's captions start far higher, and the stack moves with them."""
+    tall = parse_scene(None, 30.0, "9:16").waveform_layer()
+    wide = parse_scene(None, 30.0, "16:9").waveform_layer()
+    assert tall is not None and wide is not None
+    assert tall.y != wide.y
 
 
 def test_scene_rejects_unknown_styles_and_bad_colours():

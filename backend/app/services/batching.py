@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.db.models import Job, JobKind, MediaAsset, Project, Template
 from app.services.clipfinder import find as find_clips
+from app.services.scene import default_layers
 from app.services.fingerprint import fingerprint as fingerprint_project
 from app.services.snapping import snap as snap_clip_range
 from app.services.variants import remap_scene
@@ -185,6 +186,11 @@ def make_clips(
         scene = dict(design) if design else {}
         if design and source_ratio != aspect_ratio:
             scene = remap_scene(scene, source_ratio, aspect_ratio)
+        if not scene.get("layers"):
+            # A clip cut without a person in the loop gets the same stack a
+            # person would have been given, so it does not come out as bare
+            # captions on a background.
+            scene["layers"] = default_layers(aspect_ratio)
         if artwork_media_id:
             scene = with_artwork(scene, artwork_media_id)
 

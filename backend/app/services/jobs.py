@@ -890,7 +890,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         duration = remaining
         clip_end = remaining
 
-    parsed_scene = parse_scene(scene, duration)
+    parsed_scene = parse_scene(scene, duration, project.aspect_ratio)
     bed, music_file, bed_credits = _resolve_music_bed(db, scene)
     # Dropping the bed keeps the clip renderable, but silently producing a
     # different video than the editor showed is worse than a slow render, so

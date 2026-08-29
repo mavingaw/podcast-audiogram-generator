@@ -297,12 +297,7 @@ def test_the_waveform_stays_inside_every_frame():
 # and the backend owns where captions land, so nothing but a test can hold the
 # two together — and this has drifted twice: once when the waveform sat in the
 # caption band, and once when the title sat in the waveform.
-LAYOUT = {
-    "9:16": {"artwork": (12, 32), "title": (46, 8), "waveform": (71, 9)},
-    "4:5": {"artwork": (10, 29), "title": (41, 8), "waveform": (71, 9)},
-    "1:1": {"artwork": (8, 27), "title": (37, 8), "waveform": (71, 9)},
-    "16:9": {"artwork": (4, 14), "title": (20, 8), "waveform": (80, 12)},
-}
+from app.services.scene import DEFAULT_LAYOUT as LAYOUT  # noqa: E402
 
 
 def caption_top(preset_name: str, aspect_ratio: str, lines: int = 2) -> float:

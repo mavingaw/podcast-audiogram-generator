@@ -111,6 +111,67 @@ WAVE_STYLE_LABELS = {
 
 RENDERABLE_TEXT_TYPES = {"title", "text", "captions"}
 
+# The default stack, per shape: artwork, then title, then the caption band,
+# then the waveform. One layout cannot serve every ratio because captions are
+# sized from frame *width* but positioned by a margin in frame *height*, so
+# the band they occupy grows enormously as a frame gets wider.
+#
+# Mirrored by LAYOUT in frontend/src/App.tsx, and held to the caption band by
+# test_the_default_layout_never_overlaps_in_any_shape. Owned here because the
+# renderer, the batch and the feed watcher all need it: a clip cut without a
+# person in the loop used to render with no artwork slot and no waveform at
+# all, while its preview showed both — the frontend filled in the defaults
+# that the backend never had.
+DEFAULT_LAYOUT = {
+    "9:16": {"artwork": (12, 32), "title": (46, 8), "waveform": (71, 9)},
+    "4:5": {"artwork": (10, 29), "title": (41, 8), "waveform": (71, 9)},
+    "1:1": {"artwork": (8, 27), "title": (37, 8), "waveform": (71, 9)},
+    "16:9": {"artwork": (4, 14), "title": (20, 8), "waveform": (80, 12)},
+}
+
+
+def caption_band_percent(preset_name: str, aspect_ratio: str, lines: int = 2) -> tuple[float, float]:
+    """Where the burned-in caption block sits, as (top, height) in percent."""
+    preset = CAPTION_PRESETS.get(preset_name) or CAPTION_PRESETS[DEFAULT_CAPTION_PRESET]
+    # Only the shape matters here, not the pixel size; the ratio is enough,
+    # and keeps this module from importing the one that owns the dimensions.
+    width, height = {
+        "9:16": (9, 16), "4:5": (4, 5), "1:1": (1, 1), "16:9": (16, 9),
+    }.get(aspect_ratio, (9, 16))
+    block = lines * preset["size_ratio"] * (width / height)
+    bottom = 1 - preset["margin_ratio"]
+    top = bottom - block
+    return round(top * 100, 2), round(block * 100, 2)
+
+
+def default_layers(aspect_ratio: str = "9:16", title_text: str = "{{episode}}") -> list[dict]:
+    """The stack a new clip gets when nothing has chosen one.
+
+    The title carries the {{episode}} token rather than placeholder text, so a
+    clip cut by a feed comes out named after its episode and an upload, which
+    has no episode, simply shows no title rather than "Episode Title".
+    """
+    layout = DEFAULT_LAYOUT.get(aspect_ratio, DEFAULT_LAYOUT["9:16"])
+    art_y, art_h = layout["artwork"]
+    title_y, title_h = layout["title"]
+    wave_y, wave_h = layout["waveform"]
+    cap_y, cap_h = caption_band_percent(DEFAULT_CAPTION_PRESET, aspect_ratio)
+    base = {"visible": True, "locked": False, "startTime": 0}
+    return [
+        {"id": "background", "name": "Background", "type": "background",
+         "x": 0, "y": 0, "width": 100, "height": 100, **base, "locked": True},
+        {"id": "artwork", "name": "Podcast Artwork", "type": "artwork",
+         "x": 12, "y": art_y, "width": 76, "height": art_h, **base},
+        {"id": "waveform", "name": "Waveform", "type": "waveform",
+         "x": 12, "y": wave_y, "width": 76, "height": wave_h, **base},
+        {"id": "title", "name": "Episode Title", "type": "title",
+         "x": 12, "y": title_y, "width": 76, "height": title_h, **base,
+         "text": title_text},
+        {"id": "captions", "name": "Captions", "type": "captions",
+         "x": 12, "y": cap_y, "width": 76, "height": cap_h, **base,
+         "text": "Your story, in motion."},
+    ]
+
 # Caption presets tuned for feeds rather than for television. Most of a social
 # audience watches muted, so captions are the content, not an accessory: large,
 # heavy, high-contrast, and kept clear of the platform's own chrome.
@@ -345,14 +406,25 @@ class Scene:
         ]
 
 
-def parse(scene: dict | None, clip_duration: float) -> Scene:
-    """Read a stored scene into render coordinates, clamping nonsense values."""
+def parse(
+    scene: dict | None, clip_duration: float, aspect_ratio: str = "9:16"
+) -> Scene:
+    """Read a stored scene into render coordinates, clamping nonsense values.
+
+    `aspect_ratio` only matters when the scene has no layers of its own: the
+    default stack differs per shape.
+    """
     scene = scene if isinstance(scene, dict) else {}
     style = str(scene.get("waveStyle") or DEFAULT_WAVE_STYLE)
     if style not in WAVE_STYLES and style not in ENVELOPE_STYLES and style != "none":
         style = DEFAULT_WAVE_STYLE
 
     raw_layers = scene.get("layers")
+    if raw_layers is None:
+        # The preview fills in the default stack for a project with no layers;
+        # the render drew nothing at all. Same stack, so the two agree. Only
+        # when the key is absent: an explicit empty list is a choice.
+        raw_layers = default_layers(aspect_ratio)
     layers: list[RenderLayer] = []
     if isinstance(raw_layers, list):
         for entry in raw_layers:
