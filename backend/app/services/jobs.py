@@ -1255,6 +1255,7 @@ def build_render_command(
         parsed, width, height, duration,
         font_file if font_file is not None else find_font_file(),
         token_context,
+        work_dir=output_path.parent,
     )
     audio_chains.append(f"{video_label}ass=captions.ass{progress_chain}{text_chain}[v]")
 
@@ -1485,19 +1486,33 @@ def _text_filters(
     duration: float,
     font_file: Path | None,
     token_context: dict[str, str] | None = None,
+    work_dir: Path | None = None,
 ) -> str:
     """drawtext filters for the scene's text layers, in stacking order.
 
     Captions from the transcript are burned in by the ASS subtitle filter; these
     are the standalone text elements the editor lets you place on the canvas,
     which previously appeared in the preview and then vanished from the export.
+
+    The text goes through `textfile=` rather than `text=`, which is not a
+    stylistic choice: **no inline escaping of an apostrophe works.** Inside a
+    single-quoted filtergraph value FFmpeg does not treat a backslash as an
+    escape, so the quote simply ends at the apostrophe and the remainder of the
+    graph — including the output label — is parsed as garbage. Four escapings
+    were tried against a real encode (`'`, `'''`, `\'`, `\'`) and all
+    four failed identically. So any text layer containing an apostrophe has
+    never rendered; it took `{{episode}}` resolving to "It's So Hard to Say
+    Goodbye" for it to happen often enough to notice.
+
+    `expansion=none` goes with it: these are labels somebody typed, not FFmpeg
+    expressions, and it means a literal `%` needs no special handling either.
     """
     if font_file is None:
         # Without a font, drawtext aborts the whole encode; dropping the text
         # layers still produces a usable audiogram.
         return ""
     chain = ""
-    for layer in parsed.text_layers():
+    for index, layer in enumerate(parsed.text_layers()):
         if layer.type == "captions":
             # The transcript already drives these through captions.ass.
             continue
@@ -1511,8 +1526,19 @@ def _text_filters(
             # A layer whose entire content was an empty token would otherwise
             # draw an invisible box and cost a filter pass.
             continue
+
+        # Written beside the other render inputs and named relatively, the same
+        # way captions.ass is: FFmpeg runs with the work directory as its cwd.
+        if work_dir is None:
+            # Nowhere to put the file. Skipping is the honest outcome: the old
+            # inline path could not render this text at all.
+            continue
+        target = work_dir / f"text-{index}.txt"
+        target.write_text(text, encoding="utf-8")
+
         options = [
-            f"text='{escape_drawtext(text)}'",
+            f"textfile='{escape_drawtext(target.name)}'",
+            "expansion=none",
             f"fontcolor={ffmpeg_color(layer.paint('#ffffff'))}",
             f"fontsize={font_size}",
             # Centre the text inside the box the editor drew, matching how the

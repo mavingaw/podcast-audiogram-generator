@@ -183,12 +183,14 @@ def test_a_text_layer_is_drawn_with_the_token_resolved(tmp_path):
          "text": "{{show}}"},
     ]}
     graph = build_render_command(
-        Path("a.wav"), Path("o.mp4"), "9:16", 0.0, 10.0, scene=scene,
+        Path("a.wav"), tmp_path / "o.mp4", "9:16", 0.0, 10.0, scene=scene,
         token_context={"show": "Growing Season"},
     )
     chain = graph[graph.index("-filter_complex") + 1]
-    assert "Growing Season" in chain
-    assert "{{show}}" not in chain
+    # The words go in a file beside the render, not into the graph: no inline
+    # escaping of an apostrophe works. See _text_filters.
+    assert "textfile='text-0.txt'" in chain
+    assert (tmp_path / "text-0.txt").read_text(encoding="utf-8") == "Growing Season"
 
 
 def test_a_text_layer_whose_token_is_empty_is_not_drawn(tmp_path):
@@ -202,14 +204,14 @@ def test_a_text_layer_whose_token_is_empty_is_not_drawn(tmp_path):
          "text": "{{episode}}"},
     ]}
     graph = build_render_command(
-        Path("a.wav"), Path("o.mp4"), "9:16", 0.0, 10.0, scene=scene,
+        Path("a.wav"), tmp_path / "o.mp4", "9:16", 0.0, 10.0, scene=scene,
         token_context={"episode": ""},
     )
     chain = graph[graph.index("-filter_complex") + 1]
     assert "drawtext" not in chain
 
 
-def test_plain_text_layers_still_render_without_any_context():
+def test_plain_text_layers_still_render_without_any_context(tmp_path):
     from pathlib import Path
 
     from app.services.jobs import build_render_command
@@ -218,9 +220,12 @@ def test_plain_text_layers_still_render_without_any_context():
         {"id": "t", "type": "text", "x": 10, "y": 80, "width": 80, "height": 8,
          "text": "A fixed label"},
     ]}
-    graph = build_render_command(Path("a.wav"), Path("o.mp4"), "9:16", 0.0, 10.0, scene=scene)
+    graph = build_render_command(
+        Path("a.wav"), tmp_path / "o.mp4", "9:16", 0.0, 10.0, scene=scene
+    )
     chain = graph[graph.index("-filter_complex") + 1]
-    assert "A fixed label" in chain
+    assert "drawtext=" in chain
+    assert (tmp_path / "text-0.txt").read_text(encoding="utf-8") == "A fixed label"
 
 
 # --------------------------------------------------------------------------
@@ -271,5 +276,47 @@ def test_a_render_with_tokens_actually_completes(tmp_path):
              "height": 7, "text": "{{show}}", "color": "#ffffff"},
         ]},
         token_context={"show": "Growing Season"},
+    )
+    assert output.exists() and output.stat().st_size > 1000
+
+
+@ffmpeg_required
+def test_a_title_with_an_apostrophe_renders(tmp_path):
+    """The bug that made textfile= necessary.
+
+    Inside a single-quoted filtergraph value FFmpeg does not treat a backslash
+    as an escape, so an apostrophe ends the quote and the rest of the graph —
+    including the output label — is parsed as garbage. Four inline escapings
+    were tried against a real encode and all four failed identically, so any
+    text layer containing an apostrophe had never rendered. Real episode titles
+    are full of them.
+    """
+    from app.services.jobs import _render_audiogram_mp4, _write_ass
+
+    source = tmp_path / "voice.wav"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "sine=frequency=220:duration=2",
+         "-ar", "44100", "-ac", "1", str(source)],
+        check=True, capture_output=True,
+    )
+    ass_path = tmp_path / "captions.ass"
+    _write_ass(ass_path, [{"start": 0.0, "end": 1.5, "text": "x"}], "9:16", None)
+
+    output = tmp_path / "out.mp4"
+    _render_audiogram_mp4(
+        source_path=source, output_path=output, ass_path=ass_path,
+        aspect_ratio="9:16", clip_start=0.0, duration=2.0,
+        scene={"layers": [
+            {"id": "bg", "type": "background", "x": 0, "y": 0,
+             "width": 100, "height": 100},
+            {"id": "t", "type": "title", "x": 8, "y": 10, "width": 84,
+             "height": 7, "text": "{{episode}}", "color": "#ffffff"},
+        ]},
+        token_context={
+            # Every character that has broken this: apostrophe, em dash,
+            # colon, percent, and a backslash for completeness.
+            "episode": "It's So Hard — Goodbye: 100% \ done",
+        },
     )
     assert output.exists() and output.stat().st_size > 1000

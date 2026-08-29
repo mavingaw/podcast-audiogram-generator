@@ -294,11 +294,14 @@ def render_graph(
     peaks: list[float] | None = None,
     image_paths: dict | None = None,
     plates=None,
+    out_dir: Path | None = None,
 ) -> str:
     from app.services.jobs import build_render_command
 
+    # Text layers write their words beside the output, so the output has to go
+    # somewhere disposable rather than the working directory.
     command = build_render_command(
-        Path("s.mp3"), Path("o.mp4"), "9:16", 0.0, duration,
+        Path("s.mp3"), (out_dir or Path(".")) / "o.mp4", "9:16", 0.0, duration,
         scene=scene, font_file=font, peaks=peaks, image_paths=image_paths,
         plates=plates,
     )
@@ -373,16 +376,19 @@ def test_hidden_waveform_layer_removes_the_wave():
     assert "showwaves" not in graph
 
 
-def test_text_layers_are_drawn_with_their_timing():
+def test_text_layers_are_drawn_with_their_timing(tmp_path):
     scene = {
         "layers": [
             {"id": "t", "type": "title", "text": "Hello", "x": 10, "y": 10,
              "width": 80, "height": 7, "startTime": 2, "endTime": 6, "visible": True},
         ]
     }
-    graph = render_graph(scene)
+    graph = render_graph(scene, out_dir=tmp_path)
     assert "drawtext=" in graph
-    assert "text='Hello'" in graph
+    # Text goes through textfile= because no inline escaping of an apostrophe
+    # works; see _text_filters. The words are in the file, not the graph.
+    assert "textfile='text-0.txt'" in graph
+    assert (tmp_path / "text-0.txt").read_text(encoding="utf-8") == "Hello"
     assert "enable='between(t,2.000,6.000)'" in graph
 
 
