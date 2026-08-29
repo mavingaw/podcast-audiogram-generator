@@ -87,6 +87,9 @@ type Layer = {
   id: string;
   name: string;
   type: "title" | "artwork" | "waveform" | "captions" | "background";
+  /** How the layer arrives: fade or rise in over `enterSeconds`. */
+  enter?: "none" | "fade" | "rise";
+  enterSeconds?: number;
   x: number;
   y: number;
   width: number;
@@ -2331,8 +2334,9 @@ function Studio({
                 .map((layer) => (
                   <div
                     key={layer.id}
-                    className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}`}
+                    className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}${layer.enter && layer.enter !== "none" && playing ? ` enter-${layer.enter}` : ""}`}
                     style={{
+                      ["--enter-seconds" as string]: `${layer.enterSeconds ?? 0.5}s`,
                       left: `${layer.x}%`,
                       // Captions are the one layer whose position the renderer
                       // does not take from the scene: it places them from the
@@ -2626,6 +2630,37 @@ function Studio({
                   onChange={(e) => updateLayer(active.id, { color: e.target.value })}
                 />
               </label>
+              {["title", "artwork"].includes(active.type) && (
+                <div className="field-row">
+                  <label>
+                    Enters
+                    <select
+                      value={active.enter ?? "none"}
+                      onChange={(e) =>
+                        updateLayer(active.id, { enter: e.target.value as Layer["enter"] })
+                      }
+                    >
+                      <option value="none">Appear</option>
+                      <option value="fade">Fade in</option>
+                      <option value="rise">Rise in</option>
+                    </select>
+                  </label>
+                  <label>
+                    Over
+                    <input
+                      type="number"
+                      min={0.1}
+                      max={3}
+                      step={0.1}
+                      value={active.enterSeconds ?? 0.5}
+                      disabled={(active.enter ?? "none") === "none"}
+                      onChange={(e) =>
+                        updateLayer(active.id, { enterSeconds: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+              )}
               <label>
                 Width
                 <input

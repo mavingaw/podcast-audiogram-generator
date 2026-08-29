@@ -800,7 +800,9 @@ def test_every_offered_font_ships_with_its_licence():
         for name in (title_file, caption_file):
             if name:
                 assert (FONTS_DIR / name).exists(), f"{name} is missing"
-    licences = [p.name for p in FONTS_DIR.glob("OFL-*.txt")]
+    # In a subfolder: libass reads every file in fontsdir as a font and
+    # warned about each licence text on every render.
+    licences = [p.name for p in (FONTS_DIR / "licenses").glob("OFL-*.txt")]
     assert {"OFL-Inter.txt", "OFL-Manrope.txt", "OFL-Sora.txt", "OFL-BebasNeue.txt"} <= set(licences)
 
 
@@ -847,3 +849,62 @@ def test_the_title_layer_draws_with_the_chosen_file(tmp_path):
     ]}
     graph = render_graph(scene, font=None, out_dir=tmp_path)
     assert "Manrope-ExtraBold.ttf" in graph
+
+
+# --------------------------------------------------------------------------
+# Entrances
+# --------------------------------------------------------------------------
+
+
+def test_an_entrance_is_read_and_bounded():
+    parsed = parse_scene({"layers": [
+        {"id": "t", "type": "title", "text": "Hi", "enter": "rise", "enterSeconds": 9},
+        {"id": "u", "type": "title", "text": "Hi", "enter": "wobble"},
+    ]}, 10.0)
+    assert parsed.layers[0].enter == "rise" and parsed.layers[0].enter_seconds == 3.0
+    assert parsed.layers[1].enter == "none"
+
+
+def test_a_layer_without_an_entrance_draws_as_before(tmp_path):
+    graph = render_graph({"layers": [
+        {"id": "t", "type": "title", "text": "Hi", "x": 10, "y": 10, "width": 80, "height": 8},
+    ]}, out_dir=tmp_path)
+    assert "alpha=" not in graph and "fade=t=in" not in graph
+
+
+@ffmpeg_required
+def test_a_fading_title_is_dimmer_early_than_late(tmp_path):
+    """The property, not the expression: the title region gets brighter."""
+    import re
+    import subprocess
+
+    from app.services.jobs import _render_audiogram_mp4, _write_ass
+
+    source = tmp_path / "voice.wav"
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                    "-i", "anullsrc=r=44100:cl=mono:d=3", str(source)], check=True, capture_output=True)
+    ass_path = tmp_path / "captions.ass"
+    _write_ass(ass_path, [], "9:16", None)
+    output = tmp_path / "out.mp4"
+    _render_audiogram_mp4(
+        source_path=source, output_path=output, ass_path=ass_path, aspect_ratio="9:16",
+        clip_start=0.0, duration=3.0,
+        scene={"layers": [
+            {"id": "bg", "type": "background", "x": 0, "y": 0, "width": 100, "height": 100},
+            {"id": "t", "type": "title", "x": 5, "y": 40, "width": 90, "height": 12,
+             "text": "HELLO HELLO HELLO", "color": "#ffffff", "enter": "fade", "enterSeconds": 1.0},
+        ]},
+    )
+
+    def luma_at(seconds: float) -> float:
+        frame = tmp_path / f"f{seconds}.png"
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(seconds),
+                        "-i", str(output), "-frames:v", "1", "-vf", "crop=1080:700:0:600", str(frame)],
+                       check=True, capture_output=True)
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(frame), "-vf",
+                              "signalstats,metadata=print:key=lavfi.signalstats.YAVG", "-frames:v", "1",
+                              "-f", "null", "-"], capture_output=True, text=True)
+        return float(re.search(r"YAVG=([0-9.]+)", out.stderr).group(1))
+
+    early, late = luma_at(0.15), luma_at(1.8)
+    assert late > early + 5, f"title did not fade in: {early:.1f} -> {late:.1f}"

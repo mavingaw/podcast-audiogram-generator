@@ -127,6 +127,12 @@ WAVE_STYLE_LABELS = {
 
 RENDERABLE_TEXT_TYPES = {"title", "text", "captions"}
 
+# Ways a layer can arrive. Kept to two because both are one FFmpeg expression
+# and both read well on a phone; a bounce or a wipe would be neither.
+ENTER_STYLES = ("none", "fade", "rise")
+ENTER_LABELS = {"none": "Appear", "fade": "Fade in", "rise": "Rise in"}
+RISE_PIXELS = 40
+
 # Fonts that ship inside the application. All four are under the SIL Open
 # Font License, which — unlike the music packs — permits bundling and
 # redistribution, so they live in the repository and the image.
@@ -380,6 +386,10 @@ class RenderLayer:
     media_id: str | None = None
     # Artwork corner rounding, as a fraction of the shorter side.
     radius: float = 0.0
+    # How the layer arrives: "none", "fade", or "rise" (fade while drifting
+    # up into place). Applied over `enter_seconds` from the layer's start.
+    enter: str = "none"
+    enter_seconds: float = 0.5
 
     def paint(self, fallback: str) -> str:
         """The layer's colour, or the scene value it inherits when unset."""
@@ -586,6 +596,8 @@ def _layer(entry: object, clip_duration: float) -> RenderLayer | None:
         visible=bool(entry.get("visible", True)),
         media_id=str(entry["mediaId"]) if entry.get("mediaId") else None,
         radius=_clamp(_number(entry.get("radius"), 0.0), 0.0, 0.5),
+        enter=str(entry.get("enter")) if entry.get("enter") in ENTER_STYLES else "none",
+        enter_seconds=_clamp(_number(entry.get("enterSeconds"), 0.5), 0.1, 3.0),
     )
 
 

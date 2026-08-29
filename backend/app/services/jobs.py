@@ -39,6 +39,7 @@ from app.services.scene import (
     ENVELOPE_STYLES,
     DEFAULT_FONT,
     FONTS_DIR,
+    RISE_PIXELS,
     PULSE_STYLES,
     WAVE_STYLES,
     font_family_for,
@@ -1338,7 +1339,21 @@ def build_render_command(
     for offset, layer in enumerate(image_layers):
         index = first_image_input + offset
         x, y, _, _ = layer.pixels(width, height)
-        overlay = f"{video_label}[{index}:v]overlay=x={x}:y={y}"
+        source = f"[{index}:v]"
+        y_expr: str = str(y)
+        if layer.enter != "none":
+            # The plate fades in over its entrance; "rise" also drifts it up
+            # into place. overlay evaluates x/y per frame, so the drift is
+            # one expression rather than one filter per frame.
+            progress = f"min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))"
+            audio_chains.append(
+                f"{source}format=rgba,fade=t=in:st={layer.start:.3f}:"
+                f"d={layer.enter_seconds:.3f}:alpha=1[vimgin{offset}]"
+            )
+            source = f"[vimgin{offset}]"
+            if layer.enter == "rise":
+                y_expr = f"{y}+(1-{progress})*{RISE_PIXELS}"
+        overlay = f"{video_label}{source}overlay=x={x}:y={y_expr}"
         guard = enable_expression(layer.start, layer.end, duration)
         if guard:
             overlay += f":enable='{guard}'"
@@ -1727,7 +1742,9 @@ def fit_text(text: str, box_width: int, box_height: int) -> tuple[str, int]:
         per_line = max(1, int(box_width / (font_size * GLYPH_WIDTH)))
         lines = textwrap.wrap(text, width=per_line, break_long_words=True)
         line_height = font_size * 1.15
-        if 1 <= len(lines) <= MAX_TITLE_LINES and len(lines) * line_height <= box_height * 1.6:
+        # The block has to fit the box's height too, or the second line lands
+        # on whatever sits below the title.
+        if 1 <= len(lines) <= MAX_TITLE_LINES and len(lines) * line_height <= box_height * 1.15:
             return "\n".join(lines), font_size
     # Even at the floor it does not fit on two lines: keep the first two and
     # let fix_bounds slide what is left into the frame.
@@ -1795,7 +1812,10 @@ def _text_filters(
             # inline path could not render this text at all.
             continue
         target = work_dir / f"text-{index}.txt"
-        target.write_text(text, encoding="utf-8")
+        # newline given explicitly: on Windows write_text turns the line break
+        # into CR LF and drawtext draws the CR as a blank line, so a two-line
+        # title came out with a third, empty line between the two.
+        target.write_text(text, encoding="utf-8", newline="\n")
 
         options = [
             f"textfile='{escape_drawtext(target.name)}'",
@@ -1805,13 +1825,21 @@ def _text_filters(
             # Centre the text inside the box the editor drew, matching how the
             # canvas preview lays the layer out.
             f"x={x}+({box_width}-text_w)/2",
-            f"y={y}+({box_height}-text_h)/2",
+            f"y={y}+({box_height}-text_h)/2"
+            + (
+                f"+(1-min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f})))*{RISE_PIXELS}"
+                if layer.enter == "rise" else ""
+            ),
             # Pull a too-wide line back inside the frame rather than clipping it.
             "fix_bounds=1",
             # A wrapped title is two lines; keep them close.
             f"line_spacing={max(2, font_size // 8)}",
         ]
         options.append(f"fontfile='{escape_drawtext(str(font_file))}'")
+        if layer.enter != "none":
+            options.append(
+                f"alpha='min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))'"
+            )
         guard = enable_expression(layer.start, layer.end, duration)
         if guard:
             options.append(f"enable='{guard}'")
