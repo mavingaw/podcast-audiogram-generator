@@ -1487,6 +1487,12 @@ def _pulse_wave(
         # dynaudnorm lifts conversational level so the bars fill the box; it
         # touches only this branch, never the exported audio.
         f"[wavesrc]dynaudnorm=framelen=200:gausssize=11:peak=0.95,"
+        # Speech is bass-heavy; without a treble lift the leftmost few bars
+        # stood tall and the rest barely moved. Compared on the live episode:
+        # sqrt amplitude went nearly flat in quiet moments, log pinned every
+        # bar near full height, cbrt with +8 dB above 1.5 kHz reads as a meter
+        # in both loud and quiet passages.
+        f"highpass=f=100,treble=g=8:f=1500,"
         f"showfreqs=s={bins}x{half}:mode=bar:ascale=cbrt:fscale=log:"
         f"win_size=512:averaging=2:colors=white,"
         f"scale={draw_width}:{half}:flags=neighbor,split[pulseup][pulsedn]"
@@ -1496,7 +1502,7 @@ def _pulse_wave(
         "[pulseup][pulsednf]vstack,format=gray,"
         # Lit and inside a bar column: opaque. The commas are escaped because
         # this expression sits inside a filter chain.
-        f"geq=lum='if(gt(lum(X\\,Y)\\,48)*lt(mod(X\\,{pitch})\\,{pitch - gap})"
+        f"geq=lum='if(gt(lum(X\\,Y)\\,60)*lt(mod(X\\,{pitch})\\,{pitch - gap})"
         f"\\,255\\,0)'[pulsemask]"
     )
     chains.append(
