@@ -1,0 +1,29 @@
+{
+  "name": "kinder — Audiogram & Podcast Video Studio",
+  "short_name": "kinder",
+  "description": "Create high-converting audiograms and podcast clips with custom baby blue, gold, and dark waveforms.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0D11",
+  "theme_color": "#0B0D11",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/brand/kinder-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": [
+    "multimedia",
+    "productivity",
+    "audio",
+    "video"
+  ]
+}

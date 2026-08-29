@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Kinder</Name>
+  <!--
+    A locally built image with no registry. Unraid is fine with this:
+    CreateDocker.php only pulls when doesImageExist() is false, so Apply in the
+    Docker tab works normally. It just will not rebuild from new source — that
+    is what rebuild.sh is for.
+  -->
+  <Repository>podcast-audiogram-studio:gpu</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/mavingaw/podcast-audiogram-generator/issues</Support>
+  <Project>https://github.com/mavingaw/podcast-audiogram-generator</Project>
+  <Overview>Kinder - self-hosted audiogram and podcast video studio. Turns episode audio into captioned vertical clips for social: GPU transcription with Faster-Whisper, automatic clip suggestions, speaker labelling, word-by-word captions, loudness-normalised exports, per-platform upload checks, and RSS automation that cuts clips from new episodes for you to approve. Everything stays on this server.</Overview>
+  <Category>MediaApp:Video MediaApp:Music Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/mavingaw/podcast-audiogram-generator/main/unraid/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia --restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="WebUI" Target="8080" Default="8099" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8099</Config>
+
+  <Config Name="Config" Target="/config" Default="/mnt/storage/appdata/podcast-audiogram-studio/config" Mode="rw" Description="Database and settings. Small, but SQLite dislikes a network share - keep it on fast local storage." Type="Path" Display="always" Required="true" Mask="false">/mnt/storage/appdata/podcast-audiogram-studio/config</Config>
+
+  <Config Name="Data" Target="/data" Default="/mnt/storage/appdata/podcast-audiogram-studio/data" Mode="rw" Description="Uploads, rendered clips and scratch space. Renders read and write multi-gigabyte files, so this wants fast local storage rather than the parity-protected array." Type="Path" Display="always" Required="true" Mask="false">/mnt/storage/appdata/podcast-audiogram-studio/data</Config>
+
+  <Config Name="Models" Target="/models" Default="/mnt/storage/appdata/whisper/hub" Mode="rw" Description="Whisper weights. Shared with anything else on this box using a HuggingFace cache - the same weights, downloaded once." Type="Path" Display="always" Required="false" Mask="false">/mnt/storage/appdata/whisper/hub</Config>
+
+  <Config Name="Whisper model" Target="PAS_WHISPER_MODEL" Default="base" Mode="" Description="tiny, base, small, medium, large-v3 or distil-large-v3. Larger is more accurate and slower." Type="Variable" Display="always" Required="false" Mask="false">base</Config>
+
+  <Config Name="Sign-up code" Target="PAS_SIGNUP_CODE" Default="" Mode="" Description="Share this with people you want on the box; they use it to create their own account. Leave empty to allow nobody new. Registration is closed without it." Type="Variable" Display="always" Required="false" Mask="true">RsKHH2ZKMC</Config>
+
+  <Config Name="Open sign-ups" Target="PAS_OPEN_SIGNUPS" Default="false" Mode="" Description="Let anybody who reaches the address create an account. Leave false unless this is only on the LAN." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Secure cookie" Target="PAS_COOKIE_SECURE" Default="auto" Mode="" Description="auto marks the session cookie Secure when the request arrived over HTTPS, which is what a Cloudflare tunnel in front of this provides." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+
+  <Config Name="Clip ranking model" Target="PAS_LLM" Default="true" Mode="" Description="Use the bundled language model to rank suggested clips by what they are about. The weights ship inside the image; this costs about 4.4GB of VRAM while loaded." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Model GPU" Target="PAS_LLM_GPU" Default="0" Mode="" Description="Which card the language model loads onto. Note llama.cpp and nvidia-smi do not always agree on order - llama.cpp calls the 4090 device 0." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+
+  <Config Name="Speaker detection" Target="PAS_DIARIZE" Default="false" Mode="" Description="Run speaker detection automatically after transcription. Off by default: left to estimate how many people are talking it was measurably wrong, and a confident wrong label is worse than none. Ask for it per episode instead." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Watch feeds" Target="PAS_FEED_POLLING" Default="true" Mode="" Description="Check watched podcast feeds on a schedule. Does nothing until a feed is added, and never publishes anything." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Keep renders for (days)" Target="PAS_RETENTION_DAYS" Default="0" Mode="" Description="Delete rendered clips older than this. 0 disables it and nothing is ever removed." Type="Variable" Display="advanced" Required="false" Mask="false">0</Config>
+
+  <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="Which GPUs the container can see." Type="Variable" Display="advanced" Required="true" Mask="false">all</Config>
+
+  <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,utility,video" Mode="" Description="video is the capability NVENC needs. Omitting it is the usual reason hardware encoding is missing inside a container that otherwise sees the GPU." Type="Variable" Display="advanced" Required="true" Mask="false">compute,utility,video</Config>
+
+  <Config Name="PAS_CONFIG_DIR" Target="PAS_CONFIG_DIR" Default="/config" Mode="" Description="Where the app looks for its database." Type="Variable" Display="advanced" Required="true" Mask="false">/config</Config>
+
+  <Config Name="PAS_DATA_DIR" Target="PAS_DATA_DIR" Default="/data" Mode="" Description="Where the app writes uploads and renders." Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>
+
+  <Config Name="PAS_MODELS_DIR" Target="PAS_MODELS_DIR" Default="/models" Mode="" Description="Where Whisper weights are cached." Type="Variable" Display="advanced" Required="true" Mask="false">/models</Config>
+
+  <Config Name="PAS_PREFER_GPU" Target="PAS_PREFER_GPU" Default="true" Mode="" Description="Use the GPU for transcription when one is usable. Falls back to the CPU rather than failing." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="PAS_VIDEO_ENCODER" Target="PAS_VIDEO_ENCODER" Default="auto" Mode="" Description="auto probes for NVENC and falls back to libx264." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+</Container>

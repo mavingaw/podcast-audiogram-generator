@@ -1,0 +1,15 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/dist
+.git
+.github
+.playwright-cli
+docs
+# The sound library is licensed for use, not redistribution: it must never be
+# baked into an image. See docs/AUDIO_LIBRARY.md.
+runtime
+backend/runtime
+*.log
+*.tsbuildinfo

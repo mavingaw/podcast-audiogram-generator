@@ -1,0 +1,11 @@
+# NVIDIA runtime libraries for GPU transcription.
+#
+# CTranslate2 loads cuBLAS and cuDNN by name. The base image has neither, so
+# install these alongside requirements.txt when the container is given a GPU:
+#
+#   pip install -r requirements.txt -r requirements-gpu.txt
+#
+# Without them the app still transcribes, on the CPU, roughly 15x slower.
+-r requirements.txt
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.24.0.43

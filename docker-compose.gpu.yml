@@ -1,0 +1,107 @@
+# GPU deployment.
+#
+#   docker compose -f docker-compose.gpu.yml up -d --build
+#
+# Requires the NVIDIA container toolkit on the host. Without it the container
+# still runs — the app probes for a usable device and falls back to the CPU —
+# but transcription is roughly 15x slower and encoding stays on libx264.
+services:
+  podcast-audiogram-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: podcast-audiogram-studio:gpu
+    container_name: podcast-audiogram-studio
+    restart: unless-stopped
+    ports:
+      # Host port is configurable: 8080 is crowded on a busy Unraid box.
+      - "${PAS_PORT:-8080}:8080"
+    environment:
+      PAS_CONFIG_DIR: /config
+      PAS_DATA_DIR: /data
+      # Point at a shared HuggingFace cache when the host already has one:
+      # the weights another service downloaded are the same weights, and this
+      # saves both the download and a second multi-gigabyte copy.
+      PAS_MODELS_DIR: /models
+      PAS_WHISPER_MODEL: ${PAS_WHISPER_MODEL:-small}
+      PAS_PREFER_GPU: "true"
+      PAS_VIDEO_ENCODER: auto
+      NVIDIA_VISIBLE_DEVICES: all
+      # `video` is the capability NVENC needs; `compute` and `utility` cover
+      # CUDA and nvidia-smi. Omitting `video` is the usual reason NVENC is
+      # missing inside a container that otherwise sees the GPU.
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+
+      # Access control. These must be declared here to reach the container:
+      # a variable in .env feeds compose's own substitution, it is NOT passed
+      # through to the process. PAS_SIGNUP_CODE sat in .env for a whole deploy
+      # doing nothing, and registration stayed open on a public address.
+      #
+      # Registration is closed unless opened deliberately. Share the code with
+      # people you want on the box rather than opening the door.
+      PAS_OPEN_SIGNUPS: "${PAS_OPEN_SIGNUPS:-false}"
+      PAS_SIGNUP_CODE: "${PAS_SIGNUP_CODE:-}"
+      # auto marks the session cookie Secure when the request arrived over
+      # HTTPS, which is what a tunnel in front of this provides.
+      PAS_COOKIE_SECURE: "${PAS_COOKIE_SECURE:-auto}"
+      # Local model for ranking suggested clips by what they are about. Off by
+      # default: it is a ~4.7GB download on first use. The weights land in the
+      # models volume beside Whisper's.
+      PAS_LLM: "${PAS_LLM:-false}"
+      # Which card it loads onto. Point it at whichever GPU is not doing
+      # transcription so the two never fight for VRAM.
+      PAS_LLM_GPU: "${PAS_LLM_GPU:-0}"
+    volumes:
+      # Put these on fast local storage, not on a parity-protected array:
+      # renders read and write multi-gigabyte files and SQLite dislikes a
+      # network share.
+      - ${PAS_CONFIG_HOST:-./runtime/config}:/config
+      - ${PAS_DATA_HOST:-./runtime/data}:/data
+      - ${PAS_MODELS_HOST:-./runtime/models}:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]
+
+  # --------------------------------------------------------------------------
+  # Cloudflare Tunnel — reaching the box from outside the house.
+  #
+  # An outbound-only connection: nothing is port-forwarded, the router is not
+  # touched, and the machine's address is never published. Cloudflare terminates
+  # TLS, so the app sees `x-forwarded-proto: https` and marks the session cookie
+  # Secure, and `cf-connecting-ip` carries the real caller for rate limiting.
+  #
+  # Two ways to run it:
+  #
+  #   Named tunnel (permanent address). Create one at
+  #   https://one.dash.cloudflare.com -> Networks -> Tunnels, point it at
+  #   http://podcast-audiogram-studio:8080, and put its token in .env as
+  #   CLOUDFLARE_TUNNEL_TOKEN. Then: docker compose --profile tunnel up -d
+  #
+  #   Quick tunnel (temporary address, no account). Run:
+  #   docker compose --profile quicktunnel up -d && docker compose logs quicktunnel
+  #   The address is printed in the log and changes every restart.
+  #
+  # Neither profile starts unless asked for, so this file is unchanged for
+  # anybody running on a LAN.
+  # --------------------------------------------------------------------------
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: kinder-tunnel
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - podcast-audiogram-studio
+
+  quicktunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: kinder-quicktunnel
+    profiles: ["quicktunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://podcast-audiogram-studio:8080
+    depends_on:
+      - podcast-audiogram-studio

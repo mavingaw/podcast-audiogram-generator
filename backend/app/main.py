@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.core.config import ensure_directories, settings
 from app.db.init_db import init_db
+from app.services import retention
 from app.services.jobs import start_worker_once
 
 
@@ -33,6 +34,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         start_worker_once()
+        # Off unless PAS_RETENTION_DAYS says otherwise, and it starts no thread
+        # at all when disabled. `start` swallows its own failures: housekeeping
+        # is never a reason for the application not to come up.
+        retention.start()
 
     return app
 

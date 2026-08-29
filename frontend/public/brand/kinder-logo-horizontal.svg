@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" width="100%" height="100%">
+  <defs>
+    <linearGradient id="navBlueH" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D4EEFC" />
+      <stop offset="100%" stop-color="#89CFF0" />
+    </linearGradient>
+    <linearGradient id="navGoldH" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F3E5AB" />
+      <stop offset="100%" stop-color="#D4AF37" />
+    </linearGradient>
+  </defs>
+
+  <!-- Mini App Icon Lockup -->
+  <g transform="translate(12, 12) scale(0.109)">
+    <rect width="512" height="512" rx="128" fill="#161B22" stroke="#262C36" stroke-width="8" />
+    <rect x="140" y="128" width="48" height="256" rx="24" fill="url(#navBlueH)" />
+    <path d="M 188 256 C 240 256, 300 200, 348 148 C 362 134, 384 146, 376 164 C 340 236, 280 276, 218 286 Z" fill="url(#navGoldH)" />
+    <path d="M 210 270 L 338 368 C 354 380, 342 400, 322 396 C 274 388, 224 336, 188 298 Z" fill="url(#navBlueH)" />
+    <circle cx="356" cy="148" r="14" fill="url(#navGoldH)" />
+  </g>
+
+  <!-- Typography -->
+  <text x="84" y="52" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-size="34" font-weight="800" letter-spacing="-0.03em" fill="#F8FAFC">
+    kin<tspan fill="url(#navBlueH)">d</tspan><tspan fill="url(#navGoldH)">e</tspan>r
+  </text>
+  
+  <text x="216" y="50" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="11" font-weight="700" letter-spacing="0.15em" fill="#94A3B8">STUDIO</text>
+</svg>

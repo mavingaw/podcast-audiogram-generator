@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="soundBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#161B22" />
+      <stop offset="100%" stop-color="#0B0D11" />
+    </linearGradient>
+    <linearGradient id="waveBlue" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#5EA8D6" />
+      <stop offset="50%" stop-color="#89CFF0" />
+      <stop offset="100%" stop-color="#D4EEFC" />
+    </linearGradient>
+    <linearGradient id="waveGold" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#996515" />
+      <stop offset="50%" stop-color="#D4AF37" />
+      <stop offset="100%" stop-color="#F3E5AB" />
+    </linearGradient>
+    <filter id="studioGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#89CFF0" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#soundBg)" stroke="#262C36" stroke-width="4" />
+
+  <g filter="url(#studioGlow)">
+    <!-- Vertical Audio Spine -->
+    <rect x="130" y="128" width="36" height="256" rx="18" fill="url(#waveBlue)" />
+    
+    <!-- Frequency Equalizer Bars Creating the 'K' Form -->
+    <rect x="186" y="224" width="24" height="64" rx="12" fill="#89CFF0" opacity="0.85" />
+    <rect x="230" y="176" width="24" height="160" rx="12" fill="url(#waveGold)" />
+    <rect x="274" y="136" width="24" height="100" rx="12" fill="url(#waveGold)" />
+    <rect x="318" y="96" width="24" height="90" rx="12" fill="url(#waveGold)" />
+    <rect x="274" y="276" width="24" height="100" rx="12" fill="url(#waveBlue)" />
+    <rect x="318" y="326" width="24" height="90" rx="12" fill="url(#waveBlue)" />
+  </g>
+</svg>

@@ -1,0 +1,204 @@
+# syntax=docker/dockerfile:1.7
+#
+# GPU build. The slim CPU image cannot use the hardware: CTranslate2 needs
+# cuBLAS and cuDNN to load a Whisper model on a GPU, and neither ships in
+# python:slim. This starts from NVIDIA's CUDA runtime instead, which carries
+# both, so transcription runs on the card rather than 15x slower on the CPU.
+#
+#   docker build -f Dockerfile.gpu -t podcast-audiogram-studio:gpu .
+#   docker run --gpus all -p 8080:8080 -v …:/config -v …:/data podcast-audiogram-studio:gpu
+
+# ---------------------------------------------------------------------------
+# Frontend build
+# ---------------------------------------------------------------------------
+FROM node:24-bookworm-slim AS frontend
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY frontend/ ./
+RUN npm run build
+
+
+# ---------------------------------------------------------------------------
+# Runtime: CUDA 12.9 + cuDNN 9, which is the pairing CTranslate2 4.8 expects.
+# The `runtime` flavour carries the libraries without the ~3GB of compiler
+# toolchain in `devel`.
+# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# llama.cpp, compiled for this class of machine.
+#
+# The published CUDA wheels are built with AVX-512, which a Threadripper 2990WX
+# (Zen+) does not have. The wheel imports cleanly, reports CUDA support, and
+# then dies with SIGILL the moment it touches a tensor — the process is killed
+# outright, so it takes the API down with it rather than degrading.
+#
+# Building with GGML_NATIVE off and AVX2 on produces a binary that runs on any
+# x86-64 with AVX2, which is every machine this is plausibly deployed on. It
+# costs several minutes once, in a layer Docker then caches. nvcc only exists in
+# the CUDA *devel* image, so the compile happens here and the runtime image
+# below takes only the finished wheel.
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Model weights, baked in.
+#
+# All of them, in the image, on purpose. Fetching at runtime meant a fresh
+# install silently had no speaker detection and no clip scoring until somebody
+# noticed the difference and waited for a download.
+#
+# The diarization pair is 46MB and there was never a good argument against
+# shipping it. The language model is 4.4GB, which is a large image — but this is
+# an appliance meant to be handed to somebody and run, and "it works when you
+# start it" is worth more here than a small pull. Set BUNDLE_LLM=false to build
+# a lean image that downloads the language model on first use instead.
+# --------------------------------------------------------------------------
+# The same base as the llama stage, deliberately: it is already being pulled,
+# so this adds no second registry round trip. A build failed here once because
+# Docker Hub was briefly unreachable over IPv6, and the fewer distinct images a
+# build depends on, the fewer chances there are of that.
+FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS models
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl bzip2 \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG SHERPA_RELEASE=https://github.com/k2-fsa/sherpa-onnx/releases/download
+WORKDIR /opt/models/diarization
+RUN curl -fL -O ${SHERPA_RELEASE}/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 \
+    && tar xjf sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 \
+    && rm -f sherpa-onnx-pyannote-segmentation-3-0.tar.bz2 \
+    # English speaker embeddings, for English speech. The Chinese 3D-Speaker
+    # model is better for Mandarin and swaps in via PAS_DIARIZATION_EMBEDDING.
+    && curl -fL -O ${SHERPA_RELEASE}/speaker-recongition-models/nemo_en_titanet_small.onnx
+
+ARG BUNDLE_LLM=true
+ARG LLM_URL=https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+WORKDIR /opt/models/llm
+RUN if [ "$BUNDLE_LLM" = "true" ]; then \
+        curl -fL -o Qwen2.5-7B-Instruct-Q4_K_M.gguf "${LLM_URL}"; \
+    else \
+        echo "Language model not bundled; it will download on first use."; \
+    fi
+
+RUN du -sh /opt/models/*
+
+
+FROM nvidia/cuda:12.9.1-devel-ubuntu24.04 AS llama
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 python3-dev python3-venv python3-pip \
+        build-essential cmake git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Turing through Ada: 8.9 is the 4090, 7.5 covers the Quadro RTX cards.
+ARG CUDA_ARCHITECTURES="75;86;89"
+ENV CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES} -DGGML_NATIVE=off -DGGML_AVX=on -DGGML_AVX2=on -DGGML_AVX512=off -DGGML_FMA=on -DGGML_F16C=on"
+RUN mkdir -p /wheels \
+    && pip3 install --break-system-packages --no-cache-dir wheel \
+    && pip3 wheel --no-cache-dir --no-deps --wheel-dir /wheels \
+        "llama-cpp-python==0.3.35" \
+    || echo "llama.cpp build failed; clip scoring will stay heuristic"
+
+
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PAS_CONFIG_DIR=/config \
+    PAS_DATA_DIR=/data \
+    PAS_FRONTEND_DIST=/app/frontend/dist \
+    # Both default to auto-detect; the app probes for a working device and
+    # falls back to the CPU rather than failing a job.
+    PAS_VIDEO_ENCODER=auto \
+    PAS_PREFER_GPU=true
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-venv \
+        ffmpeg \
+        # drawtext needs a real font file or the scene's text layers are
+        # silently dropped from the export.
+        fonts-dejavu-core \
+        # Reaps the FFmpeg subprocesses and forwards signals, so `docker stop`
+        # is a clean shutdown rather than a ten-second wait then SIGKILL.
+        tini \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fail the build now rather than a render later. Whether NVENC *runs* needs a
+# GPU, which the builder does not have — but whether this FFmpeg was compiled
+# with it is checkable here, and that is the half that silently regresses when
+# a base image changes.
+RUN set -eu; \
+    ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc \
+      || { echo "FATAL: this ffmpeg has no h264_nvenc; the GPU image is pointless" >&2; exit 1; }; \
+    test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf \
+      || { echo "FATAL: no font for drawtext" >&2; exit 1; }; \
+    echo "ffmpeg: $(ffmpeg -version | head -1)"; \
+    echo "python: $(python3 --version)"
+
+WORKDIR /app
+
+COPY backend/requirements.txt backend/requirements-gpu.txt ./
+# A venv sidesteps Ubuntu's externally-managed-environment guard and keeps the
+# app's packages separate from the system Python.
+#
+# requirements-gpu.txt is deliberately NOT installed: its nvidia-* wheels
+# duplicate the cuBLAS and cuDNN already in this base image, and having two
+# copies on the loader path is how you get a version mismatch at runtime. Those
+# wheels exist for the slim image and for bare-metal installs.
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# llama.cpp, for reading clip candidates and judging what they are about.
+# Built in the `llama` stage above, for the reasons documented there. The
+# weights are NOT baked in — five gigabytes in the image would make every
+# deploy painful — they download once into the models volume on first use.
+#
+# Optional by construction: if this install fails the image still builds, and
+# clip suggestions stay heuristic.
+COPY --from=llama /wheels /wheels
+RUN /opt/venv/bin/pip install --no-cache-dir /wheels/*.whl \
+    && rm -rf /wheels \
+    || echo "llama-cpp-python unavailable; clip scoring will stay heuristic"
+
+# Speaker detection. The pyannote segmentation network and a speaker-embedding
+# network, both as ONNX — see docs/SPEAKERS.md for the measurements that ruled
+# out doing this without a trained model. sherpa-onnx runs them without PyTorch,
+# which would otherwise be three gigabytes of dependency for 46MB of weights.
+RUN /opt/venv/bin/pip install --no-cache-dir "sherpa-onnx>=1.13"
+
+# Every model this app uses, inside the image. Downloading them on first use
+# meant a fresh install quietly had no speaker detection and no clip scoring
+# until somebody noticed and waited.
+COPY --from=models /opt/models /opt/models
+
+COPY backend/app ./app
+COPY --from=frontend /src/frontend/dist ./frontend/dist
+
+# 568 is Unraid's conventional unprivileged service account, so bind mounts
+# line up with what the host expects to own.
+RUN useradd --uid 568 --user-group --home-dir /app --no-create-home pas \
+    && mkdir -p /config /data \
+    && chown -R pas:pas /app /config /data
+
+USER pas
+EXPOSE 8080
+VOLUME ["/config", "/data"]
+
+# A listening socket is not the same as a usable database.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# One worker: the job worker is an in-process thread holding the SQLite write
+# lock, and a second worker would contend with it.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", \
+     "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -2,6 +2,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 runtime/
+# Licensed sound packs: usable here, not redistributable.
+# See docs/AUDIO_LIBRARY.md.
+**/runtime/data/library/
 node_modules/
 dist/
 *.tsbuildinfo
