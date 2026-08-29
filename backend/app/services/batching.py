@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.db.models import Job, JobKind, MediaAsset, Project, Template
 from app.services.clipfinder import find as find_clips
 from app.services.scene import default_layers
+from app.services.templates import apply_template
 from app.services.fingerprint import fingerprint as fingerprint_project
 from app.services.snapping import snap as snap_clip_range
 from app.services.variants import remap_scene
@@ -183,7 +184,10 @@ def make_clips(
         if _already_made(snapped.start, snapped.end, existing):
             continue
 
-        scene = dict(design) if design else {}
+        scene = (
+            apply_template({}, design, clip_seconds=snapped.end - snapped.start)
+            if design else {}
+        )
         if design and source_ratio != aspect_ratio:
             scene = remap_scene(scene, source_ratio, aspect_ratio)
         if not scene.get("layers"):

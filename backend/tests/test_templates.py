@@ -215,3 +215,46 @@ def test_a_template_needs_a_name(monkeypatch, tmp_path):
     assert client.post(
         "/api/templates", json={"name": "", "project_id": project["id"]}
     ).status_code == 422
+
+
+
+# --------------------------------------------------------------------------
+# Timing across clips of different lengths
+# --------------------------------------------------------------------------
+
+
+def test_a_template_never_carries_cuts_or_effect_cues():
+    """Cuts are source-time ranges into one recording; cues sit on one clip."""
+    design = scene_for_template({"cuts": [{"start": 1, "end": 2}], "sfx": [{"soundId": "x", "at": 1}]})
+    assert "cuts" not in design and "sfx" not in design
+    applied = apply_template({}, {"cuts": [{"start": 1, "end": 2}], "sfx": [{"soundId": "x", "at": 1}]}, 30)
+    assert "cuts" not in applied and "sfx" not in applied
+
+
+def test_a_layer_that_ran_to_the_end_runs_to_the_new_end():
+    """Designed on a 45s clip, applied to a 90s one: the title must not vanish at 45s."""
+    design = scene_for_template(
+        {"layers": [{"id": "t", "type": "title", "startTime": 0, "endTime": 45}]}, clip_seconds=45
+    )
+    assert "endTime" not in design["layers"][0]
+    applied = apply_template({}, design, clip_seconds=90)
+    assert "endTime" not in applied["layers"][0]
+
+
+def test_a_deliberate_short_window_is_kept():
+    """A title shown for the first five seconds stays five seconds."""
+    design = scene_for_template(
+        {"layers": [{"id": "t", "type": "title", "startTime": 0, "endTime": 5}]}, clip_seconds=45
+    )
+    assert design["layers"][0]["endTime"] == 5
+    assert apply_template({}, design, clip_seconds=90)["layers"][0]["endTime"] == 5
+
+
+def test_a_window_past_a_shorter_clip_is_fitted_to_it():
+    design = {"layers": [
+        {"id": "late", "type": "title", "startTime": 40, "endTime": 44},
+        {"id": "long", "type": "title", "startTime": 0, "endTime": 44},
+    ]}
+    applied = apply_template({}, design, clip_seconds=20)
+    assert applied["layers"][0]["startTime"] == 0, "a layer that started past the end never appeared"
+    assert "endTime" not in applied["layers"][1]

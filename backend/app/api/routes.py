@@ -1723,7 +1723,10 @@ def create_template(
         owner_id=user.id,
         name=payload.name.strip(),
         aspect_ratio=project.aspect_ratio,
-        scene_json=json.dumps(scene_for_template(json.loads(project.scene_json or "{}"))),
+        scene_json=json.dumps(scene_for_template(
+            json.loads(project.scene_json or "{}"),
+            clip_seconds=max(0.5, float(project.clip_end) - float(project.clip_start)),
+        )),
     )
     db.add(template)
     db.commit()
@@ -1762,6 +1765,7 @@ def apply_template_to_project(
     scene = apply_template(
         json.loads(project.scene_json or "{}"),
         json.loads(template.scene_json or "{}"),
+        clip_seconds=max(0.5, float(project.clip_end) - float(project.clip_start)),
     )
     # A design saved in one shape has to be remapped into this project's.
     if template.aspect_ratio != project.aspect_ratio:
