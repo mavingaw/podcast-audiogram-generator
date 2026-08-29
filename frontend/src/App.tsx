@@ -74,7 +74,7 @@ import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./Tra
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
 import { TranscriptionPanel } from "./TranscriptionSettings";
-import { usePeaks, WaveformCanvas } from "./Waveform";
+import { LiveBars, usePeaks, WaveformCanvas } from "./Waveform";
 import { loadSfx, play as playSfx, setSfxEnabled, sfxEnabled } from "./sfx";
 
 type View = "home" | "quick" | "studio" | "projects" | "templates" | "feeds" | "inbox" | "exports";
@@ -1944,6 +1944,14 @@ function Studio({
     start: clipStart,
     end: clipEnd,
   });
+  // The live-bar preview moves on its own clock while playing. Ten frames a
+  // second is enough to read as a meter and cheap enough not to matter.
+  const [liveTick, setLiveTick] = useState(0);
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setLiveTick((tick) => tick + 1), 100);
+    return () => window.clearInterval(timer);
+  }, [playing]);
   // Put the player on the clip.
   //
   // The element's src is the whole episode — it has to be, the clip is a range
@@ -2309,6 +2317,27 @@ function Studio({
                       peaks={clipPeaks}
                       caption={activeCaption}
                       captionPreset={captionPreset}
+                      live={
+                        playing && String(project?.scene?.waveStyle ?? "pulse").startsWith("pulse")
+                          ? {
+                              tick: liveTick,
+                              bins: String(project?.scene?.waveStyle ?? "pulse") === "pulseFine" ? 52
+                                : String(project?.scene?.waveStyle ?? "pulse") === "pulseChunky" ? 22 : 34,
+                              // Loudness at the playhead, from the clip's own
+                              // envelope, so the bars fall silent when the
+                              // speaker does.
+                              level: (() => {
+                                if (!clipPeaks.length) return 0.5;
+                                const at = Math.min(
+                                  clipPeaks.length - 1,
+                                  Math.max(0, Math.floor((localPlayhead / clipDuration) * clipPeaks.length)),
+                                );
+                                const loudest = Math.max(...clipPeaks) || 1;
+                                return Math.pow(Math.max(clipPeaks[at], 0) / loudest, 0.65);
+                              })(),
+                            }
+                          : null
+                      }
                     />
                   </div>
                 ))}
@@ -2768,6 +2797,7 @@ function LayerContent({
   peaks,
   caption,
   captionPreset,
+  live = null,
 }: {
   layer: Layer;
   title: string;
@@ -2776,6 +2806,7 @@ function LayerContent({
   peaks: number[];
   caption?: string | null;
   captionPreset?: string;
+  live?: LiveBars | null;
 }) {
   if (layer.type === "artwork")
     return layer.mediaId ? (
@@ -2798,6 +2829,7 @@ function LayerContent({
           ready={peaks.length > 0}
           color={layer.color ?? accent}
           className="waveform-canvas"
+          live={live}
         />
       </div>
     );

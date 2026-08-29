@@ -20,6 +20,9 @@ import { play as playSfx } from "./sfx";
 
 // Keep in step with WAVE_STYLE_LABELS in backend/app/services/scene.py.
 const WAVE_STYLES: [string, string][] = [
+  ["pulse", "Live bars"],
+  ["pulseFine", "Live bars, fine"],
+  ["pulseChunky", "Live bars, chunky"],
   ["envelope", "Bars"],
   ["envelopeFine", "Fine bars"],
   ["envelopeChunky", "Chunky bars"],

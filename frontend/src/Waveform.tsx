@@ -63,18 +63,47 @@ export function usePeaks(
  * Canvas rather than one DOM node per bar: a 900-bucket waveform is 900 elements
  * React would diff on every drag frame.
  */
+/**
+ * What the live bars look like at one instant.
+ *
+ * The export draws a real spectrum from the audio. The preview cannot run an
+ * analyser over a streamed file cheaply, so it fakes the *shape* — energy
+ * falling off to the right, the way speech does on a log frequency scale —
+ * and scales it by the true loudness at the playhead, which it does have from
+ * the peak envelope. Close enough to judge placement and colour, which is
+ * what the preview is for; the export is what it actually looks like.
+ */
+export type LiveBars = { level: number; tick: number; bins?: number };
+
+function liveHeights(live: LiveBars): number[] {
+  const bins = live.bins ?? 34;
+  const heights: number[] = [];
+  for (let index = 0; index < bins; index += 1) {
+    // Deterministic per bar and per tick, so it flickers like a meter rather
+    // than crawling like a scrolling waveform.
+    const seed = Math.sin(index * 12.9898 + live.tick * 78.233) * 43758.5453;
+    const noise = seed - Math.floor(seed);
+    const falloff = Math.pow(1 - index / bins, 1.4);
+    heights.push(Math.max(0.04, live.level * (0.35 + 0.65 * noise) * (0.3 + 0.7 * falloff)));
+  }
+  return heights;
+}
+
 export function WaveformCanvas({
   peaks,
   ready,
   color = "#759a92",
   background = "transparent",
   className,
+  live = null,
 }: {
   peaks: number[];
   ready: boolean;
   color?: string;
   background?: string;
   className?: string;
+  /** When set, draw moving bars at this level instead of the still envelope. */
+  live?: LiveBars | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -104,6 +133,17 @@ export function WaveformCanvas({
       }
 
       const middle = height / 2;
+      if (live) {
+        const heights = liveHeights(live);
+        const pitch = width / heights.length;
+        const gap = Math.max(1, pitch * 0.33);
+        context.fillStyle = color;
+        heights.forEach((value, index) => {
+          const amplitude = Math.max(2, value * middle);
+          context.fillRect(index * pitch, middle - amplitude, pitch - gap, amplitude * 2);
+        });
+        return;
+      }
       if (peaks.length === 0) {
         // A flat line reads as "no data yet" rather than as silence.
         context.fillStyle = color;
@@ -136,7 +176,7 @@ export function WaveformCanvas({
     const observer = new ResizeObserver(draw);
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [peaks, ready, color, background]);
+  }, [peaks, ready, color, background, live]);
 
   return <canvas className={className} ref={canvasRef} aria-hidden="true" />;
 }

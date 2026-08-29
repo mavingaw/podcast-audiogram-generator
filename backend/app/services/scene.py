@@ -86,7 +86,19 @@ ENVELOPE_STYLES = {
     "envelopeFine": (104, 0.28, False),
     "envelopeChunky": (34, 0.40, False),
 }
-DEFAULT_WAVE_STYLE = "envelope"
+# Bars that move with the voice: a live spectrum, mirrored about the centre
+# line, in the accent colour. This is what "audiogram" means to most people —
+# the equaliser that bounces while somebody talks — and it is the default
+# because a still waveform on a video reads as a broken one. The envelope
+# styles remain for when the shape of the whole clip is the point.
+#
+# name -> (frequency bins across the box, gap as a share of the bar pitch)
+PULSE_STYLES = {
+    "pulse": (34, 0.33),
+    "pulseFine": (52, 0.30),
+    "pulseChunky": (22, 0.36),
+}
+DEFAULT_WAVE_STYLE = "pulse"
 
 # showwaves' amplitude curve. Speech spends most of its time well below peak, so
 # a linear envelope draws a mostly-flat line with occasional spikes; the square
@@ -98,6 +110,9 @@ DEFAULT_WAVE_SCALE = "sqrt"
 
 # Shown in the editor's style picker.
 WAVE_STYLE_LABELS = {
+    "pulse": "Live bars",
+    "pulseFine": "Live bars, fine",
+    "pulseChunky": "Live bars, chunky",
     "envelope": "Bars",
     "envelopeFine": "Fine bars",
     "envelopeChunky": "Chunky bars",
@@ -430,7 +445,12 @@ def parse(
     """
     scene = scene if isinstance(scene, dict) else {}
     style = str(scene.get("waveStyle") or DEFAULT_WAVE_STYLE)
-    if style not in WAVE_STYLES and style not in ENVELOPE_STYLES and style != "none":
+    if (
+        style not in WAVE_STYLES
+        and style not in ENVELOPE_STYLES
+        and style not in PULSE_STYLES
+        and style != "none"
+    ):
         style = DEFAULT_WAVE_STYLE
 
     raw_layers = scene.get("layers")

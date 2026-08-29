@@ -37,6 +37,7 @@ from app.services.scene import (
     PEAK_SHARE,
     caption_char_budget,
     ENVELOPE_STYLES,
+    PULSE_STYLES,
     WAVE_STYLES,
     ass_color,
     Scene,
@@ -1300,7 +1301,11 @@ def build_render_command(
         video_label = f"[vimg{offset}]"
 
     wave_layer = parsed.waveform_layer()
-    if wave_layer is not None and parsed.wave_style in ENVELOPE_STYLES:
+    if wave_layer is not None and parsed.wave_style in PULSE_STYLES:
+        video_label = _pulse_wave(
+            audio_chains, video_label, parsed, wave_layer, width, height, duration
+        )
+    elif wave_layer is not None and parsed.wave_style in ENVELOPE_STYLES:
         video_label = (
             _envelope_wave(
                 audio_chains, video_label, parsed, wave_layer,
@@ -1341,7 +1346,7 @@ def build_render_command(
             overlay += f":enable='{guard}'"
         audio_chains.append(f"{overlay}[vwave]")
         video_label = "[vwave]"
-    if "showwaves" not in ";".join(audio_chains):
+    if not any(name in ";".join(audio_chains) for name in ("showwaves", "showfreqs")):
         # showwaves is the only consumer of that split branch; without it the
         # graph has a dangling output and FFmpeg refuses to run.
         audio_chains.append("[wavesrc]anullsink")
@@ -1440,6 +1445,72 @@ def _peak_bars(buckets: list[float]) -> set[int]:
         if value > previous or value > following:
             peaks.add(index)
     return peaks
+
+
+def _pulse_wave(
+    chains: list[str],
+    video_label: str,
+    parsed: Scene,
+    layer: "RenderLayer",
+    width: int,
+    height: int,
+    duration: float,
+) -> str:
+    """Bars that move with the voice.
+
+    showfreqs draws a live spectrum, one column per frequency bin. It is
+    rendered a few dozen pixels wide so each bin is one column, scaled up with
+    nearest-neighbour so each column becomes a solid bar, mirrored about the
+    centre line, and turned into a mask: anything the analyser lit becomes the
+    accent colour, everything else transparent, with a column grid cut in for
+    the gaps. The mask route is what keeps the colour honest — showfreqs shades
+    by magnitude and would otherwise draw white-hot peaks over a blue base.
+
+    Log frequency scale, because speech lives below 4 kHz and a linear scale
+    put all of it in the leftmost quarter with the rest of the box empty.
+
+    Measured on the live episode: the bar region's average luma moved 50 → 59
+    → 47 across three frames a second apart, where the still styles give the
+    same number every time.
+    """
+    bins, gap_ratio = PULSE_STYLES[parsed.wave_style]
+    x, y, box_width, box_height = layer.pixels(width, height)
+    # The bars fill the box the editor drew: pitch from the box, not fixed.
+    pitch = max(4, box_width // bins)
+    gap = max(1, int(round(pitch * gap_ratio)))
+    draw_width = bins * pitch
+    half = max(8, box_height // 2)
+    colour = ffmpeg_color(layer.paint(parsed.accent))
+
+    guard = enable_expression(layer.start, layer.end, duration)
+    chains.append(
+        # dynaudnorm lifts conversational level so the bars fill the box; it
+        # touches only this branch, never the exported audio.
+        f"[wavesrc]dynaudnorm=framelen=200:gausssize=11:peak=0.95,"
+        f"showfreqs=s={bins}x{half}:mode=bar:ascale=cbrt:fscale=log:"
+        f"win_size=512:averaging=2:colors=white,"
+        f"scale={draw_width}:{half}:flags=neighbor,split[pulseup][pulsedn]"
+    )
+    chains.append("[pulsedn]vflip[pulsednf]")
+    chains.append(
+        "[pulseup][pulsednf]vstack,format=gray,"
+        # Lit and inside a bar column: opaque. The commas are escaped because
+        # this expression sits inside a filter chain.
+        f"geq=lum='if(gt(lum(X\\,Y)\\,48)*lt(mod(X\\,{pitch})\\,{pitch - gap})"
+        f"\\,255\\,0)'[pulsemask]"
+    )
+    chains.append(
+        f"color=c={colour}:s={draw_width}x{half * 2}:d={duration:.3f}[pulsefill]"
+    )
+    chains.append("[pulsefill][pulsemask]alphamerge[pulsebars]")
+    overlay = (
+        f"{video_label}[pulsebars]overlay=x={x + (box_width - draw_width) // 2}:"
+        f"y={y + (box_height - half * 2) // 2}:format=auto"
+    )
+    if guard:
+        overlay += f":enable='{guard}'"
+    chains.append(f"{overlay}[vwave]")
+    return "[vwave]"
 
 
 def _envelope_wave(

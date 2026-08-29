@@ -215,9 +215,9 @@ def test_scene_defaults_when_nothing_is_stored():
     # Compared against the constants, not a literal: the brand palette is
     # allowed to move without this test needing an edit.
     assert parsed.background == DEFAULT_BACKGROUND
-    # The envelope styles are the default: they are the only ones whose
-    # proportions we control, so they always fill their box.
-    assert parsed.wave_style == "envelope"
+    # Live bars are the default: a still waveform on a video reads as a broken
+    # one. The envelope styles remain for when the clip's shape is the point.
+    assert parsed.wave_style == "pulse"
     assert parsed.wave_scale == "sqrt"
     # A scene with no layers of its own renders the same default stack the
     # preview shows. It used to render nothing at all: a clip cut by a feed
@@ -246,7 +246,7 @@ def test_scene_rejects_unknown_styles_and_bad_colours():
         {"waveStyle": "sparkles", "waveScale": "loud", "background": "red", "accent": "#GGGGGG"},
         10.0,
     )
-    assert parsed.wave_style == "envelope"
+    assert parsed.wave_style == "pulse"
     assert parsed.wave_scale == "sqrt"
     assert parsed.background == DEFAULT_BACKGROUND
     assert parsed.accent == DEFAULT_ACCENT
@@ -687,3 +687,96 @@ def test_the_default_artwork_slot_is_square_in_pixels():
         assert abs(px_w - px_h) <= 2, f"{ratio}: {px_w:.0f}x{px_h:.0f}"
         # And centred.
         assert abs(art["x"] + art["width"] / 2 - 50) < 0.1, ratio
+
+
+
+# --------------------------------------------------------------------------
+# Live bars
+# --------------------------------------------------------------------------
+
+
+def pulse_scene(style="pulse"):
+    return {"waveStyle": style, "layers": [
+        {"id": "w", "type": "waveform", "x": 12, "y": 71, "width": 76, "height": 9},
+    ]}
+
+
+def test_live_bars_are_driven_by_the_audio_analyser(tmp_path):
+    graph = render_graph(pulse_scene(), out_dir=tmp_path)
+    assert "showfreqs=" in graph
+    assert "alphamerge" in graph
+    # The analyser branch is consumed, so the dangling-output guard must not
+    # also be attached: that would be the same label used twice.
+    assert "anullsink" not in graph
+
+
+def test_live_bars_fill_the_box_they_were_drawn_in(tmp_path):
+    graph = render_graph(pulse_scene(), out_dir=tmp_path)
+    # 76% of 1080 is 820 px; 34 bins at 24 px pitch is 816.
+    assert "color=c=0x89cff0:s=816x" in graph.lower()
+
+
+def test_live_bars_take_the_layer_colour(tmp_path):
+    scene = pulse_scene()
+    scene["layers"][0]["color"] = "#d4af37"
+    graph = render_graph(scene, out_dir=tmp_path)
+    assert "color=c=0xd4af37" in graph.lower()
+
+
+def test_each_live_style_has_its_own_density(tmp_path):
+    fine = render_graph(pulse_scene("pulseFine"), out_dir=tmp_path)
+    chunky = render_graph(pulse_scene("pulseChunky"), out_dir=tmp_path)
+    assert "showfreqs=s=52x" in fine
+    assert "showfreqs=s=22x" in chunky
+
+
+ffmpeg_required = pytest.mark.skipif(
+    __import__("shutil").which("ffmpeg") is None, reason="ffmpeg is not installed"
+)
+
+
+@ffmpeg_required
+def test_live_bars_actually_move(tmp_path):
+    """The point of the style. Two frames a second apart must differ in the
+    bar region; the still styles give the same pixels every frame."""
+    import re
+    import subprocess
+
+    from app.services.jobs import _render_audiogram_mp4, _write_ass
+
+    source = tmp_path / "voice.wav"
+    # Speech-shaped: a tone that switches pitch and level every half second.
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "sine=frequency=180:duration=0.5",
+         "-f", "lavfi", "-i", "sine=frequency=900:duration=0.5",
+         "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono:d=0.5",
+         "-f", "lavfi", "-i", "sine=frequency=400:duration=0.5",
+         "-filter_complex", "[0][1][2][3]concat=n=4:v=0:a=1,aloop=loop=1:size=88200[a]",
+         "-map", "[a]", "-ar", "44100", "-ac", "1", str(source)],
+        check=True, capture_output=True,
+    )
+    ass_path = tmp_path / "captions.ass"
+    _write_ass(ass_path, [{"start": 0.0, "end": 1.0, "text": "x"}], "9:16", None)
+    output = tmp_path / "out.mp4"
+    _render_audiogram_mp4(
+        source_path=source, output_path=output, ass_path=ass_path,
+        aspect_ratio="9:16", clip_start=0.0, duration=3.0, scene=pulse_scene(),
+    )
+
+    def luma_at(seconds: float) -> float:
+        frame = tmp_path / f"f{seconds}.png"
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", str(seconds),
+             "-i", str(output), "-frames:v", "1", "-vf", "crop=820:172:130:1363", str(frame)],
+            check=True, capture_output=True,
+        )
+        out = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-i", str(frame), "-vf",
+             "signalstats,metadata=print:key=lavfi.signalstats.YAVG", "-frames:v", "1",
+             "-f", "null", "-"], capture_output=True, text=True,
+        )
+        return float(re.search(r"YAVG=([0-9.]+)", out.stderr).group(1))
+
+    readings = {luma_at(t) for t in (0.25, 0.75, 1.25)}
+    assert len(readings) > 1, f"the bars did not move: {readings}"
