@@ -53,6 +53,11 @@ services:
       ORT_DISABLE_SPINNING: "1"
       OMP_WAIT_POLICY: PASSIVE
 
+      # Freesound API key for the bulk effects fetcher (python -m
+      # app.cli.fetch_library freesound). Free from
+      # https://freesound.org/apiv2/apply/. Optional: nothing else uses it.
+      FREESOUND_API_KEY: ${FREESOUND_API_KEY:-}
+
       # Access control. These must be declared here to reach the container:
       # a variable in .env feeds compose's own substitution, it is NOT passed
       # through to the process. PAS_SIGNUP_CODE sat in .env for a whole deploy

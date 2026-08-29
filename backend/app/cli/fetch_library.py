@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import io
 import json
 import re
@@ -389,7 +390,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Keep only these top-level genres (repeatable)")
 
     fs = sub.add_parser("freesound", help="CC0 effects from freesound.org")
-    fs.add_argument("--key", required=True, help="Freesound API key")
+    fs.add_argument("--key", default=os.getenv("FREESOUND_API_KEY", ""),
+                    help="Freesound API key (default: FREESOUND_API_KEY)")
     fs.add_argument("--query", action="append", required=True, help="Search term (repeatable)")
     fs.add_argument("--per-query", type=int, default=100)
     fs.add_argument("--max-seconds", type=float, default=30.0)

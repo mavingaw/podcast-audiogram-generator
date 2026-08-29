@@ -70,6 +70,8 @@
 
   <Config Name="MKL_NUM_THREADS" Target="MKL_NUM_THREADS" Default="8" Mode="" Description="Thread cap for MKL." Type="Variable" Display="advanced" Required="false" Mask="false">8</Config>
 
+  <Config Name="FREESOUND_API_KEY" Target="FREESOUND_API_KEY" Default="" Mode="" Description="Freesound API key for the bulk sound-effects fetcher. Free from https://freesound.org/apiv2/apply/. Optional." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
   <Config Name="PAS_CONFIG_DIR" Target="PAS_CONFIG_DIR" Default="/config" Mode="" Description="Where the app looks for its database." Type="Variable" Display="advanced" Required="true" Mask="false">/config</Config>
 
   <Config Name="PAS_DATA_DIR" Target="PAS_DATA_DIR" Default="/data" Mode="" Description="Where the app writes uploads and renders." Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>
