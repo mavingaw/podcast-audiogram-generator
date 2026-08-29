@@ -982,6 +982,9 @@ def _publish_render(work_dir: Path, output_dir: Path) -> None:
         if produced.is_dir() or produced.name.startswith("plate-"):
             # Plates are an implementation detail of the render, not an output.
             continue
+        if produced.name.startswith("text-") and produced.suffix == ".txt":
+            # What drawtext read, not something anybody downloads.
+            continue
         if produced.name == "cut.wav":
             # The transcript-cut audio is scratch, and it is uncompressed: left
             # in place it would park a hundred megabytes per project in the
