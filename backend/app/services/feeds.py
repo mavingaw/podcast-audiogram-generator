@@ -250,7 +250,33 @@ def artwork_of(parsed) -> str | None:
 
 # A logo. Anything bigger than this is not one.
 MAX_ARTWORK_BYTES = int(os.getenv("PAS_ARTWORK_MAX_BYTES", str(24 * 1024 * 1024)))
-IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+IMAGE_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    # Not a registered type, and what Spreaker's CDN sends for every logo.
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/webp": ".webp",
+}
+
+
+PNG_MAGIC = bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A])
+JPEG_MAGIC = bytes([0xFF, 0xD8, 0xFF])
+
+
+def _sniff_image(data: bytes) -> str | None:
+    """The file's own opinion of what it is, for hosts whose headers lie.
+
+    A CDN that serves a JPEG as application/octet-stream, or with no type at
+    all, is common enough that trusting the header alone loses real logos.
+    """
+    if data.startswith(PNG_MAGIC):
+        return ".png"
+    if data.startswith(JPEG_MAGIC):
+        return ".jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return None
 
 
 def download_image(url: str, target_dir: Path) -> tuple[str, str, int]:
@@ -269,11 +295,6 @@ def download_image(url: str, target_dir: Path) -> tuple[str, str, int]:
             content_type = (
                 (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             )
-            suffix = IMAGE_TYPES.get(content_type)
-            if suffix is None:
-                raise FeedError(
-                    f"Artwork is not an image ({content_type or 'unknown type'})"
-                )
             data = response.read(MAX_ARTWORK_BYTES + 1)
     except FeedError:
         raise
@@ -283,6 +304,14 @@ def download_image(url: str, target_dir: Path) -> tuple[str, str, int]:
         raise FeedError("Artwork is implausibly large")
     if not data:
         raise FeedError("Artwork was empty")
+    # The bytes outrank the header: a header can be wrong in either direction,
+    # and the renderer will be reading the bytes.
+    suffix = _sniff_image(data) or IMAGE_TYPES.get(content_type)
+    if suffix is None:
+        raise FeedError(
+            f"Artwork is not an image ({content_type or 'unknown type'})"
+        )
+    content_type = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}[suffix]
 
     name = f"{uuid.uuid4()}{suffix}"
     target_dir.mkdir(parents=True, exist_ok=True)

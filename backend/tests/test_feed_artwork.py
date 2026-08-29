@@ -93,7 +93,7 @@ class _Response:
         return False
 
 
-def stub(monkeypatch, body=b"\x89PNG\r\n", content_type="image/png"):
+def stub(monkeypatch, body=bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A]), content_type="image/png"):
     import urllib.request
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: _Response(body, content_type))
@@ -102,11 +102,26 @@ def stub(monkeypatch, body=b"\x89PNG\r\n", content_type="image/png"):
 
 def test_the_extension_comes_from_the_content_type_not_the_url(monkeypatch, tmp_path):
     """Feeds serve JPEGs from paths ending in .png all the time."""
-    stub(monkeypatch, content_type="image/jpeg")
+    stub(monkeypatch, body=bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"rest", content_type="image/jpeg")
     name, kind, size = feeds.download_image("https://cdn/logo.png", tmp_path)
     assert name.endswith(".jpg")
     assert kind == "image/jpeg"
     assert (tmp_path / name).exists()
+
+
+def test_a_jpeg_served_as_image_jpg_is_accepted(monkeypatch, tmp_path):
+    """Not a registered type; what Spreaker's CDN sends for every logo. The
+    live feed's artwork was refused for exactly this."""
+    stub(monkeypatch, body=bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"rest", content_type="image/jpg")
+    name, kind, _ = feeds.download_image("https://cdn/logo", tmp_path)
+    assert name.endswith(".jpg") and kind == "image/jpeg"
+
+
+def test_the_bytes_outrank_a_useless_header(monkeypatch, tmp_path):
+    png = bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A]) + b"rest"
+    stub(monkeypatch, body=png, content_type="application/octet-stream")
+    name, kind, _ = feeds.download_image("https://cdn/logo", tmp_path)
+    assert name.endswith(".png") and kind == "image/png"
 
 
 def test_something_that_is_not_an_image_is_refused(monkeypatch, tmp_path):
