@@ -33,6 +33,7 @@ def create_test_client(monkeypatch, tmp_path) -> TestClient:
     import app.services.rss as rss
     import app.services.storage as storage
     import app.services.chunked_upload as chunked_upload
+    import app.services.preview as preview
     import app.services.waveform as waveform_service
     import app.services.scene as scene_service
     import app.services.library as library
@@ -54,6 +55,7 @@ def create_test_client(monkeypatch, tmp_path) -> TestClient:
     # raises an error class the route no longer recognises, and a refusal
     # that should be a 415 comes out as a 500.
     importlib.reload(chunked_upload)
+    importlib.reload(preview)
     importlib.reload(waveform_service)
     importlib.reload(scene_service)
     importlib.reload(library)

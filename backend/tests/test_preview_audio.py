@@ -82,3 +82,20 @@ def test_someone_elses_clip_is_not_found(monkeypatch, tmp_path):
     client, project_id = seeded(monkeypatch, tmp_path)
     register_second_user(client, "friend")
     assert client.get(f"/api/projects/{project_id}/preview.m4a").status_code == 404
+
+
+@ffmpeg_required
+def test_saving_the_range_cuts_the_preview_ahead_of_time(monkeypatch, tmp_path):
+    """Open in Studio should find the file already there."""
+    import time
+
+    client, project_id = seeded(monkeypatch, tmp_path)
+    from app.core.config import settings
+
+    client.patch(f"/api/projects/{project_id}", json={"clip_start": 3.0, "clip_end": 9.0})
+    expected = settings.work_dir / "previews" / "{}-3.000-9.000.m4a"
+    for _ in range(50):
+        if any(p.name.endswith("-3.000-9.000.m4a") for p in (settings.work_dir / "previews").glob("*.m4a")):
+            break
+        time.sleep(0.1)
+    assert any(p.name.endswith("-3.000-9.000.m4a") for p in (settings.work_dir / "previews").glob("*.m4a")),         "the preview was not cut in the background"

@@ -2022,10 +2022,13 @@ function Studio({
   // A small lead-in tolerance: the first line often starts a few hundredths
   // in, and a playhead parked at 0 should still show it rather than the
   // empty-state text.
+  // Between two lines the band shows nothing — never the placeholder. The
+  // placeholder is for a project with no transcript at all; on a real clip it
+  // flashed up in every gap between sentences during playback.
   const activeCaption =
     previewCaptions.find(
       (line) => localPlayhead >= line.start - 0.25 && localPlayhead <= line.end,
-    )?.text ?? null;
+    )?.text ?? (previewCaptions.length ? "" : null);
   const platform = String(project?.scene?.platform ?? "");
   const safeArea = SAFE_AREAS[platform] ?? null;
   // The clip's own audio, not the episode. Studio used to play the whole

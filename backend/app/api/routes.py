@@ -55,7 +55,7 @@ from app.services.waveform import MAX_BUCKETS as MAX_PEAK_BUCKETS
 from app.services.waveform import decode as decode_peaks
 from app.services.waveform import duration_of as waveform_duration
 from app.services.waveform import resample as resample_peaks
-from app.services import chunked_upload, revisions
+from app.services import chunked_upload, preview, revisions
 from app.services.storage import UploadValidationError, contained_path, is_image, save_upload
 
 router = APIRouter(prefix="/api")
@@ -667,8 +667,6 @@ def project_preview_audio(
     file read. Not the render: no cuts, no music, no loudness pass. Those
     are what the export is for; this is what you scrub.
     """
-    import subprocess
-
     project = db.get(Project, project_id)
     if not project or project.owner_id != user.id or not project.media_id:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -678,27 +676,10 @@ def project_preview_audio(
     source = contained_path(settings.uploads_dir, settings.uploads_dir / media.stored_name)
     if not source.exists():
         raise HTTPException(status_code=404, detail="Media file not found")
-
-    start = max(0.0, float(project.clip_start))
-    end = max(start + 0.5, float(project.clip_end))
-    cache = settings.work_dir / "previews"
-    cache.mkdir(parents=True, exist_ok=True)
-    target = cache / f"{media.id}-{start:.3f}-{end:.3f}.m4a"
-    if not target.exists():
-        partial = target.with_suffix(".part.m4a")
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-             "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(source),
-             "-vn", "-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart",
-             str(partial)],
-            capture_output=True, text=True, timeout=300,
-        )
-        if result.returncode != 0 or not partial.exists():
-            raise HTTPException(
-                status_code=500,
-                detail="Could not cut the preview: " + (result.stderr or "ffmpeg failed").strip()[-300:],
-            )
-        partial.replace(target)
+    try:
+        target = preview.ensure(source, media.id, project.clip_start, project.clip_end)
+    except RuntimeError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
     return FileResponse(target, media_type="audio/mp4", headers={"Cache-Control": "private, max-age=86400"})
 
 
@@ -1143,6 +1124,14 @@ def update_project(
     for key, value in updates.items():
         setattr(project, key, value)
     db.commit()
+    if ("clip_start" in updates or "clip_end" in updates) and project.media_id:
+        # Cut the Studio preview now, in the background, so opening the clip
+        # a moment later finds it already there.
+        media = db.get(MediaAsset, project.media_id)
+        if media:
+            source = settings.uploads_dir / media.stored_name
+            if source.exists():
+                preview.warm(source, media.id, project.clip_start, project.clip_end)
     return {"project": serialize_project(project)}
 
 
