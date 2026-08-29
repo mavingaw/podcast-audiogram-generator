@@ -1575,6 +1575,39 @@ def _progress_filter(parsed: Scene, width: int, height: int, duration: float) ->
     return chain
 
 
+# Average advance of a glyph as a share of the font size, for the sans faces
+# this ships with (DejaVu, Liberation, Arial). Wide enough to be safe: a title
+# estimated too narrow runs off the frame, one estimated too wide is merely a
+# little smaller than it could have been.
+GLYPH_WIDTH = 0.58
+MIN_TITLE_LINES = 1
+MAX_TITLE_LINES = 2
+
+
+def fit_text(text: str, box_width: int, box_height: int) -> tuple[str, int]:
+    """Wrap and size a label so it stays inside its box.
+
+    Up to two lines, then the font shrinks until the longest line fits. Two
+    lines is the limit because these are titles over a video, not paragraphs:
+    a third line would sit on the captions in every default layout.
+    """
+    import textwrap
+
+    text = " ".join(text.split())
+    largest = max(12, int(box_height * 0.62))
+    for font_size in range(largest, 11, -2):
+        per_line = max(1, int(box_width / (font_size * GLYPH_WIDTH)))
+        lines = textwrap.wrap(text, width=per_line, break_long_words=True)
+        line_height = font_size * 1.15
+        if 1 <= len(lines) <= MAX_TITLE_LINES and len(lines) * line_height <= box_height * 1.6:
+            return "\n".join(lines), font_size
+    # Even at the floor it does not fit on two lines: keep the first two and
+    # let fix_bounds slide what is left into the frame.
+    per_line = max(1, int(box_width / (12 * GLYPH_WIDTH)))
+    lines = textwrap.wrap(text, width=per_line, break_long_words=True)[:MAX_TITLE_LINES]
+    return "\n".join(lines), 12
+
+
 def _text_filters(
     parsed: Scene,
     width: int,
@@ -1613,7 +1646,6 @@ def _text_filters(
             # The transcript already drives these through captions.ass.
             continue
         x, y, box_width, box_height = layer.pixels(width, height)
-        font_size = max(12, int(box_height * 0.62))
         # `{{episode}}` and friends become what this clip actually is, so a
         # template can carry the label rather than every clip needing one typed
         # into it. See services/tokens.py.
@@ -1622,6 +1654,11 @@ def _text_filters(
             # A layer whose entire content was an empty token would otherwise
             # draw an invisible box and cost a filter pass.
             continue
+        # Fitted to the box rather than sized from its height alone. A real
+        # episode title — "Season 4, Ep. 70: It's So Hard to Say Goodbye..." —
+        # ran off both edges of the frame at the height-derived size, and
+        # fix_bounds only slides a line back in, it does not shrink it.
+        text, font_size = fit_text(text, box_width, box_height)
 
         # Written beside the other render inputs and named relatively, the same
         # way captions.ass is: FFmpeg runs with the work directory as its cwd.
@@ -1643,6 +1680,8 @@ def _text_filters(
             f"y={y}+({box_height}-text_h)/2",
             # Pull a too-wide line back inside the frame rather than clipping it.
             "fix_bounds=1",
+            # A wrapped title is two lines; keep them close.
+            f"line_spacing={max(2, font_size // 8)}",
         ]
         options.append(f"fontfile='{escape_drawtext(str(font_file))}'")
         guard = enable_expression(layer.start, layer.end, duration)

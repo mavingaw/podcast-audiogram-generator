@@ -144,6 +144,15 @@ def caption_band_percent(preset_name: str, aspect_ratio: str, lines: int = 2) ->
     return round(top * 100, 2), round(block * 100, 2)
 
 
+def square_slot(height_percent: float, aspect_ratio: str) -> tuple[float, float]:
+    """(width%, x%) of a centred box that is square in pixels."""
+    w, h = {"9:16": (9, 16), "4:5": (4, 5), "1:1": (1, 1), "16:9": (16, 9)}.get(
+        aspect_ratio, (9, 16)
+    )
+    width = min(76.0, round(height_percent * (h / w), 2))
+    return width, round((100 - width) / 2, 2)
+
+
 def default_layers(aspect_ratio: str = "9:16", title_text: str = "{{episode}}") -> list[dict]:
     """The stack a new clip gets when nothing has chosen one.
 
@@ -153,6 +162,11 @@ def default_layers(aspect_ratio: str = "9:16", title_text: str = "{{episode}}") 
     """
     layout = DEFAULT_LAYOUT.get(aspect_ratio, DEFAULT_LAYOUT["9:16"])
     art_y, art_h = layout["artwork"]
+    # Podcast artwork is square by convention (every directory requires it),
+    # and the slot was a 76%-wide landscape box that cropped the bottom off
+    # every logo. The slot is square in pixels: its width in percent is its
+    # height in percent scaled by the frame's aspect.
+    art_w, art_x = square_slot(art_h, aspect_ratio)
     title_y, title_h = layout["title"]
     wave_y, wave_h = layout["waveform"]
     cap_y, cap_h = caption_band_percent(DEFAULT_CAPTION_PRESET, aspect_ratio)
@@ -161,7 +175,7 @@ def default_layers(aspect_ratio: str = "9:16", title_text: str = "{{episode}}") 
         {"id": "background", "name": "Background", "type": "background",
          "x": 0, "y": 0, "width": 100, "height": 100, **base, "locked": True},
         {"id": "artwork", "name": "Podcast Artwork", "type": "artwork",
-         "x": 12, "y": art_y, "width": 76, "height": art_h, **base},
+         "x": art_x, "y": art_y, "width": art_w, "height": art_h, **base},
         {"id": "waveform", "name": "Waveform", "type": "waveform",
          "x": 12, "y": wave_y, "width": 76, "height": wave_h, **base},
         {"id": "title", "name": "Episode Title", "type": "title",

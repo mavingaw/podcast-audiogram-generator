@@ -207,6 +207,16 @@ const LAYOUT: Record<Ratio, { artwork: Band; title: Band; waveform: Band }> = {
   },
 };
 
+const RATIO_SHAPE: Record<Ratio, [number, number]> = {
+  "9:16": [9, 16], "4:5": [4, 5], "1:1": [1, 1], "16:9": [16, 9],
+};
+/** A centred box that is square in pixels, as percent width and x. */
+function squareSlot(heightPercent: number, ratio: Ratio) {
+  const [w, h] = RATIO_SHAPE[ratio] ?? [9, 16];
+  const width = Math.min(76, Math.round(heightPercent * (h / w) * 100) / 100);
+  return { width, x: Math.round(((100 - width) / 2) * 100) / 100 };
+}
+
 function defaultLayers(ratio: Ratio = "9:16"): Layer[] {
   return [
     {
@@ -226,9 +236,12 @@ function defaultLayers(ratio: Ratio = "9:16"): Layer[] {
       id: "artwork",
       name: "Podcast Artwork",
       type: "artwork",
-      x: 12,
+      // Square in pixels, centred: podcast artwork is square by convention and
+      // a 76%-wide landscape slot cropped the bottom off every logo. Mirrors
+      // square_slot() in backend/app/services/scene.py.
+      x: squareSlot(LAYOUT[ratio].artwork.height, ratio).x,
       y: LAYOUT[ratio].artwork.y,
-      width: 76,
+      width: squareSlot(LAYOUT[ratio].artwork.height, ratio).width,
       height: LAYOUT[ratio].artwork.height,
       visible: true,
       locked: false,

@@ -639,3 +639,51 @@ def test_text_layers_default_to_white_not_the_accent():
         {"id": "t", "type": "title", "text": "Hi", "visible": True}
     ]})
     assert "fontcolor=0xffffff" in graph
+
+
+# --------------------------------------------------------------------------
+# Titles that fit, and a slot the artwork fits
+# --------------------------------------------------------------------------
+
+
+def test_a_long_title_wraps_and_shrinks_to_fit_its_box():
+    """A real episode title ran off both edges of the frame at the size the box
+    height alone implied; fix_bounds slides a line back, it cannot shrink it."""
+    from app.services.jobs import GLYPH_WIDTH, fit_text
+
+    title = "Season 4, Ep. 70: It's So Hard to Say Goodbye... But We're Not Gone Yet!"
+    text, size = fit_text(title, 820, 154)
+    lines = text.split("\n")
+    assert 1 < len(lines) <= 2
+    widest = max(len(line) for line in lines) * size * GLYPH_WIDTH
+    assert widest <= 820, f"{widest:.0f}px of text in an 820px box"
+    assert size < int(154 * 0.62), "the font never shrank"
+
+
+def test_a_short_title_keeps_the_full_size():
+    from app.services.jobs import fit_text
+
+    text, size = fit_text("Short", 820, 154)
+    assert text == "Short"
+    assert size == int(154 * 0.62)
+
+
+def test_a_title_never_exceeds_two_lines():
+    from app.services.jobs import fit_text
+
+    text, _ = fit_text(" ".join(["word"] * 80), 300, 40)
+    assert text.count("\n") <= 1
+
+
+def test_the_default_artwork_slot_is_square_in_pixels():
+    """Podcast artwork is square by convention; a landscape slot cropped it."""
+    from app.services.scene import default_layers
+
+    shapes = {"9:16": (1080, 1920), "4:5": (1080, 1350), "1:1": (1080, 1080), "16:9": (1280, 720)}
+    for ratio, (w, h) in shapes.items():
+        art = next(layer for layer in default_layers(ratio) if layer["type"] == "artwork")
+        px_w = art["width"] / 100 * w
+        px_h = art["height"] / 100 * h
+        assert abs(px_w - px_h) <= 2, f"{ratio}: {px_w:.0f}x{px_h:.0f}"
+        # And centred.
+        assert abs(art["x"] + art["width"] / 2 - 50) < 0.1, ratio
