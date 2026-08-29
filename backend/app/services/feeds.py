@@ -82,6 +82,8 @@ class Episode:
     # Empty for the great majority of feeds; the tag is young and few hosts
     # write it. Nothing depends on its presence.
     soundbites: tuple[Soundbite, ...] = ()
+    # Episode artwork, when the feed gives the episode its own.
+    image_url: str | None = None
 
 
 def _enclosure(entry) -> tuple[str, int | None] | None:
@@ -213,9 +215,79 @@ def episodes_of(parsed, raw: bytes | str | None = None) -> list[Episode]:
                 # has one. A feed without guids gets no soundbites rather than
                 # the wrong episode's.
                 soundbites=bites.get(guid, ()),
+                image_url=_image_href(entry.get("image")),
             )
         )
     return found
+
+
+def _image_href(value) -> str | None:
+    """feedparser gives <itunes:image href> as {'href': ...} and <image><url>
+    on the channel as {'url': ...}. Either is an image."""
+    if isinstance(value, dict):
+        href = value.get("href") or value.get("url")
+        if href and str(href).startswith(("http://", "https://")):
+            return str(href)[:2048]
+    elif isinstance(value, str) and value.startswith(("http://", "https://")):
+        return value[:2048]
+    return None
+
+
+def artwork_of(parsed) -> str | None:
+    """The show's artwork URL, from the channel.
+
+    <itunes:image> is what every podcast app shows and is present on nearly
+    every feed; <image><url> is the older RSS element and the fallback.
+    """
+    if parsed is None:
+        return None
+    feed = getattr(parsed, "feed", None)
+    if feed is None:
+        return None
+    value = feed.get("image") if hasattr(feed, "get") else getattr(feed, "image", None)
+    return _image_href(value)
+
+
+# A logo. Anything bigger than this is not one.
+MAX_ARTWORK_BYTES = int(os.getenv("PAS_ARTWORK_MAX_BYTES", str(24 * 1024 * 1024)))
+IMAGE_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+
+
+def download_image(url: str, target_dir: Path) -> tuple[str, str, int]:
+    """Fetch artwork to disk. Returns (filename, content_type, size).
+
+    The extension comes from the Content-Type, not the URL: feeds routinely
+    serve a JPEG from a path ending in .png, or from a CDN path with no
+    extension at all, and the renderer reads the file by its suffix.
+    """
+    import uuid
+
+    _validate_feed_url(url)
+    request = urllib.request.Request(url, headers={"User-Agent": "Kinder/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=FEED_TIMEOUT) as response:
+            content_type = (
+                (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            )
+            suffix = IMAGE_TYPES.get(content_type)
+            if suffix is None:
+                raise FeedError(
+                    f"Artwork is not an image ({content_type or 'unknown type'})"
+                )
+            data = response.read(MAX_ARTWORK_BYTES + 1)
+    except FeedError:
+        raise
+    except Exception as error:
+        raise FeedError(f"Could not fetch the artwork: {error}") from error
+    if len(data) > MAX_ARTWORK_BYTES:
+        raise FeedError("Artwork is implausibly large")
+    if not data:
+        raise FeedError("Artwork was empty")
+
+    name = f"{uuid.uuid4()}{suffix}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / name).write_bytes(data)
+    return name, content_type, len(data)
 
 
 # The Podcasting 2.0 namespace, which is written both ways in the wild: the

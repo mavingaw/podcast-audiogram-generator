@@ -13,6 +13,8 @@ export type MediaAsset = {
   size_bytes: number;
   duration_seconds: number | null;
   has_transcript: boolean;
+  /** The show's artwork, when this came from a feed. */
+  artwork_media_id?: string | null;
   has_waveform: boolean;
   transcript: Transcript | null;
 };

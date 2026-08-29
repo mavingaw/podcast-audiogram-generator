@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import logging
 import subprocess
 import threading
 import time
@@ -23,6 +24,11 @@ from app.services.media import ffprobe_media, synthetic_transcript
 from app.services.music_bed import MusicBed, audio_filters
 from app.services.waveform import WaveformError, extract_peaks
 from app.services.waveform import duration_of as waveform_duration
+
+# Four failure paths called `log.warning` with no `log` defined, so a failed
+# feed schedule, automatic clip, speaker detection or artwork fetch raised
+# NameError instead of the warning — turning a soft failure into a hard one.
+log = logging.getLogger(__name__)
 from app.services.waveform import resample as resample_peaks
 from app.services.music_bed import from_scene as music_bed_from_scene
 from app.services.plates import Plates, bake as bake_plates
@@ -395,6 +401,8 @@ def _check_feeds(db, job: Job) -> None:
         feed.last_error = None
         if parsed is not None and getattr(parsed.feed, "title", None):
             feed.title = str(parsed.feed.title)[:200]
+        if parsed is not None:
+            _refresh_feed_artwork(db, feed, parsed, job.owner_id)
 
         if changed:
             known = {
@@ -423,6 +431,7 @@ def _check_feeds(db, job: Job) -> None:
                          "title": bite.title}
                         for bite in item.soundbites
                     ]) if item.soundbites else None,
+                    artwork_url=item.image_url,
                 )
                 db.add(record)
                 db.flush()
@@ -435,10 +444,77 @@ def _check_feeds(db, job: Job) -> None:
                 feed.last_guid = fresh[0].guid
         db.commit()
 
+    _backfill_artwork(db, job.owner_id)
+
     message = f"Checked {checked} feed(s); {queued} new episode(s)"
     if errors:
         message += f"; {len(errors)} failed"
     _finish(db, job, message, {"checked": checked, "queued": queued, "errors": errors})
+
+
+def _store_artwork(db, owner_id: str, url: str, label: str):
+    """Fetch an image URL into the library as an image asset, or None."""
+    from app.services import feeds as feedservice
+
+    try:
+        name, content_type, size = feedservice.download_image(
+            url, settings.uploads_dir
+        )
+    except Exception as error:
+        log.warning("artwork for %s not fetched: %s", label, error)
+        return None
+    asset = MediaAsset(
+        owner_id=owner_id,
+        original_name=f"{label[:180]} artwork{Path(name).suffix}",
+        stored_name=name,
+        content_type=content_type,
+        size_bytes=size,
+    )
+    db.add(asset)
+    db.flush()
+    return asset
+
+
+def _refresh_feed_artwork(db, feed, parsed, owner_id: str) -> None:
+    """Keep the feed's artwork current.
+
+    Fetched when first seen and again only if the feed changes the URL, which
+    is how shows update their logo. A fetch that fails leaves the previous
+    artwork in place rather than removing it.
+    """
+    from app.services import feeds as feedservice
+
+    url = feedservice.artwork_of(parsed)
+    if not url or (url == feed.artwork_url and feed.artwork_media_id):
+        return
+    asset = _store_artwork(db, owner_id, url, feed.title or "Podcast")
+    if asset is not None:
+        feed.artwork_url = url
+        feed.artwork_media_id = asset.id
+
+
+def _backfill_artwork(db, owner_id: str) -> None:
+    """Give already-imported episodes the show artwork they missed.
+
+    Episodes imported before the artwork was fetched — including every one
+    imported before this existed — have media with no artwork. The show's is
+    the right answer for them, and it costs one query.
+    """
+    from app.db.models import Feed, FeedEpisode
+
+    rows = db.execute(
+        select(FeedEpisode, Feed)
+        .join(Feed, Feed.id == FeedEpisode.feed_id)
+        .where(
+            Feed.owner_id == owner_id,
+            FeedEpisode.media_id.is_not(None),
+            Feed.artwork_media_id.is_not(None),
+        )
+    ).all()
+    for episode, feed in rows:
+        media = db.get(MediaAsset, episode.media_id)
+        if media is not None and media.artwork_media_id is None:
+            media.artwork_media_id = feed.artwork_media_id
 
 
 def _import_episode(db, job: Job) -> None:
@@ -487,6 +563,15 @@ def _import_episode(db, job: Job) -> None:
     db.flush()
     record.media_id = media.id
     record.status = "imported"
+
+    # The episode's own artwork when the feed gives it one, otherwise the
+    # show's. Every clip cut from this media inherits it as its background.
+    artwork = None
+    if record.artwork_url and record.artwork_url != feed.artwork_url:
+        artwork = _store_artwork(db, job.owner_id, record.artwork_url, record.title)
+    media.artwork_media_id = (
+        artwork.id if artwork is not None else feed.artwork_media_id
+    )
 
     # The same follow-on work an upload gets.
     for kind in (JobKind.analyze_media, JobKind.waveform, JobKind.transcribe):
@@ -663,6 +748,7 @@ def _auto_clip(db, job: Job, media: MediaAsset) -> int:
             source="feed",
             review_state="pending",
             soundbites=json.loads(episode.soundbites_json or "[]"),
+            artwork_media_id=media.artwork_media_id,
         )
         return len(made)
     except Exception as error:

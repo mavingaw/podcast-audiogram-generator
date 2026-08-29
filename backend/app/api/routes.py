@@ -193,6 +193,7 @@ def serialize_media(media: MediaAsset) -> dict:
         "duration_seconds": media.duration_seconds,
         "created_at": media.created_at.isoformat(),
         "has_transcript": bool(media.transcript_json),
+        "artwork_media_id": media.artwork_media_id,
         "transcript": json.loads(media.transcript_json) if media.transcript_json else None,
     }
 
@@ -916,6 +917,7 @@ def batch_clips(
             media=media,
             count=payload.count,
             soundbites=_soundbites_for(db, media),
+            artwork_media_id=media.artwork_media_id,
             aspect_ratio=payload.aspect_ratio,
             template_id=payload.template_id,
             render=payload.render,

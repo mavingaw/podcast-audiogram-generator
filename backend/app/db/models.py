@@ -83,6 +83,12 @@ class MediaAsset(Base):
     # Peak envelope for the editor's waveform; see app.services.waveform.
     peaks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The show's artwork, when this media came from a feed: an image asset in
+    # the same table, used as the background and the artwork slot of every clip
+    # cut from it. A podcast's logo is the one image guaranteed to exist.
+    artwork_media_id: Mapped[str | None] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
 
     owner: Mapped[User] = relationship()
@@ -214,6 +220,12 @@ class Feed(Base):
     last_modified: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_checked: Mapped[datetime | None] = mapped_column(nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Channel artwork from <itunes:image> (or <image><url>), fetched once and
+    # refetched when the URL changes.
+    artwork_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    artwork_media_id: Mapped[str | None] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True
+    )
 
     # What to do with a new episode.
     active: Mapped[bool] = mapped_column(default=True)
@@ -276,4 +288,6 @@ class FeedEpisode(Base):
     # publisher may have edited the feed, and these are worth more than any
     # clip this application can pick on its own.
     soundbites_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Episode-level <itunes:image>, which overrides the channel's when present.
+    artwork_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)

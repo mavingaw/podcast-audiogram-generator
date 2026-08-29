@@ -427,12 +427,22 @@ export function App() {
       item ? item.original_name.replace(/\.[^.]+$/, "") : "Untitled audiogram",
       item?.id,
     );
+    // A feed episode carries the show's artwork; a clip cut from it should
+    // never open on a flat colour when the logo is right there. It goes in
+    // both places it belongs: the background, blurred and dimmed so captions
+    // stay legible, and the artwork slot, sharp.
+    const artwork = item?.artwork_media_id ?? null;
     const scene = {
       ...result.project.scene,
       background: template.background,
       accent: template.accent,
       template: template.id,
-      layers: defaultLayers(ratio),
+      layers: defaultLayers(ratio).map((layer) =>
+        layer.type === "artwork" && artwork ? { ...layer, mediaId: artwork } : layer,
+      ),
+      ...(artwork
+        ? { backgroundImage: { mediaId: artwork, blur: 22, dim: 0.45 } }
+        : {}),
     };
     const saved = await api.updateProject(result.project, {
       aspect_ratio: ratio as Project["aspect_ratio"],

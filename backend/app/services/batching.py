@@ -100,6 +100,33 @@ def suggestions_for(
     return picked
 
 
+def with_artwork(scene: dict, artwork_media_id: str) -> dict:
+    """Put the show's artwork into a scene that has none of its own.
+
+    Both places it belongs: the background, blurred and dimmed so captions
+    stay legible over it, and the artwork slot, sharp. A template that already
+    carries a background image or artwork keeps it — that was a deliberate
+    choice, and a feed's logo should fill a gap, not overrule one.
+    """
+    scene = dict(scene)
+    background = scene.get("backgroundImage")
+    if not (isinstance(background, dict) and background.get("mediaId")):
+        scene["backgroundImage"] = {
+            "mediaId": artwork_media_id, "blur": 22, "dim": 0.45,
+        }
+    layers = scene.get("layers")
+    if isinstance(layers, list):
+        scene["layers"] = [
+            {**layer, "mediaId": artwork_media_id}
+            if isinstance(layer, dict)
+            and layer.get("type") == "artwork"
+            and not layer.get("mediaId")
+            else layer
+            for layer in layers
+        ]
+    return scene
+
+
 def make_clips(
     db,
     owner_id: str,
@@ -111,6 +138,7 @@ def make_clips(
     source: str = "manual",
     review_state: str = "approved",
     soundbites: list[dict] | None = None,
+    artwork_media_id: str | None = None,
 ) -> list[Project]:
     """Create clip projects from an episode's best moments.
 
@@ -157,6 +185,8 @@ def make_clips(
         scene = dict(design) if design else {}
         if design and source_ratio != aspect_ratio:
             scene = remap_scene(scene, source_ratio, aspect_ratio)
+        if artwork_media_id:
+            scene = with_artwork(scene, artwork_media_id)
 
         project = Project(
             owner_id=owner_id,
