@@ -466,3 +466,44 @@ def test_check_now_does_not_wait_for_the_interval(monkeypatch, tmp_path):
         job = db.query(Job).filter(Job.kind == JobKind.check_feeds).order_by(Job.created_at.desc()).first()
         jobs._check_feeds(db, job)
     assert calls, "the feed was skipped as not yet due"
+
+
+
+def test_older_episodes_can_be_pulled_deliberately(monkeypatch, tmp_path):
+    """First sight takes the newest only; this is the on-purpose version."""
+    client = signed_in(monkeypatch, tmp_path)
+    stub_feed(monkeypatch)
+    body = client.post("/api/feeds", json={"url": "https://example.com/f.xml"}).json()
+    feed_id = body["feed"]["id"] if "feed" in body else body["id"]
+
+    import app.services.feeds as service
+    from app.db.models import FeedEpisode, Job, JobKind
+    from app.db.session import SessionLocal
+
+    many = [entry(guid=f"g{i}", title=f"Episode {i}") for i in range(12)]
+    monkeypatch.setattr(
+        service, "fetch",
+        lambda url, etag=None, modified=None: (Parsed(many), None, None, True, None),
+    )
+    # Pretend the newest was already imported by the first check.
+    with SessionLocal() as db:
+        db.add(FeedEpisode(feed_id=feed_id, guid="g0", title="Episode 0", enclosure_url="x"))
+        db.commit()
+
+    result = client.post(f"/api/feeds/{feed_id}/import", json={"count": 3}).json()
+    assert [q["title"] for q in result["queued"]] == ["Episode 1", "Episode 2", "Episode 3"]
+    assert result["remaining"] == 8
+    with SessionLocal() as db:
+        assert db.query(Job).filter(Job.kind == JobKind.import_episode).count() == 3
+
+    # Pressing again continues from where it left off; nothing is queued twice.
+    again = client.post(f"/api/feeds/{feed_id}/import", json={"count": 3}).json()
+    assert [q["title"] for q in again["queued"]] == ["Episode 4", "Episode 5", "Episode 6"]
+
+
+def test_pulling_older_episodes_is_capped(monkeypatch, tmp_path):
+    client = signed_in(monkeypatch, tmp_path)
+    stub_feed(monkeypatch)
+    body = client.post("/api/feeds", json={"url": "https://example.com/f.xml"}).json()
+    feed_id = body["feed"]["id"] if "feed" in body else body["id"]
+    assert client.post(f"/api/feeds/{feed_id}/import", json={"count": 400}).status_code == 422

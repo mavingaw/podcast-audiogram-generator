@@ -2418,3 +2418,8 @@
   .field-row { display: flex; gap: var(--s-2); }
   .field-row label { flex: 1 1 0; min-width: 0; }
 }
+
+@layer views {
+  .feed-import-older { display: flex; gap: var(--s-2); align-items: center; margin-top: var(--s-2); }
+  .feed-import-older select { width: auto; }
+}

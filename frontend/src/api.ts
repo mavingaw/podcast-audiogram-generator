@@ -603,6 +603,12 @@ export const api = {
     }),
   deleteFeed: (feedId: string) =>
     request<{ ok: boolean }>(`/api/feeds/${feedId}`, { method: "DELETE" }),
+  /** Queue the next `count` newest episodes this feed has not imported. */
+  importOlder: (feedId: string, count: number) =>
+    request<{ queued: { id: string; title: string }[]; remaining: number }>(
+      `/api/feeds/${feedId}/import`,
+      { method: "POST", body: JSON.stringify({ count }) },
+    ),
   checkFeeds: () => request<{ job: Job }>("/api/feeds/check", { method: "POST" }),
   feedEpisodes: (feedId: string) =>
     request<{ episodes: FeedEpisode[] }>(`/api/feeds/${feedId}/episodes`),

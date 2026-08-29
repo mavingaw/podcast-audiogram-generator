@@ -3741,6 +3741,9 @@ function Feeds({
   jobs: Job[];
   onReload: () => Promise<void>;
 }) {
+  const [olderCount, setOlderCount] = useState<Record<string, number>>({});
+  const [pulling, setPulling] = useState<string | null>(null);
+  const [importNote, setImportNote] = useState<string | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3898,6 +3901,49 @@ function Feeds({
                 )}
               </div>
 
+              <div className="feed-import-older">
+                <select
+                  value={olderCount[feed.id] ?? 5}
+                  onChange={(e) =>
+                    setOlderCount((current) => ({ ...current, [feed.id]: Number(e.target.value) }))
+                  }
+                >
+                  {[1, 3, 5, 10, 25].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <button
+                  className="ghost-button"
+                  disabled={pulling === feed.id}
+                  onClick={async () => {
+                    // First sight of a feed takes the newest episode only, on
+                    // purpose. This is the deliberate way to reach back.
+                    setPulling(feed.id);
+                    setImportNote(null);
+                    try {
+                      const result = await api.importOlder(feed.id, olderCount[feed.id] ?? 5);
+                      setImportNote(
+                        result.queued.length
+                          ? `Queued ${result.queued.length} older episode${result.queued.length === 1 ? "" : "s"}` +
+                            (result.remaining ? ` — ${result.remaining} more available` : "") +
+                            ". Each downloads, transcribes and cuts itself into clips."
+                          : "Nothing older left to import.",
+                      );
+                      if (episodes[feed.id]) {
+                        const fresh = await api.feedEpisodes(feed.id);
+                        setEpisodes((current) => ({ ...current, [feed.id]: fresh.episodes }));
+                      }
+                    } catch (error) {
+                      setImportNote(error instanceof Error ? error.message : "Could not import.");
+                    } finally {
+                      setPulling(null);
+                    }
+                  }}
+                >
+                  {pulling === feed.id ? "Reading feed…" : "Import older episodes"}
+                </button>
+              </div>
+              {importNote && <small className="muted">{importNote}</small>}
               <button
                 className="ghost-button feed-episodes-toggle"
                 onClick={async () => {

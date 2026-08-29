@@ -1630,6 +1630,69 @@ def check_feeds_now(
     return {"job": serialize_job(job)}
 
 
+class ImportOlderRequest(BaseModel):
+    count: int = Field(default=5, ge=1, le=50)
+
+
+@router.post("/feeds/{feed_id}/import")
+def import_older_episodes(
+    feed_id: str,
+    payload: ImportOlderRequest,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Pull the next N newest episodes that have not been imported.
+
+    A feed's first sight takes only the newest episode on purpose — a show
+    with 400 back-episodes must not enqueue 400 transcriptions by accident.
+    This is the deliberate version: read the feed now, skip what is already
+    known, and queue the next few, newest first. Capped at 50 a press.
+    """
+    from app.services import feeds as feedservice
+
+    feed = db.get(Feed, feed_id)
+    if not feed or feed.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    try:
+        parsed, _etag, _modified, _changed, raw = feedservice.fetch(feed.url, None, None)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Could not read the feed: {error}") from error
+
+    known = {
+        row.guid for row in db.scalars(
+            select(FeedEpisode).where(FeedEpisode.feed_id == feed.id)
+        ).all()
+    }
+    queued = []
+    for item in feedservice.episodes_of(parsed, raw):
+        if item.guid in known:
+            continue
+        record = FeedEpisode(
+            feed_id=feed.id, guid=item.guid, title=item.title,
+            published=item.published, enclosure_url=item.url,
+            soundbites_json=json.dumps([
+                {"start": b.start, "duration": b.duration, "title": b.title}
+                for b in item.soundbites
+            ]) if item.soundbites else None,
+            artwork_url=item.image_url,
+        )
+        db.add(record)
+        db.flush()
+        db.add(Job(
+            owner_id=user.id, kind=JobKind.import_episode,
+            subject_id=record.id, message=f"Queued {item.title[:60]}",
+        ))
+        queued.append({"id": record.id, "title": item.title})
+        if len(queued) >= payload.count:
+            break
+    db.commit()
+    if queued:
+        start_worker_once()
+    return {"queued": queued, "remaining": max(0, sum(
+        1 for item in feedservice.episodes_of(parsed, raw) if item.guid not in known
+    ) - len(queued))}
+
+
 @router.get("/feeds/{feed_id}/episodes")
 def feed_episodes(
     feed_id: str,
