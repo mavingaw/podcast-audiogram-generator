@@ -740,6 +740,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ title, media_id }),
     }),
+  /** The clip's own audio for the Studio player: cut server-side, cached,
+   *  under a megabyte. Keyed by the range so moving an edge refetches. */
+  projectPreviewUrl: (projectId: string, start: number, end: number) =>
+    `/api/projects/${projectId}/preview.m4a?r=${start.toFixed(3)}-${end.toFixed(3)}`,
   updateProject: (project: Project, updates: Partial<Project>) =>
     request<{ project: Project }>(`/api/projects/${project.id}`, {
       method: "PATCH",

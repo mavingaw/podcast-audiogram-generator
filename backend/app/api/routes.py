@@ -647,6 +647,61 @@ def media_file(media_id: str, db: Annotated[Session, Depends(get_db)], user: Ann
     return FileResponse(path, media_type=media.content_type, filename=media.original_name)
 
 
+@router.get("/projects/{project_id}/preview.m4a")
+def project_preview_audio(
+    project_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+):
+    """The clip's own audio, and nothing else, for the Studio player.
+
+    Studio used to play the full episode file and seek into it. From outside
+    the LAN that meant pulling a 90 MB MP3 through the tunnel before the
+    first second of preview would play, and the scrubber ran over ninety
+    minutes of audio the clip did not contain. This is the clip cut out
+    server-side — a 45-second clip is under a megabyte — so Studio opens at
+    once and its timeline is the clip's, 0 to its length.
+
+    Cached per (media, start, end) under the work directory, so moving the
+    clip edges produces a new file and every reopen of the same clip is a
+    file read. Not the render: no cuts, no music, no loudness pass. Those
+    are what the export is for; this is what you scrub.
+    """
+    import subprocess
+
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id or not project.media_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    media = db.get(MediaAsset, project.media_id)
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
+    source = contained_path(settings.uploads_dir, settings.uploads_dir / media.stored_name)
+    if not source.exists():
+        raise HTTPException(status_code=404, detail="Media file not found")
+
+    start = max(0.0, float(project.clip_start))
+    end = max(start + 0.5, float(project.clip_end))
+    cache = settings.work_dir / "previews"
+    cache.mkdir(parents=True, exist_ok=True)
+    target = cache / f"{media.id}-{start:.3f}-{end:.3f}.m4a"
+    if not target.exists():
+        partial = target.with_suffix(".part.m4a")
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+             "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(source),
+             "-vn", "-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart",
+             str(partial)],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.returncode != 0 or not partial.exists():
+            raise HTTPException(
+                status_code=500,
+                detail="Could not cut the preview: " + (result.stderr or "ffmpeg failed").strip()[-300:],
+            )
+        partial.replace(target)
+    return FileResponse(target, media_type="audio/mp4", headers={"Cache-Control": "private, max-age=86400"})
+
+
 class SnapRequest(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(gt=0)

@@ -1897,8 +1897,9 @@ function Studio({
 
     let frame = 0;
     const follow = () => {
-      const now = element.currentTime;
-      if (now >= clipEnd) {
+      // The element plays the clip's own audio, so its clock starts at 0.
+      const now = clipStart + element.currentTime;
+      if (now >= clipEnd - 0.02 || element.ended) {
         element.pause();
         setPlaying(false);
         setPlayhead(clipEnd);
@@ -1926,7 +1927,7 @@ function Studio({
       // Guard against feeding the element a value it will reject before it has
       // metadata; it seeks on its own once loaded.
       try {
-        element.currentTime = clamped;
+        element.currentTime = clamped - clipStart;
       } catch {
         // Not seekable yet. The state is set either way.
       }
@@ -1966,7 +1967,7 @@ function Studio({
     const seek = () => {
       // readyState 1 is HAVE_METADATA: before that a seek is discarded.
       if (element.readyState >= 1) {
-        element.currentTime = clipStart;
+        element.currentTime = 0;
       }
     };
     seek();
@@ -2027,7 +2028,12 @@ function Studio({
     )?.text ?? null;
   const platform = String(project?.scene?.platform ?? "");
   const safeArea = SAFE_AREAS[platform] ?? null;
-  const sourceUrl = media ? api.mediaFileUrl(media.id) : "";
+  // The clip's own audio, not the episode. Studio used to play the whole
+  // file and seek into it: 90 MB through the tunnel before the first second
+  // played, and a scrubber over ninety minutes the clip did not contain.
+  const sourceUrl = project?.id && media
+    ? api.projectPreviewUrl(project.id, clipStart, clipEnd)
+    : "";
   const activeRender = jobs.find(
     (job) =>
       job.kind === "render" &&
@@ -2131,7 +2137,7 @@ function Studio({
     }
     // Resume from where the playhead is, unless it is already at the end.
     const from = playhead >= clipEnd - 0.05 ? clipStart : playhead;
-    element.currentTime = Math.max(clipStart, Math.min(clipEnd, from));
+    element.currentTime = Math.max(0, Math.min(clipEnd, from) - clipStart);
     await element.play().catch(() => undefined);
     setPlaying(true);
   }
@@ -2362,8 +2368,8 @@ function Studio({
             <div className="source-preview">
               <strong>{media.original_name}</strong>
               <small>
-                Full episode. Your clip is {formatTime(clipStart)}–
-                {formatTime(clipEnd)}; the player starts there.
+                Clip audio only: {formatTime(clipStart)}–{formatTime(clipEnd)}
+                of the episode, {formatTime(clipEnd - clipStart)} long.
               </small>
               {media.content_type.startsWith("video/") ? (
                 <video
@@ -2378,7 +2384,7 @@ function Studio({
                   // drift in the first place. This keeps the playhead honest
                   // when somebody scrubs the element's own controls.
                   onTimeUpdate={(e) => {
-                    if (!playing) setPlayhead(e.currentTarget.currentTime);
+                    if (!playing) setPlayhead(clipStart + e.currentTarget.currentTime);
                   }}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
@@ -2396,7 +2402,7 @@ function Studio({
                   // drift in the first place. This keeps the playhead honest
                   // when somebody scrubs the element's own controls.
                   onTimeUpdate={(e) => {
-                    if (!playing) setPlayhead(e.currentTarget.currentTime);
+                    if (!playing) setPlayhead(clipStart + e.currentTarget.currentTime);
                   }}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
