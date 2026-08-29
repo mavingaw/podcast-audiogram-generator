@@ -981,6 +981,42 @@ function QuickCreate({
           </label>
           {uploadError && <p className="form-error">{uploadError}</p>}
           {media.length > 0 && (
+            <div className="source-head">
+              <span className="sidebar-label">
+                Your library · {media.length}
+              </span>
+              {media.length > 1 && (
+                <button
+                  className="link-button"
+                  onClick={async () => {
+                    // Everything except what is selected, because the usual
+                    // reason to clear is a pile of old uploads sitting between
+                    // you and the file you actually want.
+                    const doomed = media.filter((m) => m.id !== source?.id);
+                    if (
+                      !window.confirm(
+                        `Remove ${doomed.length} file${doomed.length === 1 ? "" : "s"} from the library? Clips you have already made are kept.`,
+                      )
+                    )
+                      return;
+                    setUploadError(null);
+                    for (const item of doomed) {
+                      try {
+                        await api.deleteMedia(item.id);
+                      } catch {
+                        // One failure should not abandon the rest; whatever is
+                        // left is still listed afterwards.
+                      }
+                    }
+                    await onRefresh();
+                  }}
+                >
+                  Clear all but this one
+                </button>
+              )}
+            </div>
+          )}
+          {media.length > 0 && (
             <div className="source-list">
               {media.map((m) => (
                 <div
@@ -1891,6 +1927,27 @@ function Studio({
     start: clipStart,
     end: clipEnd,
   });
+  // Put the player on the clip.
+  //
+  // The element's src is the whole episode — it has to be, the clip is a range
+  // rather than a file — and a fresh element sits at 0:00. Opening a
+  // six-minute-in clip in Studio therefore played the top of the episode, with
+  // a scrubber over all forty-five minutes, which reads as the clip having been
+  // lost somewhere between the two screens. It never was: the range was stored
+  // correctly the whole time and nothing had moved the playhead to it.
+  useEffect(() => {
+    const element = mediaRef.current;
+    if (!element) return;
+    const seek = () => {
+      // readyState 1 is HAVE_METADATA: before that a seek is discarded.
+      if (element.readyState >= 1) {
+        element.currentTime = clipStart;
+      }
+    };
+    seek();
+    element.addEventListener("loadedmetadata", seek);
+    return () => element.removeEventListener("loadedmetadata", seek);
+  }, [project?.id, clipStart]);
   const accent = String(project?.scene?.accent ?? DEFAULT_ACCENT);
   const background = String(project?.scene?.background ?? DEFAULT_BACKGROUND);
   const clipDuration = Math.max(0.5, clipEnd - clipStart);
@@ -2206,6 +2263,10 @@ function Studio({
           {media && (
             <div className="source-preview">
               <strong>{media.original_name}</strong>
+              <small>
+                Full episode. Your clip is {formatTime(clipStart)}–
+                {formatTime(clipEnd)}; the player starts there.
+              </small>
               {media.content_type.startsWith("video/") ? (
                 <video
                   controls
