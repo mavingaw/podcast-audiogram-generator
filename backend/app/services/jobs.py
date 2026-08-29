@@ -14,7 +14,7 @@ from sqlalchemy import func, select, update
 from app.core.config import settings
 from app.db.models import AppSetting, Job, JobKind, JobStatus, MediaAsset, Project, SoundAsset
 from app.db.session import SessionLocal
-from app.services import cancellation, loudness
+from app.services import cancellation, cuts, loudness
 from app.services.cancellation import JobCancelled
 from app.services.encoders import select as select_encoder
 from app.services.gpu import discover_gpus
@@ -745,9 +745,49 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
             clip_end = source_seconds
 
     duration = min(clip_end - clip_start, 600.0)
+    clip_end = clip_start + duration
     transcript = json.loads(media.transcript_json) if media.transcript_json else synthetic_transcript(media.duration_seconds)
 
     scene = json.loads(project.scene_json or "{}")
+
+    # Words struck out of the transcript are removed from the audio here, in a
+    # pre-pass, and everything after this point works on the shortened file
+    # without knowing anything was taken out. See services/cuts.py for why the
+    # mapping lives in one place rather than in each downstream stage.
+    cut_spans = cuts.parse(scene.get("cuts"), clip_start, clip_end)
+    keep_spans: list[cuts.Span] = []
+    if cut_spans:
+        keep_spans = cuts.kept(cut_spans, clip_start, clip_end)
+        remaining = cuts.duration(keep_spans)
+        if remaining < cuts.MIN_REMAINING:
+            raise RuntimeError(
+                "There is almost nothing left after the cuts "
+                f"({remaining:.1f}s). Restore some words and try again."
+            )
+        _step(db, job, 15, "Applying transcript cuts")
+        cut_audio = work_dir / "cut.wav"
+        cuts.extract(media_path, cut_audio, keep_spans)
+        # Peaks are resampled per surviving span rather than sliced out of the
+        # clip array: a two-word cut is a fraction of one bar in a 240-bar
+        # waveform, and slicing would round it away entirely.
+        clip_peaks = []
+        for span in keep_spans:
+            share = max(1, round(240 * span.length / remaining))
+            clip_peaks.extend(
+                resample_peaks(media.peaks_json, share, span.start, span.end)
+            )
+        transcript = cuts.remap_transcript(transcript, keep_spans)
+        removed = duration - remaining
+        warnings.append(
+            f"{removed:.1f}s removed by {len(cut_spans)} transcript cut"
+            + ("s" if len(cut_spans) != 1 else "")
+        )
+        # From here on the source is the cut file and its timeline starts at 0.
+        media_path = cut_audio
+        clip_start = 0.0
+        duration = remaining
+        clip_end = remaining
+
     parsed_scene = parse_scene(scene, duration)
     bed, music_file, bed_credits = _resolve_music_bed(db, scene)
     # Dropping the bed keeps the clip renderable, but silently producing a
@@ -762,9 +802,10 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     )
     # The envelope styles draw from the clip's own peaks, so the waveform
     # matches exactly what the clipper showed when the clip was chosen.
-    clip_peaks = resample_peaks(
-        media.peaks_json, 240, clip_start, clip_start + duration
-    )
+    if not keep_spans:
+        clip_peaks = resample_peaks(
+            media.peaks_json, 240, clip_start, clip_start + duration
+        )
 
     _step(db, job, 20, "Building render plan")
     captions = _clip_captions(
@@ -785,7 +826,16 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
                 "media_id": media.id,
                 "title": project.title,
                 "source": media.original_name,
-                "clip": {"start": clip_start, "end": clip_start + duration, "duration": duration},
+                "clip": {
+                    "start": clip_start, "end": clip_start + duration,
+                    "duration": duration,
+                    # In source time, so the manifest describes the episode the
+                    # clip came from rather than the file that was rendered.
+                    "cuts": [
+                        {"start": round(span.start, 3), "end": round(span.end, 3)}
+                        for span in cut_spans
+                    ],
+                },
                 "aspect_ratio": project.aspect_ratio,
                 "scene": scene,
                 "music": _music_manifest(bed, music_file),
@@ -907,6 +957,11 @@ def _publish_render(work_dir: Path, output_dir: Path) -> None:
     for produced in sorted(work_dir.iterdir()):
         if produced.is_dir() or produced.name.startswith("plate-"):
             # Plates are an implementation detail of the render, not an output.
+            continue
+        if produced.name == "cut.wav":
+            # The transcript-cut audio is scratch, and it is uncompressed: left
+            # in place it would park a hundred megabytes per project in the
+            # outputs directory forever, downloadable and useless.
             continue
         target = output_dir / produced.name
         target.unlink(missing_ok=True)

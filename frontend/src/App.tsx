@@ -539,8 +539,8 @@ export function App() {
             media={media}
             jobs={jobs}
             selectedMedia={selectedMedia}
-            onUpload={async (file) => {
-              const result = await api.uploadMedia(file);
+            onUpload={async (file, onProgress) => {
+              const result = await api.uploadMedia(file, onProgress);
               await loadData();
               return result.media;
             }}
@@ -834,7 +834,7 @@ function QuickCreate({
   media: MediaAsset[];
   jobs: Job[];
   selectedMedia: MediaAsset | null;
-  onUpload: (f: File) => Promise<MediaAsset>;
+  onUpload: (f: File, onProgress?: (fraction: number) => void) => Promise<MediaAsset>;
   onCreate: (
     r: Ratio,
     t: (typeof templates)[number],
@@ -846,6 +846,10 @@ function QuickCreate({
   const [step, setStep] = useState(0);
   const [ratio, setRatio] = useState<Ratio>("9:16");
   const [template, setTemplate] = useState(templates[0]);
+  const [upload, setUpload] = useState<{ name: string; fraction: number } | null>(
+    null,
+  );
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState(
     selectedMedia?.id ?? media[0]?.id ?? "",
   );
@@ -918,41 +922,114 @@ function QuickCreate({
             title="Choose your source"
             text="Upload local media. Analysis and transcription run in the background."
           />
-          <label className="upload-drop">
+          <label className={`upload-drop${upload ? " busy" : ""}`}>
             <Upload size={26} />
-            <strong>Upload episode media</strong>
-            <span>MP3, WAV, FLAC, M4A, MP4, MOV</span>
+            {upload ? (
+              <>
+                <strong>{upload.name}</strong>
+                <span>
+                  {upload.fraction >= 1
+                    ? "Finishing…"
+                    : `Uploading ${Math.round(upload.fraction * 100)}%`}
+                </span>
+                <div
+                  className="upload-bar"
+                  role="progressbar"
+                  aria-valuenow={Math.round(upload.fraction * 100)}
+                >
+                  <i style={{ width: `${Math.max(2, upload.fraction * 100)}%` }} />
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>Upload episode media</strong>
+                <span>MP3, WAV, FLAC, M4A, MP4, MOV</span>
+              </>
+            )}
             <input
               type="file"
               accept="audio/*,video/*"
+              disabled={upload !== null}
               onChange={async (e) => {
                 const f = e.target.files?.[0];
-                if (f) {
-                  const uploaded = await onUpload(f);
+                if (!f) return;
+                // Clearing the input lets the same file be chosen again after a
+                // failure; a browser fires no change event for an unchanged
+                // selection, so a retry would do nothing at all.
+                e.target.value = "";
+                setUploadError(null);
+                setUpload({ name: f.name, fraction: 0 });
+                try {
+                  const uploaded = await onUpload(f, (fraction) =>
+                    setUpload({ name: f.name, fraction }),
+                  );
                   setSourceId(uploaded.id);
+                } catch (error) {
+                  // Previously this threw into nothing: the upload failed, the
+                  // page looked idle, and there was no way to tell whether the
+                  // file had been rejected or the click had missed.
+                  setUploadError(
+                    error instanceof Error
+                      ? error.message
+                      : "The upload did not finish.",
+                  );
+                } finally {
+                  setUpload(null);
                 }
               }}
             />
           </label>
+          {uploadError && <p className="form-error">{uploadError}</p>}
           {media.length > 0 && (
             <div className="source-list">
               {media.map((m) => (
-                <button
-                  className={source?.id === m.id ? "selected" : ""}
+                <div
+                  className={`source-row${source?.id === m.id ? " selected" : ""}`}
                   key={m.id}
-                  onClick={() => setSourceId(m.id)}
                 >
-                  <FileAudio size={18} />
-                  <span>
-                    {m.original_name}
-                    <small>
-                      {m.has_transcript
-                        ? "Transcript ready"
-                        : "Analyzing media"}
-                    </small>
-                  </span>
-                  {source?.id === m.id && <b>✓</b>}
-                </button>
+                  <button onClick={() => setSourceId(m.id)}>
+                    <FileAudio size={18} />
+                    <span>
+                      {m.original_name}
+                      <small>
+                        {m.has_transcript
+                          ? "Transcript ready"
+                          : "Analyzing media"}
+                      </small>
+                    </span>
+                    {source?.id === m.id && <b>✓</b>}
+                  </button>
+                  <button
+                    className="source-remove"
+                    title={`Remove ${m.original_name}`}
+                    aria-label={`Remove ${m.original_name}`}
+                    onClick={async () => {
+                      // Deleting a source does not delete the clips made from
+                      // it, so this is not the destructive act it looks like;
+                      // it is still worth confirming, because the file itself
+                      // is gone and would have to be uploaded again.
+                      if (
+                        !window.confirm(
+                          `Remove ${m.original_name} from the library? Clips you have already made from it are kept.`,
+                        )
+                      )
+                        return;
+                      try {
+                        await api.deleteMedia(m.id);
+                        if (source?.id === m.id) setSourceId("");
+                        await onRefresh();
+                      } catch (error) {
+                        setUploadError(
+                          error instanceof Error
+                            ? error.message
+                            : "That file could not be removed.",
+                        );
+                      }
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               ))}
             </div>
           )}

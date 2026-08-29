@@ -55,6 +55,7 @@ from app.services.waveform import MAX_BUCKETS as MAX_PEAK_BUCKETS
 from app.services.waveform import decode as decode_peaks
 from app.services.waveform import duration_of as waveform_duration
 from app.services.waveform import resample as resample_peaks
+from app.services import chunked_upload
 from app.services.storage import UploadValidationError, contained_path, is_image, save_upload
 
 router = APIRouter(prefix="/api")
@@ -469,11 +470,27 @@ async def upload_media(
         stored_name, size = await save_upload(file)
     except UploadValidationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    media = MediaAsset(
-        owner_id=user.id,
+    return _register_upload(
+        db, user,
         original_name=file.filename or "upload.bin",
         stored_name=stored_name,
         content_type=file.content_type or "application/octet-stream",
+        size=size,
+    )
+
+
+def _register_upload(db, user, *, original_name: str, stored_name: str,
+                     content_type: str, size: int) -> dict:
+    """Put a saved file into the library and queue the work it needs.
+
+    Shared by the single-request and chunked upload paths so that a file that
+    arrived in pieces is indistinguishable afterwards from one that did not.
+    """
+    media = MediaAsset(
+        owner_id=user.id,
+        original_name=original_name,
+        stored_name=stored_name,
+        content_type=content_type,
         size_bytes=size,
     )
     db.add(media)
@@ -492,6 +509,124 @@ async def upload_media(
     db.commit()
     start_worker_once()
     return {"media": serialize_media(media), "jobs": [serialize_job(job) for job in queued]}
+
+
+@router.post("/media/upload/begin")
+def begin_chunked_upload(
+    payload: dict,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Open a chunked upload.
+
+    Anything over about 100 MB cannot be posted in one request from outside the
+    LAN: Cloudflare rejects it at the edge before it reaches us. See
+    services/chunked_upload.py.
+    """
+    try:
+        session = chunked_upload.begin(
+            owner_id=user.id,
+            filename=str(payload.get("filename") or ""),
+            content_type=str(payload.get("content_type") or ""),
+            total_bytes=int(payload.get("total_bytes") or 0),
+        )
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        # A total_bytes that is not a number, mostly.
+        raise HTTPException(status_code=400, detail="Invalid upload request") from exc
+    return {
+        "upload_id": session.id,
+        "chunk_bytes": chunked_upload.CHUNK_BYTES,
+        "received": session.received,
+    }
+
+
+@router.put("/media/upload/{upload_id}/chunk/{index}")
+async def append_chunked_upload(
+    upload_id: str,
+    index: int,
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Append one slice, read from the raw body.
+
+    Raw rather than multipart: the body is the chunk and nothing else, so there
+    is no parser between the socket and the disk and no per-chunk filename to
+    disagree with the one the upload was opened under.
+    """
+    body = await request.body()
+    try:
+        session = chunked_upload.append(upload_id, user.id, index, body)
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return {
+        "received": session.received,
+        "total_bytes": session.total_bytes,
+        "next_index": session.next_index,
+    }
+
+
+@router.post("/media/upload/{upload_id}/finish")
+def finish_chunked_upload(
+    upload_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    try:
+        stored_name, size, session = chunked_upload.finish(upload_id, user.id)
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return _register_upload(
+        db, user, original_name=session.filename,
+        stored_name=stored_name, content_type=session.content_type, size=size,
+    )
+
+
+@router.delete("/media/upload/{upload_id}")
+def abort_chunked_upload(
+    upload_id: str,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    chunked_upload.abort(upload_id, user.id)
+    return {"ok": True}
+
+
+@router.delete("/media/{media_id}")
+def delete_media(
+    media_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Remove a file from the library, and its bytes from the disk.
+
+    Without this the library only ever grows: a mistaken upload, a duplicate
+    from a retried upload, a test file, all permanent and all still occupying
+    the disk. Projects that used it keep working — `media_id` is nullable and
+    already set to NULL on delete — so removing a source does not silently
+    destroy the clips someone made from it.
+    """
+    media = db.get(MediaAsset, media_id)
+    if media is None or media.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    using = db.scalars(
+        select(Project).where(Project.media_id == media.id)
+    ).all()
+
+    stored = media.stored_name
+    db.delete(media)
+    db.commit()
+
+    # The row goes first: an orphaned row pointing at a missing file is a
+    # broken library, while an orphaned file is only wasted space that the
+    # next delete of the same name would clear anyway.
+    try:
+        path = contained_path(settings.uploads_dir, settings.uploads_dir / stored)
+        path.unlink(missing_ok=True)
+    except (ValueError, OSError):
+        pass
+
+    return {"ok": True, "projects_affected": len(using)}
 
 
 @router.get("/media")

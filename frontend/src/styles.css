@@ -748,7 +748,25 @@
     transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
   }
   .source-list button:hover { background: var(--hover); }
+  /* The row is now a pair: choose the source, or remove it. The selected
+     state moved to the row so both halves are outlined together. */
+  .source-row { display: flex; gap: var(--s-2); align-items: stretch; }
+  .source-row > button:first-child { flex: 1; min-width: 0; }
+  .source-row.selected > button:first-child {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
   .source-list button.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .source-remove {
+    flex: 0 0 auto;
+    justify-content: center;
+    padding-inline: var(--s-3);
+    color: var(--text-muted);
+  }
+  .source-remove:hover {
+    color: var(--danger, #c2413a);
+    border-color: currentColor;
+  }
   .source-list span { display: grid; gap: 3px; flex: 1; min-width: 0; }
   .source-list small { font-size: 11.5px; color: var(--text-muted); }
   .source-list b { color: var(--accent-text); }
@@ -2205,4 +2223,25 @@
 @layer views {
   .fade-row { display: flex; gap: var(--s-3); }
   .fade-row label { flex: 1 1 0; min-width: 0; }
+}
+
+@layer views {
+  /* Uploading a large episode takes minutes; a drop zone that looks
+     unchanged the whole time reads as a button that did not work. */
+  .upload-drop.busy { cursor: progress; border-style: solid; }
+  .upload-bar {
+    width: min(320px, 80%);
+    height: 6px;
+    margin-top: var(--s-2);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 12%, transparent);
+    overflow: hidden;
+  }
+  .upload-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transition: width 180ms ease-out;
+  }
 }

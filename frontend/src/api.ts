@@ -407,6 +407,62 @@ export type Gpu = {
   driver: string;
 };
 
+/**
+ * The largest body worth sending as a single request.
+ *
+ * Cloudflare's free plan hard-refuses bodies over 100 MB, and that refusal
+ * happens at their edge, so nothing in this application can catch it or report
+ * it. 64 MB leaves room for the multipart wrapper and for the limit to be
+ * lower than documented on some path we do not control.
+ */
+const SINGLE_REQUEST_LIMIT = 64 * 1024 * 1024;
+
+/**
+ * Send one slice of a chunked upload, retrying a failure that may be transient.
+ *
+ * A single dropped chunk on a phone would otherwise throw away everything
+ * uploaded so far, which for an hour-long episode is the difference between a
+ * hiccup and starting again.
+ */
+async function sendChunk(
+  uploadId: string,
+  index: number,
+  slice: Blob,
+  attempts = 3,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(
+        `/api/media/upload/${uploadId}/chunk/${index}`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: slice,
+        },
+      );
+      if (response.ok) return;
+      const payload = await response
+        .json()
+        .catch(() => ({ detail: response.statusText }));
+      const message = errorMessage(payload.detail) || response.statusText;
+      // A rejected chunk is a rejected upload: out of order, expired, or over
+      // the size it declared. Retrying sends the same bytes to the same answer.
+      if (response.status !== 500 && response.status !== 502) {
+        throw new Error(message);
+      }
+      lastError = new Error(message);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("The upload was interrupted.");
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "include",
@@ -604,14 +660,73 @@ export const api = {
       `/api/media/${mediaId}/peaks?${query}`,
     );
   },
-  uploadMedia: (file: File) => {
-    const form = new FormData();
-    form.append("file", file);
-    return request<{ media: MediaAsset; jobs: Job[] }>("/api/media/upload", {
-      method: "POST",
-      body: form,
-    });
+  /**
+   * Upload a file, in pieces when it is large.
+   *
+   * Cloudflare's free plan refuses any request body over 100 MB at its own
+   * edge, so from outside the LAN a normal podcast episode never reached the
+   * server at all: no log line, no error from us, just a 413 from a machine in
+   * another country. Sending the file as several smaller requests goes under
+   * that limit, and gives real progress while it does.
+   *
+   * Small files still go in one request. Three round trips to move four
+   * megabytes is worse, and this path is exercised constantly by artwork.
+   */
+  uploadMedia: async (
+    file: File,
+    onProgress?: (fraction: number) => void,
+  ): Promise<{ media: MediaAsset; jobs: Job[] }> => {
+    if (file.size <= SINGLE_REQUEST_LIMIT) {
+      const form = new FormData();
+      form.append("file", file);
+      onProgress?.(0);
+      const result = await request<{ media: MediaAsset; jobs: Job[] }>(
+        "/api/media/upload",
+        { method: "POST", body: form },
+      );
+      onProgress?.(1);
+      return result;
+    }
+
+    const begun = await request<{ upload_id: string; chunk_bytes: number }>(
+      "/api/media/upload/begin",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type,
+          total_bytes: file.size,
+        }),
+      },
+    );
+
+    const size = begun.chunk_bytes;
+    const count = Math.ceil(file.size / size);
+    try {
+      for (let index = 0; index < count; index += 1) {
+        const slice = file.slice(index * size, Math.min(file.size, (index + 1) * size));
+        await sendChunk(begun.upload_id, index, slice);
+        onProgress?.((index + 1) / count);
+      }
+    } catch (error) {
+      // Take the partial file off the server's disk rather than leaving it for
+      // the sweeper: the user is standing right there and may retry at once.
+      await fetch(`/api/media/upload/${begun.upload_id}`, {
+        method: "DELETE",
+        credentials: "include",
+      }).catch(() => undefined);
+      throw error;
+    }
+
+    return request<{ media: MediaAsset; jobs: Job[] }>(
+      `/api/media/upload/${begun.upload_id}/finish`,
+      { method: "POST" },
+    );
   },
+  deleteMedia: (mediaId: string) =>
+    request<{ ok: boolean; projects_affected: number }>(`/api/media/${mediaId}`, {
+      method: "DELETE",
+    }),
   updateTranscript: (mediaId: string, transcript: Transcript) =>
     request<{ media: MediaAsset }>(`/api/media/${mediaId}/transcript`, {
       method: "PATCH",
