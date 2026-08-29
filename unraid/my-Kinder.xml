@@ -58,6 +58,18 @@
 
   <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="compute,utility,video" Mode="" Description="video is the capability NVENC needs. Omitting it is the usual reason hardware encoding is missing inside a container that otherwise sees the GPU." Type="Variable" Display="advanced" Required="true" Mask="false">compute,utility,video</Config>
 
+  <Config Name="OMP_NUM_THREADS" Target="OMP_NUM_THREADS" Default="8" Mode="" Description="This host has 64 hardware threads and an inference runtime that sizes its pool from the core count will create 64 workers, several of which busy-wait rather than block. The server, the job worker and the models share one process, so a spinning pool starves the loop that answers requests and every click in the browser appears to do nothing." Type="Variable" Display="advanced" Required="false" Mask="false">8</Config>
+
+  <Config Name="OMP_WAIT_POLICY" Target="OMP_WAIT_POLICY" Default="PASSIVE" Mode="" Description="Makes OpenMP worker threads sleep between jobs instead of spinning. Without it the process can sit at several hundred percent CPU with no job running at all." Type="Variable" Display="advanced" Required="false" Mask="false">PASSIVE</Config>
+
+  <Config Name="CT2_INTRA_THREADS" Target="CT2_INTRA_THREADS" Default="8" Mode="" Description="Thread cap for CTranslate2, which is what faster-whisper runs on." Type="Variable" Display="advanced" Required="false" Mask="false">8</Config>
+
+  <Config Name="ORT_DISABLE_SPINNING" Target="ORT_DISABLE_SPINNING" Default="1" Mode="" Description="Stops ONNX Runtime, used for speaker diarization, from busy-waiting between calls." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+
+  <Config Name="OPENBLAS_NUM_THREADS" Target="OPENBLAS_NUM_THREADS" Default="8" Mode="" Description="Thread cap for OpenBLAS." Type="Variable" Display="advanced" Required="false" Mask="false">8</Config>
+
+  <Config Name="MKL_NUM_THREADS" Target="MKL_NUM_THREADS" Default="8" Mode="" Description="Thread cap for MKL." Type="Variable" Display="advanced" Required="false" Mask="false">8</Config>
+
   <Config Name="PAS_CONFIG_DIR" Target="PAS_CONFIG_DIR" Default="/config" Mode="" Description="Where the app looks for its database." Type="Variable" Display="advanced" Required="true" Mask="false">/config</Config>
 
   <Config Name="PAS_DATA_DIR" Target="PAS_DATA_DIR" Default="/data" Mode="" Description="Where the app writes uploads and renders." Type="Variable" Display="advanced" Required="true" Mask="false">/data</Config>

@@ -32,6 +32,27 @@ services:
       # missing inside a container that otherwise sees the GPU.
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
 
+      # Thread caps for the inference runtimes.
+      #
+      # This host has 64 hardware threads, and a library that sizes its pool
+      # from the core count will happily create 64 workers — several of which
+      # busy-wait rather than block. The server, the job worker and the model
+      # all live in one process, so a pool that spins does not just waste CPU:
+      # it starves the loop that answers requests, and every click in the
+      # browser appears to do nothing. That happened, and from the outside it
+      # was indistinguishable from the UI being broken.
+      #
+      # Eight is comfortably more than any of this work can use in parallel and
+      # leaves the rest of the machine, and this application, responsive.
+      OMP_NUM_THREADS: "8"
+      OPENBLAS_NUM_THREADS: "8"
+      MKL_NUM_THREADS: "8"
+      # CTranslate2 (faster-whisper) and ONNX Runtime (diarization) both read
+      # their own variables before falling back to the core count.
+      CT2_INTRA_THREADS: "8"
+      ORT_DISABLE_SPINNING: "1"
+      OMP_WAIT_POLICY: PASSIVE
+
       # Access control. These must be declared here to reach the container:
       # a variable in .env feeds compose's own substitution, it is NOT passed
       # through to the process. PAS_SIGNUP_CODE sat in .env for a whole deploy
