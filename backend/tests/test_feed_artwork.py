@@ -281,3 +281,53 @@ def test_media_reports_its_artwork(monkeypatch, tmp_path):
     listed = {m["id"]: m for m in client.get("/api/media").json()["media"]}
     assert listed[episode_id]["artwork_media_id"] == logo_id
     assert listed[logo_id]["artwork_media_id"] is None
+
+
+def test_a_feed_without_artwork_yet_is_read_in_full(monkeypatch, tmp_path):
+    """A 304 carries no document; with the tokens sent, the logo of an
+    unchanged feed would wait for its next episode. That happened."""
+    from tests.test_api import create_test_client
+
+    client = create_test_client(monkeypatch, tmp_path)
+    client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"})
+
+    import app.api.routes as routes
+    import app.services.feeds as service
+    import app.services.jobs as jobs
+    from app.db.models import Feed, Job, JobKind, User
+    from app.db.session import SessionLocal
+
+    parsed = parsed_with(itunes="https://cdn/show.jpg")
+    monkeypatch.setattr(routes, "parse_feed_url", lambda url: parsed)
+    client.post("/api/feeds", json={"url": "https://example.com/f.xml"})
+
+    seen = {}
+
+    def fake_fetch(url, etag=None, modified=None):
+        seen["etag"], seen["modified"] = etag, modified
+        return parsed, "tag", "date", True, None
+
+    monkeypatch.setattr(service, "fetch", fake_fetch)
+    monkeypatch.setattr(service, "download_image",
+                        lambda url, target_dir: ("logo.jpg", "image/jpeg", 10))
+
+    with SessionLocal() as db:
+        feed = db.query(Feed).first()
+        feed.etag, feed.last_modified = "old-tag", "old-date"
+        owner = db.query(User).first()
+        job = Job(owner_id=owner.id, kind=JobKind.check_feeds)
+        db.add(job)
+        db.commit()
+        jobs._check_feeds(db, job)
+        db.commit()
+        assert seen == {"etag": None, "modified": None}, "tokens were sent"
+        assert db.query(Feed).first().artwork_media_id is not None
+
+        # Now that the artwork is held, the polite conditional GET returns.
+        job = Job(owner_id=owner.id, kind=JobKind.check_feeds)
+        db.add(job)
+        db.commit()
+        db.query(Feed).first().last_checked = None
+        db.commit()
+        jobs._check_feeds(db, job)
+        assert seen["etag"] == "tag"

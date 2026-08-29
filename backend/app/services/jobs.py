@@ -385,8 +385,15 @@ def _check_feeds(db, job: Job) -> None:
             continue
         _step(db, job, 10 + int(80 * index / max(1, len(watched))), f"Reading {feed.title}")
         try:
+            # A feed we hold no artwork for yet is read in full. A 304 carries
+            # no document, and with the conditional tokens sent the logo of an
+            # unchanged feed would wait for its next episode — which is what
+            # happened: the feed answered Not Modified and nothing ran.
+            unconditional = feed.artwork_media_id is None
             parsed, etag, modified, changed, raw = feedservice.fetch(
-                feed.url, feed.etag, feed.last_modified
+                feed.url,
+                None if unconditional else feed.etag,
+                None if unconditional else feed.last_modified,
             )
         except Exception as error:
             feed.last_error = str(error)[:500]
