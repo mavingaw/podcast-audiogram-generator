@@ -298,6 +298,19 @@ class Scene:
     # caption looks like now, and the word timings are already there.
     word_highlight: bool = True
 
+    # Nudge every caption earlier or later against the audio.
+    #
+    # Word timings come out of Whisper accurate to a few tens of milliseconds
+    # most of the time, and occasionally not: a noisy passage, an overlapping
+    # speaker, a hard accent. When a whole clip's captions sit consistently
+    # behind or ahead of the voice there is nothing to fix word by word, and
+    # re-transcribing rarely helps. One number does.
+    #
+    # Positive puts the captions later, which is the common direction — the
+    # transcriber tends to mark a word once it is confident, slightly after it
+    # began.
+    caption_offset: float = 0.0
+
     # The voice track's own level and edges.
     #
     # A clip cut out of the middle of an episode starts and ends abruptly, and
@@ -379,6 +392,9 @@ def parse(scene: dict | None, clip_duration: float) -> Scene:
         caption_preset=preset,
         caption_color=_color(scene.get("captionColor"), DEFAULT_CAPTION_COLOR),
         word_highlight=scene.get("wordHighlight") is not False,
+        # Bounded to a second either way: beyond that the captions belong to a
+        # different sentence, which is not a timing problem any more.
+        caption_offset=_clamp(_number(scene.get("captionOffset"), 0.0), -1.0, 1.0),
         # Bounded rather than trusted: a gain of +40dB or a fade longer than the
         # clip is a broken render, and a stored scene is not a promise.
         voice_gain_db=_clamp(_number(scene.get("voiceGainDb"), 0.0), -24.0, 12.0),

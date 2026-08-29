@@ -343,6 +343,29 @@ export function DesignPanel({
       </div>
 
       <div className="design-group">
+        <span className="sidebar-label">Caption timing</span>
+        <p className="muted">
+          Whisper marks a word once it is confident, which is usually a moment
+          after it began. Nudge the whole set if they read late or early.
+        </p>
+        <label>
+          {Number(scene.captionOffset ?? 0) === 0
+            ? "In step with the audio"
+            : `${Number(scene.captionOffset ?? 0) > 0 ? "Later" : "Earlier"} by ${Math.abs(Number(scene.captionOffset ?? 0)).toFixed(2)}s`}
+          <input
+            type="range"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={Number(scene.captionOffset ?? 0)}
+            onChange={(event) =>
+              void onScene({ captionOffset: Number(event.target.value) })
+            }
+          />
+        </label>
+      </div>
+
+      <div className="design-group">
         <span className="sidebar-label">Voice</span>
         <p className="muted">
           Every export is levelled to -14 LUFS, which platforms leave alone. These

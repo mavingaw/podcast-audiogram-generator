@@ -1968,12 +1968,31 @@ function Studio({
   // Split the transcript the same way the renderer will, then show whichever
   // line covers the playhead — so the preview reads like the export.
   const captionPreset = String(project?.scene?.captionPreset ?? "social");
+  const captionOffset = Number(project?.scene?.captionOffset ?? 0);
   const previewCaptions = useMemo(
-    () =>
-      captionLines(
+    () => {
+      const lines = captionLines(
         transcriptDraft, clipStart, clipEnd, captionCharBudget(captionPreset),
-      ),
-    [transcriptDraft, clipStart, clipEnd, captionPreset],
+      );
+      // The same shift the renderer applies, so adjusting the offset can be
+      // judged here rather than by exporting and watching. Mirrors
+      // _shift_captions in backend/app/services/jobs.py.
+      if (Math.abs(captionOffset) < 0.001) return lines;
+      const duration = clipEnd - clipStart;
+      return lines
+        .map((line) => ({
+          ...line,
+          start: line.start + captionOffset,
+          end: line.end + captionOffset,
+        }))
+        .filter((line) => line.end > 0 && line.start < duration)
+        .map((line) => ({
+          ...line,
+          start: Math.max(0, line.start),
+          end: Math.min(duration, line.end),
+        }));
+    },
+    [transcriptDraft, clipStart, clipEnd, captionPreset, captionOffset],
   );
   // A small lead-in tolerance: the first line often starts a few hundredths
   // in, and a playhead parked at 0 should still show it rather than the

@@ -820,6 +820,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     captions = _clip_captions(
         transcript, clip_start, clip_start + duration,
         max_chars=caption_char_budget(parsed_scene.caption_preset),
+        offset=parsed_scene.caption_offset,
     )
     srt_path = work_dir / "captions.srt"
     vtt_path = work_dir / "captions.vtt"
@@ -1572,8 +1573,43 @@ def _dimensions(aspect_ratio: str) -> tuple[int, int]:
     return 1080, 1920
 
 
+def _shift_captions(captions: list[dict], offset: float, duration: float) -> list[dict]:
+    """Move every caption against the audio by a fixed amount.
+
+    Applied after the lines are built rather than to the transcript, so the
+    offset changes when a line is *shown* without changing which words the clip
+    contains — shifting the transcript first would pull a different set of
+    words into the window and the caption text itself would change, which is
+    not what "the captions are slightly late" means.
+
+    Lines pushed off either end are clamped rather than dropped: a caption that
+    would start before the clip does still has words in it.
+    """
+    if abs(offset) < 0.001:
+        return captions
+    shifted = []
+    for caption in captions:
+        start = caption["start"] + offset
+        end = caption["end"] + offset
+        if end <= 0 or start >= duration:
+            continue
+        shifted.append({
+            **caption,
+            "start": max(0.0, start),
+            "end": min(duration, max(start + 0.2, end)),
+            "words": [
+                {**word,
+                 "start": max(0.0, word["start"] + offset),
+                 "end": min(duration, word["end"] + offset)}
+                for word in caption.get("words", [])
+            ] if caption.get("words") else caption.get("words"),
+        })
+    return shifted
+
+
 def _clip_captions(
-    transcript: dict, start: float, end: float, max_chars: int | None = None
+    transcript: dict, start: float, end: float, max_chars: int | None = None,
+    offset: float = 0.0,
 ) -> list[dict]:
     # A real transcript carries word timings, which let captions break on the
     # word rather than on the sentence — the difference between a readable
@@ -1581,7 +1617,7 @@ def _clip_captions(
     if any(segment.get("words") for segment in transcript.get("segments", [])):
         lines = caption_lines(transcript, start, end, max_chars=max_chars)
         if lines:
-            return lines
+            return _shift_captions(lines, offset, end - start)
 
     captions = []
     for segment in transcript.get("segments", []):
@@ -1597,7 +1633,7 @@ def _clip_captions(
             }
         )
     if captions:
-        return captions
+        return _shift_captions(captions, offset, end - start)
     return [{"start": 0.0, "end": max(0.5, end - start), "text": "Rendered locally with Kinder."}]
 
 
