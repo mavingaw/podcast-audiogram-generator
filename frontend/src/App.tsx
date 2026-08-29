@@ -71,6 +71,7 @@ import {
 import { DesignPanel } from "./DesignPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { SfxCue, SfxPanel } from "./SfxPanel";
+import { VoiceoverPanel } from "./VoiceoverPanel";
 import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./TranscriptCuts";
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
@@ -2087,7 +2088,9 @@ function Studio({
       if (firedRef.current.has(index)) return;
       if (localPlayhead >= cue.at && localPlayhead < cue.at + 0.35) {
         firedRef.current.add(index);
-        const audio = new Audio(`/api/library/sounds/${cue.soundId}/file`);
+        const audio = new Audio(
+          cue.mediaId ? `/api/media/${cue.mediaId}/file` : `/api/library/sounds/${cue.soundId}/file`,
+        );
         audio.volume = Math.max(0, Math.min(1, Math.pow(10, (cue.gainDb ?? 0) / 20) * 0.8));
         void audio.play().catch(() => undefined);
       }
@@ -2504,6 +2507,13 @@ function Studio({
             clipDuration={clipDuration}
             playhead={localPlayhead}
             onChange={(next) => void saveMusicBed(next)}
+          />
+          <VoiceoverPanel
+            projectId={project?.id ?? null}
+            playhead={localPlayhead}
+            clipDuration={clipDuration}
+            cues={sceneSfx}
+            onChange={(next) => void saveSfx(next)}
           />
           <SfxPanel
             cues={sceneSfx}

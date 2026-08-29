@@ -2431,3 +2431,8 @@
   .automation-list input[type="range"] { flex: 1; min-width: 0; }
   .automation-list small { width: 44px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 }
+
+@layer views {
+  .voiceover-panel .sidebar-label { display: flex; align-items: center; gap: 6px; }
+  .voiceover-panel .recording { color: #e5484d; border-color: currentColor; }
+}

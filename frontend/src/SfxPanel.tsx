@@ -16,7 +16,7 @@ import { play as playUi } from "./sfx";
  * and so a cue whose sound was later removed from the library still says
  * what it was.
  */
-export type SfxCue = { soundId: string; at: number; gainDb: number; title?: string };
+export type SfxCue = { soundId: string; at: number; gainDb: number; title?: string; mediaId?: string };
 
 export function SfxPanel({
   cues,

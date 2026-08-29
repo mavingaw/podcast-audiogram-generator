@@ -752,6 +752,16 @@ export const api = {
    *  under a megabyte. Keyed by the range so moving an edge refetches. */
   projectPreviewUrl: (projectId: string, start: number, end: number) =>
     `/api/projects/${projectId}/preview.m4a?r=${start.toFixed(3)}-${end.toFixed(3)}`,
+  /** Keep a recording made in Studio, without the episode's analysis jobs. */
+  saveVoiceover: (projectId: string, blob: Blob) => {
+    const form = new FormData();
+    const ext = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg" : "webm";
+    form.append("file", blob, `voiceover.${ext}`);
+    return request<{ media: MediaAsset }>(`/api/projects/${projectId}/voiceover`, {
+      method: "POST",
+      body: form,
+    });
+  },
   updateProject: (project: Project, updates: Partial<Project>) =>
     request<{ project: Project }>(`/api/projects/${project.id}`, {
       method: "PATCH",

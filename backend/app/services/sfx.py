@@ -22,9 +22,12 @@ MAX_GAIN_DB = 12.0
 
 @dataclass(frozen=True)
 class Cue:
+    # One of the two is set: a library sound, or a recording in the media
+    # library (a voice-over made in the browser).
     sound_id: str
     at: float
     gain_db: float = 0.0
+    media_id: str | None = None
 
 
 def parse(scene: dict | None, duration: float) -> list[Cue]:
@@ -39,7 +42,7 @@ def parse(scene: dict | None, duration: float) -> list[Cue]:
         return []
     cues: list[Cue] = []
     for item in raw:
-        if not isinstance(item, dict) or not item.get("soundId"):
+        if not isinstance(item, dict) or not (item.get("soundId") or item.get("mediaId")):
             continue
         try:
             at = float(item.get("at", 0.0))
@@ -49,7 +52,10 @@ def parse(scene: dict | None, duration: float) -> list[Cue]:
         if at != at or at < 0 or at >= duration:
             continue
         gain = max(MIN_GAIN_DB, min(MAX_GAIN_DB, gain))
-        cues.append(Cue(str(item["soundId"]), round(at, 3), round(gain, 2)))
+        cues.append(Cue(
+            str(item.get("soundId") or ""), round(at, 3), round(gain, 2),
+            media_id=str(item["mediaId"]) if item.get("mediaId") else None,
+        ))
         if len(cues) >= MAX_CUES:
             break
     cues.sort(key=lambda cue: cue.at)

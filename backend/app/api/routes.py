@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 import secrets
 import shutil
 import time
@@ -645,6 +646,54 @@ def media_file(media_id: str, db: Annotated[Session, Depends(get_db)], user: Ann
     if not path.exists():
         raise HTTPException(status_code=404, detail="Media file not found")
     return FileResponse(path, media_type=media.content_type, filename=media.original_name)
+
+
+@router.post("/projects/{project_id}/voiceover")
+async def save_voiceover(
+    project_id: str,
+    file: UploadFile,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Keep a recording made in Studio, so it can be placed on the clip.
+
+    Stored as an ordinary media asset — the same table, the same delete —
+    but without the analysis, waveform and transcription jobs an episode
+    gets: a ten-second aside does not need a transcript. The browser hands
+    over whatever MediaRecorder produced (webm/opus in Chrome, mp4 in
+    Safari); FFmpeg reads either at render time.
+    """
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    kind = (file.content_type or "").split(";")[0].strip().lower()
+    suffix = {"audio/webm": ".webm", "video/webm": ".webm", "audio/mp4": ".m4a",
+              "audio/ogg": ".ogg", "audio/wav": ".wav", "audio/x-wav": ".wav"}.get(kind)
+    if suffix is None:
+        raise HTTPException(status_code=415, detail="That recording format is not supported")
+    stored = f"{uuid.uuid4()}{suffix}"
+    target = contained_path(settings.uploads_dir, settings.uploads_dir / stored)
+    size = 0
+    with target.open("wb") as handle:
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > 64 * 1024 * 1024:
+                target.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="That recording is too large")
+            handle.write(chunk)
+    if size == 0:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="The recording was empty")
+    media = MediaAsset(
+        owner_id=user.id,
+        original_name=f"Voice-over for {project.title[:80]}{suffix}",
+        stored_name=stored,
+        content_type=kind,
+        size_bytes=size,
+    )
+    db.add(media)
+    db.commit()
+    return {"media": serialize_media(media)}
 
 
 @router.get("/projects/{project_id}/preview.m4a")

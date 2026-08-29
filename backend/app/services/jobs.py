@@ -1135,15 +1135,23 @@ def _resolve_sfx(db, scene: dict, duration: float):
     from app.services.library import credits_for
 
     for cue in cues:
-        sound = db.get(SoundAsset, cue.sound_id)
-        path = sound_path(sound) if sound is not None else None
-        if sound is None or path is None or not path.exists():
+        if cue.media_id:
+            # A recording of the owner's own: a voice-over made in Studio.
+            media = db.get(MediaAsset, cue.media_id)
+            path = (
+                contained_path(settings.uploads_dir, settings.uploads_dir / media.stored_name)
+                if media is not None else None
+            )
+        else:
+            sound = db.get(SoundAsset, cue.sound_id)
+            path = sound_path(sound) if sound is not None else None
+        if path is None or not path.exists():
             missing += 1
             continue
         resolved.append(sfx_service.ResolvedCue(path=path, at=cue.at, gain_db=cue.gain_db))
     if resolved:
         try:
-            credits = credits_for(db, [cue.sound_id for cue in cues])
+            credits = credits_for(db, [cue.sound_id for cue in cues if cue.sound_id])
         except Exception:
             credits = []
     return resolved, credits, missing
