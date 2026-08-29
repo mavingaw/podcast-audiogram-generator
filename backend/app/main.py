@@ -13,7 +13,35 @@ from app.services import retention, vitals
 from app.services.jobs import start_worker_once
 
 
+def configure_logging() -> None:
+    """Make the application's own log lines reach the container log.
+
+    Nothing configured Python logging, so every `log.warning` in the app —
+    a feed's artwork failing to fetch, the feed schedule failing, the vitals
+    sampler noticing the process spinning — went to loggers with no handler
+    and was never seen. uvicorn configures only its own loggers. The live
+    box was diagnosed by running the code by hand because the warning that
+    named the problem had been emitted and discarded.
+    """
+    import logging
+    import os
+
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(levelname)s: %(name)s: %(message)s")
+    )
+    root.addHandler(handler)
+    root.setLevel(os.getenv("PAS_LOG_LEVEL", "INFO").upper())
+    # These are noisy at INFO and say nothing about the application.
+    for chatty in ("httpx", "httpcore", "urllib3", "PIL"):
+        logging.getLogger(chatty).setLevel(logging.WARNING)
+
+
 def create_app() -> FastAPI:
+    configure_logging()
     ensure_directories()
     init_db()
 
