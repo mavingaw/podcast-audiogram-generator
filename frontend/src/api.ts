@@ -743,6 +743,15 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(updates),
     }),
+  revisions: (projectId: string) =>
+    request<{ revisions: { id: string; label: string; created_at: string }[] }>(
+      `/api/projects/${projectId}/revisions`,
+    ),
+  restoreRevision: (projectId: string, revisionId: string) =>
+    request<{ project: Project }>(
+      `/api/projects/${projectId}/revisions/${revisionId}/restore`,
+      { method: "POST" },
+    ),
   deleteProject: (projectId: string) =>
     request<{ ok: boolean }>(`/api/projects/${projectId}`, { method: "DELETE" }),
   renderProject: (project: Project, force = false) =>

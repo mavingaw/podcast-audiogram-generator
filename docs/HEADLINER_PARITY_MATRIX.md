@@ -128,7 +128,7 @@ copied implementation.
 | Multiple tracks | Text/media/audio/caption tracks can coexist. | One track per layer, each with its own start and end, honoured by the renderer via `enable='between(t,...)'`. | PASS | `frontend/src/App.tsx` | Add time-based layer model and tests. |
 | Track order controls stacking | Stacking is a separate ordered id list, independent of where entities are stored. | Array position is z-order, and the renderer composites in the same order. | PASS | `frontend/src/App.tsx` | Reorder layer, verify canvas and render stacking. Split `layers` into `layersById` plus `layerOrder` first; see `docs/HEADLINER_ARCHITECTURE_NOTES.md` section 2. |
 | Media and Style panels | Editor has panels for media and style controls. | Design, music, variants, templates, destinations, speakers and batch panels in the inspector. | PASS | `frontend/src/App.tsx` | Add media library panel, style controls, persistence tests. |
-| Revision history | Revert to previous project version. | Not available. | FAIL | Not implemented. | Save revisions, revert, verify scene restored. |
+| Revision history | Revert to previous project version. | A project keeps the state from before each change, labelled with what was done, restorable from Studio. Coalesced so a slider drag leaves one entry rather than one per frame, and restoring is itself recorded so it is not a one-way door. | PASS | `backend/app/services/revisions.py`, `frontend/src/HistoryPanel.tsx` | 25 tests: coalescing, the cap, per-project and per-owner isolation, and that a broken history cannot fail an edit. |
 
 ## Layers, Timing, and Templates
 

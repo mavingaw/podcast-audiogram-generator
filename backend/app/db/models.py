@@ -232,6 +232,29 @@ class Feed(Base):
     owner: Mapped[User] = relationship()
 
 
+class ProjectRevision(Base):
+    """How a project was, before something changed it.
+
+    Applying a template, cutting words out of the transcript, or running a
+    batch each rewrite a clip in one click. Each is worth having and none is
+    comfortable without a way back.
+    """
+
+    __tablename__ = "project_revisions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    # What the change was, in the words somebody would use about it.
+    label: Mapped[str] = mapped_column(String(80), default="Edited")
+    # Of the state, so the same state is never stored twice.
+    digest: Mapped[str] = mapped_column(String(32), default="")
+    state_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+
+
 class FeedEpisode(Base):
     """An episode seen in a feed, so it is never imported twice."""
 

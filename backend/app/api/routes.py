@@ -55,7 +55,7 @@ from app.services.waveform import MAX_BUCKETS as MAX_PEAK_BUCKETS
 from app.services.waveform import decode as decode_peaks
 from app.services.waveform import duration_of as waveform_duration
 from app.services.waveform import resample as resample_peaks
-from app.services import chunked_upload
+from app.services import chunked_upload, revisions
 from app.services.storage import UploadValidationError, contained_path, is_image, save_upload
 
 router = APIRouter(prefix="/api")
@@ -1075,10 +1075,70 @@ def update_project(
     if not project or project.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Project not found")
     updates = payload.model_dump(exclude_unset=True)
+
+    # Keep how it was before applying the change. Throttled, so dragging a
+    # slider produces one entry rather than one per frame; see
+    # services/revisions.py.
+    revisions.record(db, project, updates)
+
     if "scene" in updates:
         project.scene_json = json.dumps(updates.pop("scene"))
     for key, value in updates.items():
         setattr(project, key, value)
+    db.commit()
+    return {"project": serialize_project(project)}
+
+
+@router.get("/projects/{project_id}/revisions")
+def list_revisions(
+    project_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """The project's recent past, newest first."""
+    from app.db.models import ProjectRevision
+
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    rows = db.scalars(
+        select(ProjectRevision)
+        .where(ProjectRevision.project_id == project.id)
+        .order_by(ProjectRevision.created_at.desc())
+    ).all()
+    return {"revisions": [
+        {
+            "id": row.id,
+            "label": row.label,
+            "created_at": row.created_at.isoformat(),
+        }
+        for row in rows
+    ]}
+
+
+@router.post("/projects/{project_id}/revisions/{revision_id}/restore")
+def restore_revision(
+    project_id: str,
+    revision_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Put the project back to a recorded state.
+
+    The current state is recorded first, so reaching for history and landing
+    somewhere worse is not a one-way door.
+    """
+    from app.db.models import ProjectRevision
+
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    revision = db.get(ProjectRevision, revision_id)
+    if not revision or revision.project_id != project.id:
+        raise HTTPException(status_code=404, detail="Revision not found")
+
+    revisions.restore(db, project, revision)
     db.commit()
     return {"project": serialize_project(project)}
 

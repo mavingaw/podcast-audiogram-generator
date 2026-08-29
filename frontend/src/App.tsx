@@ -69,6 +69,7 @@ import {
   User,
 } from "./api";
 import { DesignPanel } from "./DesignPanel";
+import { HistoryPanel } from "./HistoryPanel";
 import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./TranscriptCuts";
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
@@ -301,6 +302,9 @@ export function App() {
   const [gpus, setGpus] = useState<Gpu[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [gpuSettings, setGpuSettings] = useState<Record<string, string>>({});
+  // Bumped after every save so the history list follows the edits rather than
+  // going stale until the panel is remounted.
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [saved, setSaved] = useState<SavedTemplate[]>([]);
@@ -444,6 +448,10 @@ export function App() {
     setProjects(
       projects.map((p) => (p.id === result.project.id ? result.project : p)),
     );
+    // The server may or may not have recorded a revision for this change —
+    // it coalesces a burst into one — so the panel is told to look again
+    // rather than being handed a count to trust.
+    setHistoryVersion((current) => current + 1);
   }
   async function updateTranscript(mediaId: string, transcript: Transcript) {
     const result = await api.updateTranscript(mediaId, transcript);
@@ -564,6 +572,7 @@ export function App() {
             onTranscriptUpdate={updateTranscript}
             onMediaAdded={(asset) => setMedia((current) => [asset, ...current])}
             onReloadProjects={() => loadData()}
+            historyVersion={historyVersion}
             templates={saved}
             onSaveTemplate={async (name) => {
               if (!selected) return;
@@ -1806,6 +1815,7 @@ function Studio({
   onRender,
   onMediaAdded,
   onReloadProjects,
+  historyVersion,
   templates: saved,
   onSaveTemplate,
   onApplyTemplate,
@@ -1819,6 +1829,7 @@ function Studio({
   onRender: (force?: boolean) => Promise<string | null>;
   onMediaAdded: (asset: MediaAsset) => void;
   onReloadProjects: () => Promise<void>;
+  historyVersion: number;
   templates: SavedTemplate[];
   onSaveTemplate: (name: string) => Promise<void>;
   onApplyTemplate: (templateId: string) => Promise<void>;
@@ -2612,6 +2623,11 @@ function Studio({
               </button>
             </div>
           )}
+          <HistoryPanel
+            projectId={project?.id ?? null}
+            version={historyVersion}
+            onRestored={onReloadProjects}
+          />
           <div className="transcript-editor">
             <div className="inspector-heading">
               <span className="sidebar-label">Cut the clip</span>
