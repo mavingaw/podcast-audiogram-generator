@@ -197,3 +197,41 @@ def test_the_cookie_is_always_httponly(monkeypatch, tmp_path):
         "/api/auth/login", json={"username": "mujin", "password": "long-password"}
     )
     assert "httponly" in response.headers["set-cookie"].lower()
+
+
+
+def test_administrators_can_see_the_invite_link(monkeypatch, tmp_path):
+    """The code is only useful if the owner can hand it to somebody."""
+    from tests.test_api import create_test_client, register_second_user
+
+    client = create_test_client(monkeypatch, tmp_path)
+    client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"})
+    import dataclasses
+
+    import app.api.routes as routes
+
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, signup_code="SECRET1"))
+    body = client.get("/api/settings/invite", headers={"host": "kinder.example.com", "x-forwarded-proto": "https"}).json()
+    assert body["code"] == "SECRET1"
+    assert body["link"] == "https://kinder.example.com/?invite=SECRET1"
+
+    # A second, ordinary account: registration itself needs no code while
+    # the code is cleared, then it is put back to check the ordinary user
+    # cannot read it.
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, signup_code=""))
+    register_second_user(client, "friend")
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, signup_code="SECRET1"))
+    assert client.get("/api/settings/invite").status_code == 403
+
+
+def test_no_code_configured_means_no_link(monkeypatch, tmp_path):
+    from tests.test_api import create_test_client
+
+    client = create_test_client(monkeypatch, tmp_path)
+    client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"})
+    import dataclasses
+
+    import app.api.routes as routes
+
+    monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, signup_code=""))
+    assert client.get("/api/settings/invite").json() == {"code": None, "link": None}

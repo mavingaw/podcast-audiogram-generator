@@ -2436,3 +2436,8 @@
   .voiceover-panel .sidebar-label { display: flex; align-items: center; gap: 6px; }
   .voiceover-panel .recording { color: #e5484d; border-color: currentColor; }
 }
+
+@layer views {
+  .invite-link { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+  .invite-link input { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+}

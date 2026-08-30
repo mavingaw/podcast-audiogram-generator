@@ -526,12 +526,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
-  signupState: () => request<{ open: boolean }>("/api/auth/signup"),
-  register: (username: string, password: string) =>
+  signupState: () =>
+    request<{ open: boolean; code_required: boolean }>("/api/auth/signup"),
+  register: (username: string, password: string, code?: string) =>
     request<{ user: User }>("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, code: code || undefined }),
     }),
+  /** The sign-up code and a link carrying it; administrators only. */
+  inviteLink: () => request<{ code: string | null; link: string | null }>("/api/settings/invite"),
   setSignups: (open: boolean) =>
     request<{ open: boolean }>("/api/settings/signups", {
       method: "PUT",

@@ -4068,13 +4068,18 @@ function AdminStrip({
   const [password, setPassword] = useState("");
   const [signupsOpen, setSignupsOpen] = useState(true);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ code: string | null; link: string | null } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api
       .signupState()
       .then((state) => setSignupsOpen(state.open))
       .catch(() => undefined);
-  }, []);
+    if (isAdmin) {
+      api.inviteLink().then(setInvite).catch(() => setInvite(null));
+    }
+  }, [isAdmin]);
 
   return (
     <details className="admin-strip">
@@ -4139,6 +4144,33 @@ function AdminStrip({
           />
           Anyone can create an account
         </label>
+        {invite?.link && (
+          <div className="invite-link">
+            <span className="sidebar-label">Invite link</span>
+            <p className="muted">
+              Anyone with this link can create an account, even while sign-ups
+              are closed. Change the code in the container settings to revoke it.
+            </p>
+            <div className="mini-fields">
+              <input readOnly value={invite.link} onFocus={(e) => e.currentTarget.select()} />
+              <button
+                className="ghost compact"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(invite.link ?? "");
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 2000);
+                  } catch {
+                    // Clipboard is blocked outside secure contexts; the field
+                    // above selects on focus for a manual copy.
+                  }
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        )}
         <label>
           Transcription GPU
           <select
@@ -4176,14 +4208,28 @@ function AuthScreen({
   // Only offered when the instance allows it, so a closed box does not show a
   // tab that always fails.
   const [signupsOpen, setSignupsOpen] = useState(false);
+  const [codeRequired, setCodeRequired] = useState(false);
+  const [code, setCode] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (mode !== "login") return;
     api
       .signupState()
-      .then((state) => setSignupsOpen(state.open))
+      .then((state) => {
+        setSignupsOpen(state.open);
+        setCodeRequired(state.code_required);
+      })
       .catch(() => setSignupsOpen(false));
+    // A shared link carries the code: kinder.example.com/?invite=CODE opens
+    // straight onto the sign-up form with it filled in. Nobody has to be
+    // told where to type it.
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (invite) {
+      setCode(invite.trim());
+      setCreating(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, [mode]);
 
   const first = mode === "bootstrap";
@@ -4201,7 +4247,7 @@ function AuthScreen({
             const result = first
               ? await api.bootstrap(username, password)
               : registering
-                ? await api.register(username, password)
+                ? await api.register(username, password, code)
                 : await api.login(username, password);
             await onDone(result.user);
           } catch (cause) {
@@ -4254,6 +4300,20 @@ function AuthScreen({
             required
           />
         </label>
+        {registering && codeRequired && (
+          <label>
+            Invite code
+            <input
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="From whoever invited you"
+              required
+            />
+          </label>
+        )}
         {(first || registering) && (
           <p className="muted auth-hint">
             At least 10 characters. Usernames are 3–32 characters: letters,
@@ -4265,7 +4325,7 @@ function AuthScreen({
           {busy ? <Loader2 className="spin" size={17} /> : <LogIn size={17} />}
           {first ? "Initialize studio" : registering ? "Create account" : "Sign in"}
         </button>
-        {!first && signupsOpen && (
+        {!first && (signupsOpen || codeRequired) && (
           <button
             type="button"
             className="text-button"
@@ -4274,7 +4334,11 @@ function AuthScreen({
               setCreating((value) => !value);
             }}
           >
-            {registering ? "I already have an account" : "Create an account"}
+            {registering
+              ? "I already have an account"
+              : codeRequired && !signupsOpen
+                ? "I have an invite code"
+                : "Create an account"}
           </button>
         )}
       </form>

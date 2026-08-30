@@ -328,6 +328,28 @@ def signup_state(db: Annotated[Session, Depends(get_db)]) -> dict:
     return {"open": signups_open(db), "code_required": bool(signup_code_required())}
 
 
+@router.get("/settings/invite")
+def invite_link(
+    request: Request,
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """The sign-up code and a link that carries it, for the owner to share.
+
+    The code lives in the container's environment, which the person who set
+    it up can read and nobody else can; showing it to administrators in the
+    app is what makes it usable — a link to paste into a message rather than
+    a value to dig out of a template.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrators only")
+    code = signup_code_required()
+    if not code:
+        return {"code": None, "link": None}
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return {"code": code, "link": f"{proto}://{host}/?invite={code}"}
+
+
 @router.post("/auth/register")
 def register(
     payload: RegisterRequest,
