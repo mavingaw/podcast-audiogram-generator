@@ -2802,3 +2802,16 @@ html.large-text #root { zoom: 1.18; }
   .share-url { width: 240px; max-width: 100%; font-size: 12px; padding: 6px 8px; border-radius: var(--r-md); }
   .share-button .error { color: #ff8f8f; font-size: 12px; }
 }
+
+@layer views {
+  .ready-destinations { display: grid; gap: 6px; }
+  .ready-destinations-label { font-size: 12.5px; color: var(--text-muted); }
+  .ready-destinations-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .destination-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--r-full);
+    font-size: 12.5px; font-weight: 600; border: 1px solid var(--line); background: var(--surface-sunken);
+  }
+  .destination-chip.ok { color: #9be7a3; border-color: rgb(123 216 143 / 0.4); }
+  .destination-chip.blocked { color: #ff9b9b; border-color: rgb(255 120 120 / 0.4); }
+  .destination-chip small { font-weight: 500; color: var(--text-muted); }
+}

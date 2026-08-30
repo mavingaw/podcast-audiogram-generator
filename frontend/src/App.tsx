@@ -2230,6 +2230,37 @@ function ShareButton({ projectId }: { projectId: string }) {
   );
 }
 
+/** Where the finished file can be posted, as a row of ticks and crosses. */
+function ReadyDestinations({ projectId }: { projectId: string }) {
+  const [rows, setRows] = useState<Destination[] | null>(null);
+  useEffect(() => {
+    let stale = false;
+    api.destinations(projectId).then((r) => { if (!stale) setRows(r.destinations); }).catch(() => undefined);
+    return () => { stale = true; };
+  }, [projectId]);
+  if (!rows || rows.length === 0) return null;
+  const ok = rows.filter((r) => r.ok);
+  return (
+    <div className="ready-destinations">
+      <span className="ready-destinations-label">
+        {ok.length === rows.length ? "Ready to post anywhere:" : `Ready for ${ok.length} of ${rows.length} places:`}
+      </span>
+      <div className="ready-destinations-list">
+        {rows.map((row) => (
+          <span
+            key={row.platform}
+            className={`destination-chip ${row.ok ? "ok" : "blocked"}`}
+            title={row.ok ? row.warnings[0] ?? "Fits this platform's limits" : row.blocking[0]}
+          >
+            {row.ok ? <Check size={12} /> : <X size={12} />} {row.label}
+            {!row.ok && row.blocking[0] && <small> — {row.blocking[0]}</small>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** "Your video is ready" — shown once, the moment a render finishes. */
 function ReadyCard({
   job,
@@ -2261,6 +2292,7 @@ function ReadyCard({
         {downloads.mp4 && (
           <video className="ready-video" src={downloads.mp4} controls playsInline preload="metadata" />
         )}
+        {job.subject_id && <ReadyDestinations projectId={job.subject_id} />}
         <div className="ready-actions">
           {downloads.mp4 && (
             <a className="button-link" href={downloads.mp4} download>
