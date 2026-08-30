@@ -30,6 +30,7 @@ from app.services.auth import create_session, delete_session, hash_password, ver
 from app.services import cancellation
 from app.services import facts as fact_service
 from app.services import branding as branding_service
+from app.services import fonts as font_service
 from app.services import social as social_service
 from app.services import youtube as youtube_service
 from app.services.encoders import describe as describe_encoder
@@ -631,6 +632,54 @@ def show_artwork_id(db: Session, user: User) -> str | None:
     if not image or image.owner_id != user.id or not is_image(image.original_name):
         return None
     return image.id
+
+
+@router.get("/fonts")
+def my_fonts(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    return {"fonts": [{"id": e["id"], "family": e["family"]} for e in font_service.list_fonts(db, user.id)]}
+
+
+@router.post("/fonts")
+async def add_font(
+    file: UploadFile,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    data = await file.read()
+    try:
+        saved = font_service.save_font(db, user.id, file.filename or "font.ttf", data)
+    except font_service.FontError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return saved
+
+
+@router.delete("/fonts/{font_id}")
+def remove_font(
+    font_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    if not font_service.delete_font(db, user.id, font_id):
+        raise HTTPException(status_code=404, detail="Font not found")
+    return {"ok": True}
+
+
+@router.get("/fonts/{font_id}/file")
+def font_file(
+    font_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+):
+    entry = font_service.entry_for(db, user.id, font_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Font not found")
+    path = font_service.fonts_dir() / entry["file"]
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Font not found")
+    return FileResponse(path, media_type="font/ttf", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/settings/branding")

@@ -180,9 +180,18 @@ FONT_LABELS = {
 }
 DEFAULT_FONT = "inter"
 
+# Uploaded fonts, registered per render by services.fonts: id -> (family,
+# absolute file path). Ids are unique per upload, so parallel renders can
+# share this safely.
+CUSTOM_FONTS: dict[str, tuple[str, str]] = {}
+
 
 def font_file_for(font_id: str, role: str = "title") -> "Path | None":
     """The bundled file for a font id, or the system fallback."""
+    if font_id in CUSTOM_FONTS:
+        candidate = Path(CUSTOM_FONTS[font_id][1])
+        if candidate.exists():
+            return candidate
     family = FONTS.get(font_id) or FONTS[DEFAULT_FONT]
     name = family[1] if role == "title" else family[2]
     if name:
@@ -193,6 +202,8 @@ def font_file_for(font_id: str, role: str = "title") -> "Path | None":
 
 
 def font_family_for(font_id: str) -> str:
+    if font_id in CUSTOM_FONTS:
+        return CUSTOM_FONTS[font_id][0]
     return (FONTS.get(font_id) or FONTS[DEFAULT_FONT])[0]
 
 

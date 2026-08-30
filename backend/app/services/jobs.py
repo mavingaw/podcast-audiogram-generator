@@ -39,6 +39,7 @@ from app.services.scene import (
     ENVELOPE_STYLES,
     DEFAULT_FONT,
     FONTS_DIR,
+    CUSTOM_FONTS,
     enter_offsets,
     PULSE_STYLES,
     WAVE_STYLES,
@@ -925,6 +926,10 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     if sfx_missing:
         warnings.append(f"{sfx_missing} sound effect(s) skipped: missing from the library")
     bed_credits = bed_credits + [c for c in sfx_credits if c not in bed_credits]
+    # Uploaded fonts the scene names become resolvable for this render.
+    from app.services import fonts as font_service
+
+    font_service.register_scene_fonts(db, project.owner_id, scene)
     image_paths = _resolve_scene_images(db, parsed_scene, project.owner_id)
     # Still layers are baked once here rather than filtered on every frame.
     plates = bake_plates(
@@ -1529,7 +1534,14 @@ def build_render_command(
     )
     # fontsdir points libass at the bundled faces so the caption style can
     # name "Inter" or "Bebas Neue" and get it, wherever the container runs.
-    fonts_dir = escape_drawtext(str(FONTS_DIR)) if FONTS_DIR.is_dir() else ""
+    # An uploaded caption font lives in the shared uploads fonts directory
+    # instead, and libass matches it there by family name.
+    ass_fonts_root = FONTS_DIR
+    if parsed.caption_font in CUSTOM_FONTS:
+        from app.services.fonts import fonts_dir as user_fonts_dir
+
+        ass_fonts_root = user_fonts_dir()
+    fonts_dir = escape_drawtext(str(ass_fonts_root)) if ass_fonts_root.is_dir() else ""
     ass_filter = f"ass=captions.ass:fontsdir='{fonts_dir}'" if fonts_dir else "ass=captions.ass"
     audio_chains.append(f"{video_label}{ass_filter}{progress_chain}{text_chain}[v]")
 

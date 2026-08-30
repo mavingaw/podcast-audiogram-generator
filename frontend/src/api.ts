@@ -592,6 +592,16 @@ export const api = {
     request<{ token: string; url: string }>(`/api/projects/${projectId}/share`, { method: "POST" }),
   unshare: (projectId: string) =>
     request<{ revoked: number }>(`/api/projects/${projectId}/share`, { method: "DELETE" }),
+  fonts: () => request<{ fonts: { id: string; family: string }[] }>("/api/fonts"),
+  addFont: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch("/api/fonts", { method: "POST", body: form, credentials: "include" });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail ?? "Upload failed");
+    return (await response.json()) as { id: string; family: string };
+  },
+  deleteFont: (fontId: string) => request<{ ok: boolean }>(`/api/fonts/${fontId}`, { method: "DELETE" }),
+  fontFileUrl: (fontId: string) => `/api/fonts/${fontId}/file`,
   branding: () => request<{ intro: string | null; outro: string | null }>("/api/settings/branding"),
   setBranding: (role: "intro" | "outro", mediaId: string | null) =>
     request<{ intro: string | null; outro: string | null }>("/api/settings/branding", {

@@ -19,6 +19,15 @@ import { play as playSfx } from "./sfx";
  */
 
 // Keep in step with FONT_LABELS in backend/app/services/scene.py.
+/** Uploaded fonts, loaded once per page and shared by both pickers. */
+export function useCustomFonts(): { id: string; family: string }[] {
+  const [fonts, setFonts] = useState<{ id: string; family: string }[]>([]);
+  useEffect(() => {
+    api.fonts().then((r) => setFonts(r.fonts)).catch(() => undefined);
+  }, []);
+  return fonts;
+}
+
 const FONTS: [string, string][] = [
   ["inter", "Inter"],
   ["manrope", "Manrope"],
@@ -127,6 +136,7 @@ export function DesignPanel({
   onScene: (patch: Scene) => Promise<void>;
   onMediaAdded: (asset: MediaAsset) => void;
 }) {
+  const customFonts = useCustomFonts();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -388,6 +398,9 @@ export function DesignPanel({
             {FONTS.map(([id, label]) => (
               <option key={id} value={id}>{label}</option>
             ))}
+            {customFonts.map((f) => (
+              <option key={f.id} value={f.id}>{f.family} (yours)</option>
+            ))}
           </select>
         </label>
         <label>
@@ -398,6 +411,9 @@ export function DesignPanel({
           >
             {FONTS.map(([id, label]) => (
               <option key={id} value={id}>{label}</option>
+            ))}
+            {customFonts.map((f) => (
+              <option key={f.id} value={f.id}>{f.family} (yours)</option>
             ))}
           </select>
         </label>

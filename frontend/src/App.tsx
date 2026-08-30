@@ -655,6 +655,7 @@ export function App() {
   return (
     <div className={`app-shell ${navOpen ? "nav-open" : ""}`}>
       <ContextMenuHost />
+      <FontFaces />
       {coaching && <Coach steps={MAKE_A_CLIP} onDone={() => setCoaching(false)} />}
       <Sidebar
         inboxCount={inboxCount}
@@ -3472,10 +3473,8 @@ function Studio({
                 transformOrigin: "center",
                 // The typefaces the export will use, as variables the layer
                 // styles read, so LayerContent needs no new props.
-                ["--title-font" as string]:
-                  FONT_FAMILIES[String(project?.scene?.font ?? "inter")] ?? "Inter",
-                ["--caption-font" as string]:
-                  FONT_FAMILIES[String(project?.scene?.captionFont ?? "inter")] ?? "Inter",
+                ["--title-font" as string]: familyOf(String(project?.scene?.font ?? "inter")),
+                ["--caption-font" as string]: familyOf(String(project?.scene?.captionFont ?? "inter")),
               } as CSSProperties}
             >
               {backgroundImageUrl && (
@@ -4281,6 +4280,7 @@ function SettingsPage({
         <p className="muted">These apply to every clip you make.</p>
         <ShowArtwork media={media} onUpload={onUpload} onRefresh={onRefresh} />
         <BrandingClips media={media} onUpload={onUpload} onRefresh={onRefresh} />
+        <YourFonts />
       </section>
       <section className="settings-section">
         <h3>Posting accounts</h3>
@@ -4296,6 +4296,68 @@ function SettingsPage({
           {admin}
         </section>
       )}
+    </div>
+  );
+}
+
+/** Upload a TTF/OTF once; it appears in every font picker and in exports. */
+function YourFonts() {
+  const [fonts, setFonts] = useState<{ id: string; family: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const load = () => api.fonts().then((r) => setFonts(r.fonts)).catch(() => undefined);
+  useEffect(() => {
+    void load();
+  }, []);
+  return (
+    <div className="branding-clips your-fonts">
+      <div className="show-artwork-text">
+        <strong>Your fonts</strong>
+        <span className="muted">
+          Upload a font file (TTF or OTF) and it appears in the Studio's font pickers and in your
+          exports. Check the font's licence allows video use.
+        </span>
+        {note && <span className="error">{note}</span>}
+      </div>
+      {fonts.map((f) => (
+        <div key={f.id} className="branding-slot">
+          <span className="font-sample" style={{ fontFamily: `"${f.family}", Inter, sans-serif` }}>{f.family}</span>
+          <button
+            className="ghost compact"
+            onClick={async () => {
+              await api.deleteFont(f.id).catch(() => undefined);
+              await load();
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <label className={`ghost compact font-upload${busy ? " disabled" : ""}`}>
+        {busy ? "Uploading…" : "Upload a font"}
+        <input
+          type="file"
+          accept=".ttf,.otf,font/ttf,font/otf"
+          hidden
+          disabled={busy}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            setBusy(true);
+            setNote(null);
+            try {
+              await api.addFont(f);
+              await load();
+              window.location.reload();
+            } catch (err) {
+              setNote(errorMessage(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </label>
     </div>
   );
 }
@@ -4465,6 +4527,38 @@ function sourceState(
 
 // Family names as the @font-face rules declare them. Mirrors FONTS in
 // backend/app/services/scene.py.
+// Uploaded fonts, populated by FontFaces below so previews can use them.
+const customFontFamilies: Record<string, string> = {};
+
+/** Loads the person's fonts into the page: an @font-face per font, and the
+ * family map the canvas preview reads. */
+function FontFaces() {
+  useEffect(() => {
+    let stale = false;
+    api.fonts().then((r) => {
+      if (stale) return;
+      const css = r.fonts
+        .map((f) => `@font-face { font-family: "${f.family.replace(/"/g, "")}"; src: url("${api.fontFileUrl(f.id)}"); font-display: swap; }`)
+        .join("\n");
+      let tag = document.getElementById("kinder-user-fonts") as HTMLStyleElement | null;
+      if (!tag) {
+        tag = document.createElement("style");
+        tag.id = "kinder-user-fonts";
+        document.head.appendChild(tag);
+      }
+      tag.textContent = css;
+      for (const f of r.fonts) customFontFamilies[f.id] = f.family;
+    }).catch(() => undefined);
+    return () => {
+      stale = true;
+    };
+  }, []);
+  return null;
+}
+
+const familyOf = (fontId: string): string =>
+  FONT_FAMILIES[fontId] ?? customFontFamilies[fontId] ?? "Inter";
+
 const FONT_FAMILIES: Record<string, string> = {
   inter: "Inter",
   manrope: "Manrope",
