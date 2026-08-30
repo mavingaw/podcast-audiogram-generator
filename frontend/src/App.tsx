@@ -1274,6 +1274,16 @@ function QuickCreate({
               )}
             </div>
           )}
+          {source && activeSourceJobs.length > 0 && (
+            // While something is running on the chosen file the card sits
+            // right under the drop zone, where the eye already is, rather
+            // than below a long list.
+            <JobProgressPanel
+              title="Working on your episode"
+              jobs={activeSourceJobs}
+              fallback=""
+            />
+          )}
           {sources.length > 0 && (
             <div className="source-list">
               {sources.map((m) => {
@@ -1361,7 +1371,7 @@ function QuickCreate({
               })}
             </div>
           )}
-          {source && (
+          {source && activeSourceJobs.length === 0 && (
             <JobProgressPanel
               title="Source processing"
               jobs={activeSourceJobs.length ? activeSourceJobs : sourceJobs.slice(0, 2)}
