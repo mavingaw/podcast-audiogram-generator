@@ -141,8 +141,9 @@ export function VoiceoverPanel({
     <div className="design-group voiceover-panel">
       <span className="sidebar-label"><Mic size={13} /> Voice-over</span>
       <p className="muted">
-        Record an aside and drop it at the playhead. It mixes in on export like
-        an effect; the level slider is in the effects list below.
+        Record yourself saying something and it is added at the play line —
+        an intro, a comment, a correction. Its volume slider is in the sounds
+        list below.
       </p>
       <div className="mini-fields">
         {state === "idle" && (

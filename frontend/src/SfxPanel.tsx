@@ -136,8 +136,8 @@ export function SfxPanel({
         </ul>
       ) : (
         <p className="muted">
-          Park the playhead where the effect should hit, then press + on one
-          below.
+          Move the play line to the moment you want a sound, then press + on a
+          sound below to drop it there.
         </p>
       )}
       <label className="search-field">

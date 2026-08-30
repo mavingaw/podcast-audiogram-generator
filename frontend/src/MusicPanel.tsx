@@ -184,10 +184,12 @@ export function MusicPanel({
             Loop to fill the clip
           </label>
           <div className="music-automation">
-            <span className="sidebar-label">Level changes</span>
+            <span className="sidebar-label">Music volume changes</span>
             <p className="muted">
-              Ducking follows the voice on its own. These are the deliberate
-              moves: park the playhead and set what the bed does from there.
+              The music already turns itself down whenever someone is talking.
+              For anything else, move the play line to a moment and choose
+              what the music should do from there: dip down, come up full, or
+              fade out.
             </p>
             <div className="mini-fields">
               <button className="ghost compact" onClick={() => addKeyframe(-12)}>
@@ -258,8 +260,8 @@ export function MusicPanel({
       {error && <p className="error">{error}</p>}
       {!error && !loading && sounds.length === 0 && (
         <p className="muted">
-          No tracks yet. Import a licensed pack with
-          <code> python -m app.cli.import_library</code>.
+          No music in the library yet. Ask whoever runs this Kinder to add a
+          music pack.
         </p>
       )}
 

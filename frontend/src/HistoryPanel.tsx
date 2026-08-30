@@ -70,7 +70,8 @@ export function HistoryPanel({
       </span>
       {revisions.length === 0 ? (
         <p className="muted">
-          Nothing to go back to yet. Edits are recorded as you work.
+          Nothing to undo yet. Every change you make is saved here, so you can
+          always go back to an earlier version.
         </p>
       ) : (
         <ul className="history-list">

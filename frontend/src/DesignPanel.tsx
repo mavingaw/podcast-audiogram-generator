@@ -216,7 +216,7 @@ export function DesignPanel({
         />
       </label>
       <label>
-        Accent
+        Highlight colour
         <input
           type="color"
           value={String(scene.accent ?? DEFAULT_ACCENT)}
@@ -227,8 +227,8 @@ export function DesignPanel({
       <div className="design-group">
         <span className="sidebar-label">Background image</span>
         <p className="muted">
-          Blurred cover art carries the show's colours without competing with the
-          captions.
+          A soft, blurred version of your cover picture fills the whole video
+          behind everything else. Turn the blur down to see it clearly.
         </p>
         <div className="image-picker">
           <button
@@ -336,8 +336,9 @@ export function DesignPanel({
       <div className="design-group">
         <span className="sidebar-label">Where is this going?</span>
         <p className="muted">
-          Shows the band each platform covers with its own interface, so nothing
-          important ends up underneath it.
+          Pick the app you will post to and Kinder shades the parts of the
+          screen that app covers with its own buttons, so nothing important
+          ends up hidden.
         </p>
         <select
           value={String(scene.platform ?? "")}
@@ -353,7 +354,10 @@ export function DesignPanel({
       </div>
 
       <div className="design-group">
-        <span className="sidebar-label">Waveform</span>
+        <span className="sidebar-label">Sound bars</span>
+        <p className="muted">
+          The bars that move with the voice. Choose a shape, or turn them off.
+        </p>
         <label>
           Style
           <select
@@ -370,10 +374,10 @@ export function DesignPanel({
       </div>
 
       <div className="design-group">
-        <span className="sidebar-label">Typeface</span>
+        <span className="sidebar-label">Font</span>
         <p className="muted">
-          Bundled with the app, so the export matches the preview. Bebas Neue
-          is a display face: right for a title, wrong for four lines of speech.
+          One font for the title, one for the words on screen. Bebas Neue is
+          tall and loud — great for a title, hard to read as captions.
         </p>
         <label>
           Titles
@@ -400,10 +404,10 @@ export function DesignPanel({
       </div>
 
       <div className="design-group">
-        <span className="sidebar-label">Caption timing</span>
+        <span className="sidebar-label">Are the words early or late?</span>
         <p className="muted">
-          Whisper marks a word once it is confident, which is usually a moment
-          after it began. Nudge the whole set if they read late or early.
+          If the captions light up a moment after the word is said, slide
+          this to bring them earlier. Watch the preview to check.
         </p>
         <label>
           {Number(scene.captionOffset ?? 0) === 0
@@ -423,10 +427,11 @@ export function DesignPanel({
       </div>
 
       <div className="design-group">
-        <span className="sidebar-label">Voice</span>
+        <span className="sidebar-label">Voice volume</span>
         <p className="muted">
-          Every export is levelled to -14 LUFS, which platforms leave alone. These
-          shape the clip's own edges, which levelling cannot.
+          The finished video is always set to the volume the apps expect, so
+          you rarely need this. Fade in and fade out soften the very start
+          and end of the clip.
         </p>
         <label>
           Level {Number(scene.voiceGainDb ?? 0) >= 0 ? "+" : ""}
@@ -471,7 +476,8 @@ export function DesignPanel({
       <div className="design-group">
         <span className="sidebar-label">Captions</span>
         <p className="muted">
-          Most of a feed watches muted, so the captions are the clip.
+          Most people watch with the sound off, so the words on screen are
+          what they actually get. Pick a style below.
         </p>
         <label className="checkbox-row">
           <input

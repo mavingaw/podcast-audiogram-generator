@@ -61,8 +61,8 @@ export function VariantsPanel({
         <Copy size={12} /> Also make it for
       </span>
       <p className="muted">
-        Copies this clip into another shape and renders it. The layout is
-        rescaled so nothing changes size on screen.
+        Make the same clip in other shapes too — square for a feed, wide for
+        YouTube — in one go. Everything is laid out again to fit.
       </p>
 
       <div className="ratio-options">

@@ -2882,8 +2882,12 @@ function Studio({
             onSeek={(at) => seek(clipStart + at)}
           />
           <div className="inspector-heading">
-            <span className="sidebar-label">Layers</span>
+            <span className="sidebar-label">What is on the picture</span>
           </div>
+          <p className="muted small">
+            Front to back. Click one to change it; use the arrows to move it in
+            front of or behind the others.
+          </p>
           {layers
             .slice()
             .reverse()
@@ -2943,7 +2947,7 @@ function Studio({
             ))}
           {active && (
             <div className="properties">
-              <span className="sidebar-label">Properties</span>
+              <span className="sidebar-label">Selected item</span>
               <label>
                 Name
                 <input

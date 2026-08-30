@@ -137,7 +137,8 @@ export function TranscriptCuts({
   if (!transcript) {
     return (
       <p className="muted">
-        Cutting needs a transcript. It appears here once transcription finishes.
+        The words of the clip will appear here once the computer has finished
+        listening to the episode. Then you can click any word to cut it out.
       </p>
     );
   }
@@ -145,8 +146,8 @@ export function TranscriptCuts({
   if (!rows.some((row) => row.words.length)) {
     return (
       <p className="muted">
-        This transcript has no word timings, so words cannot be cut
-        individually. Re-transcribing the media produces them.
+        These words were written down without timing for each one, so single
+        words cannot be cut. Transcribing the episode again fixes that.
       </p>
     );
   }
@@ -154,7 +155,8 @@ export function TranscriptCuts({
   return (
     <div className="transcript-cuts">
       <p className="muted">
-        Click a word to cut it. What is left is what the clip says.
+        Click a word to remove it from the clip — an “um”, a false start, a
+        name. Click it again to put it back. The audio is trimmed to match.
       </p>
       <div className="cuts-summary">
         <span>
@@ -218,8 +220,8 @@ export function TranscriptCuts({
         ))}
       </div>
       <p className="muted small">
-        <Scissors size={12} /> Alt-click a word to hear it instead of cutting
-        it. Cuts apply on export.
+        <Scissors size={12} /> Hold Alt and click a word to hear it instead of
+        cutting it. Cuts are applied when you export.
       </p>
     </div>
   );
