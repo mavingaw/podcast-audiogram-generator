@@ -356,6 +356,7 @@ export function App() {
   // going stale until the panel is remounted.
   const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const editSeq = useRef(0);
   const [navOpen, setNavOpen] = useState(false);
   const [saved, setSaved] = useState<SavedTemplate[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
@@ -614,10 +615,15 @@ export function App() {
     // Optimistic, and functional: the next click must see this change, not
     // wait a round-trip for it. Clicking a word right after "Restore all"
     // used to toggle against the pre-restore cuts and silently undo itself.
+    const seq = ++editSeq.current;
     setProjects((current) =>
       current.map((p) => (p.id === id ? { ...p, ...updates, scene: { ...p.scene, ...(updates.scene ?? {}) } } : p)),
     );
     const result = await api.updateProject(selected, updates);
+    // Only the newest edit reconciles with the server: responses to rapid
+    // edits can come back out of order, and an older response replacing the
+    // whole project would silently undo the edits after it.
+    if (seq !== editSeq.current) return;
     setProjects((current) =>
       current.map((p) => (p.id === result.project.id ? result.project : p)),
     );
