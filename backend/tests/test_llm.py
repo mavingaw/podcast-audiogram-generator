@@ -339,3 +339,45 @@ def test_a_long_title_is_cut_short_not_reworded():
     trimmed = llm._trim_title(long_line)
     assert trimmed.endswith("\u2026")
     assert trimmed.rstrip("\u2026") in long_line
+
+
+# --------------------------------------------------------------------------
+# Sponsor reads
+# --------------------------------------------------------------------------
+
+
+def test_the_words_alone_give_a_sponsor_read_away():
+    from app.services.llm import looks_like_ad
+
+    assert looks_like_ad("This episode is brought to you by Brami. Use code TRIBE for 20% off.")
+    assert looks_like_ad("Go to www dot brami dot com slash tribe and use the code TRIBE")
+    assert not looks_like_ad("I got a discount on my flight and honestly it changed the trip.")
+    assert not looks_like_ad("And that is why I do it. Hopefully I am doing that.")
+
+
+def test_a_sponsor_read_sinks_to_the_bottom(monkeypatch):
+    from app.services import llm
+
+    monkeypatch.setattr(llm, "available", lambda: True)
+    ratings = {
+        "ad text": {"hook": 9, "standalone": 9, "interest": 9, "ad": True, "reason": "Great hook", "headline": ""},
+        "real text": {"hook": 5, "standalone": 5, "interest": 5, "ad": False, "reason": "Fine", "headline": ""},
+    }
+    monkeypatch.setattr(llm, "rate", lambda text: ratings[text])
+    clips = [
+        {"text": "ad text", "score": 0.9, "start": 0, "end": 10},
+        {"text": "real text", "score": 0.5, "start": 20, "end": 30},
+    ]
+    ranked = llm.rerank(clips)
+    assert ranked[0]["text"] == "real text"
+    assert ranked[1].get("ad") is True
+    assert ranked[1]["reasons"][0] == "Sounds like a sponsor read"
+
+
+def test_the_model_reply_carries_the_ad_flag():
+    from app.services.llm import _parse
+
+    rating = _parse('{"hook": 8, "standalone": 7, "interest": 6, "ad": 1, "best_line": 1, "reason": "x"}', ["a line"])
+    assert rating and rating["ad"] is True
+    rating = _parse('{"hook": 8, "standalone": 7, "interest": 6, "best_line": 1, "reason": "x"}', ["a line"])
+    assert rating and rating["ad"] is False

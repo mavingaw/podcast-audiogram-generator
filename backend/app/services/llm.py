@@ -252,6 +252,9 @@ Rate this excerpt from 0 to 10 on each of:
 - standalone: does it make sense with no other context?
 - interest: is the idea surprising, useful, funny, or emotionally real?
 
+Also say whether this excerpt is a sponsor message, advertisement, promo code
+or product plug read by the host (ad: 1) or normal conversation (ad: 0).
+
 Also choose which numbered line below is the strongest opening line, and give
 one short reason for the rating (under 12 words).
 
@@ -259,11 +262,31 @@ Do NOT write a title. Do NOT rewrite, summarise or paraphrase the speaker.
 Only choose a line number.
 
 Reply with JSON only, in exactly this form:
-{{"hook": 0, "standalone": 0, "interest": 0, "best_line": 1, "reason": ""}}
+{{"hook": 0, "standalone": 0, "interest": 0, "ad": 0, "best_line": 1, "reason": ""}}
 
 Lines:
 {lines}
 """
+
+# What a host says when the sponsor is paying. Any two of these in one
+# excerpt is an ad read; one alone can be conversation ("I got a discount").
+AD_PENALTY = 0.15
+_AD_PHRASES = (
+    "promo code", "use code", "use the code", "discount code", "coupon",
+    "brought to you by", "sponsored by", "this episode is sponsored",
+    "today's sponsor", "our sponsor", "sponsor of", "% off", "percent off",
+    "free shipping", "free trial", "sign up today", "go to www", "dot com slash",
+    ".com/", "link in the description", "link in the show notes", "checkout",
+    "check out", "subscribe today", "terms and conditions apply", "limited time",
+)
+
+
+def looks_like_ad(text: str) -> bool:
+    """True when the words alone give the sponsor away."""
+    lowered = (text or "").lower()
+    hits = sum(1 for phrase in _AD_PHRASES if phrase in lowered)
+    return hits >= 2 or "promo code" in lowered or "sponsored by" in lowered or "brought to you by" in lowered
+
 
 # Sentence-ish splitting, only to number the lines the model chooses between.
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
@@ -304,6 +327,10 @@ def _parse(reply: str, lines: list[str]) -> dict | None:
     # The reason is the model's own assessment and is shown as such in the UI,
     # next to the heuristic tags. It is never used as content.
     rating["reason"] = str(data.get("reason", "")).strip()[:120]
+    try:
+        rating["ad"] = bool(int(data.get("ad", 0)))
+    except (TypeError, ValueError):
+        rating["ad"] = False
 
     rating["headline"] = ""
     try:
@@ -384,6 +411,14 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
         clip["score"] = round(clip.get("score", 0.0) + LLM_WEIGHT * judgement, 3)
         if rating["reason"]:
             clip.setdefault("reasons", []).insert(0, rating["reason"])
+        if rating.get("ad") or looks_like_ad(clip.get("text", "")):
+            # A sponsor read is the one thing nobody wants as their clip,
+            # however well it "hooks". Pushed to the bottom, and labelled.
+            clip["score"] = round(clip["score"] * AD_PENALTY, 3)
+            clip["ad"] = True
+            clip["reasons"] = ["Sounds like a sponsor read"] + [
+                r for r in clip.get("reasons", []) if r != "Sounds like a sponsor read"
+            ]
 
         # The headline is the line the model *chose*, checked back against the
         # excerpt before it is used. A title is content — it goes on the post —
@@ -394,5 +429,11 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
         if headline and headline in clip.get("text", ""):
             clip["title"] = _trim_title(headline)
 
+    # Ads without a model rating still get caught by the words alone.
+    for clip in scored[limit:]:
+        if looks_like_ad(clip.get("text", "")):
+            clip["score"] = round(clip.get("score", 0.0) * AD_PENALTY, 3)
+            clip["ad"] = True
+            clip.setdefault("reasons", []).insert(0, "Sounds like a sponsor read")
     scored.sort(key=lambda item: item.get("score", 0.0), reverse=True)
     return scored
