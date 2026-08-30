@@ -47,6 +47,7 @@ import {
   Link2,
   ExternalLink,
   Droplets,
+  ChartColumn,
 } from "lucide-react";
 import {
   api,
@@ -87,7 +88,7 @@ import { TranscriptionPanel } from "./TranscriptionSettings";
 import { LiveBars, usePeaks, WaveformCanvas } from "./Waveform";
 import { loadSfx, play as playSfx, setSfxEnabled, sfxEnabled } from "./sfx";
 
-type View = "home" | "quick" | "studio" | "projects" | "templates" | "feeds" | "inbox" | "exports" | "trash" | "settings";
+type View = "home" | "quick" | "studio" | "projects" | "templates" | "feeds" | "inbox" | "exports" | "analytics" | "trash" | "settings";
 type AuthView = "loading" | "bootstrap" | "login" | "app";
 type Ratio = "9:16" | "1:1" | "4:5" | "16:9";
 type Layer = {
@@ -878,6 +879,7 @@ export function App() {
             }}
           />
         )}
+        {view === "analytics" && <AnalyticsPage />}
         {view === "trash" && <TrashPage onChanged={() => loadData()} />}
         {view === "settings" && (
           <SettingsPage
@@ -960,6 +962,7 @@ function Sidebar({
             ["feeds", "Feeds", Rss],
             ["inbox", "Inbox", InboxIcon],
             ["exports", "Exports", Download],
+            ["analytics", "Analytics", ChartColumn],
             ["trash", "Trash", Trash2],
             ["settings", "Settings", Settings2],
           ] as const
@@ -5128,6 +5131,74 @@ function ProjectBrowser({
         ))}
       </div>
       <TrashSection onChanged={onRefreshAll} open={trashOpen} onToggle={setTrashOpen} />
+    </div>
+  );
+}
+
+/** Who opened the clips you shared. Counted by the share pages only. */
+function AnalyticsPage() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.analytics>> | null>(null);
+  useEffect(() => {
+    api.analytics().then(setData).catch(() => undefined);
+  }, []);
+  const when = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days} days ago`;
+    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  };
+  return (
+    <div className="library-page">
+      <div className="page-heading">
+        <div>
+          <span className="kicker">Reach</span>
+          <h2>Analytics</h2>
+          <p>What happened to the clips you shared. Nobody is tracked — just opens and plays.</p>
+        </div>
+      </div>
+      {!data ? (
+        <p className="muted">Loading…</p>
+      ) : data.clips.length === 0 ? (
+        <div className="empty-state">
+          <ChartColumn size={28} />
+          <strong>Nothing to count yet.</strong>
+          <span>
+            Press Copy link on a finished clip and send it to someone — every open and every play
+            of that page shows up here.
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="stat-cards">
+            <div className="stat-card"><strong>{data.totals.views}</strong><span>page opens</span></div>
+            <div className="stat-card"><strong>{data.totals.plays}</strong><span>plays</span></div>
+            <div className="stat-card"><strong>{data.totals.links_live}</strong><span>links live</span></div>
+          </div>
+          <div className="analytics-list">
+            {data.clips.map((c) => (
+              <div key={c.project_id} className="analytics-row">
+                {c.rendered ? (
+                  <img className="export-poster" src={api.posterUrl(c.project_id)} alt="" />
+                ) : (
+                  <div className="export-icon"><Film size={18} /></div>
+                )}
+                <div className="analytics-title">
+                  <strong>{c.title}</strong>
+                  <small className="muted">
+                    last opened {when(c.last)}{c.link_live ? "" : " · link turned off"}
+                  </small>
+                </div>
+                <span className="analytics-nums" title="Page opens / plays">
+                  {c.views} <small>opens</small> · {c.plays} <small>plays</small>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

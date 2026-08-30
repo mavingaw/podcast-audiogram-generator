@@ -206,6 +206,23 @@ class ShareLink(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class ShareEvent(Base):
+    """One open of a shared clip: the page, or the video starting.
+
+    What a podcaster actually wants to know is "did anyone watch the thing I
+    sent" — so this stores the least that answers it: which project, which
+    kind of open, when. No addresses, no identities, nothing to leak.
+    """
+
+    __tablename__ = "share_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(String, index=True)
+    owner_id: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # "view" | "play"
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+
+
 class Template(Base):
     """A saved design, reusable across episodes.
 

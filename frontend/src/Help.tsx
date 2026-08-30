@@ -82,6 +82,15 @@ export const GUIDES: Record<string, Guide> = {
       "Approved clips become projects you can open and finish.",
     ],
   },
+  analytics: {
+    title: "Analytics",
+    what: "What happened to the clips you shared.",
+    steps: [
+      "Press Copy link on a finished clip and send it to anyone.",
+      "Every open of that page, and every play, is counted here — per clip and in total.",
+      "Nobody is tracked: no names, no locations, just the numbers.",
+    ],
+  },
   settings: {
     title: "Settings",
     what: "Everything about you and your show, in one place.",

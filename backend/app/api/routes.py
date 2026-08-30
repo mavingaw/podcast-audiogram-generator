@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_admin, current_user, optional_user
 from app.core.config import settings
 from app.db.models import (
-    AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project, ShareLink,
+    AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project, ShareEvent, ShareLink,
     SoundAsset, Template, User,
 )
 from app.db.session import SessionLocal, get_db
@@ -1863,9 +1863,27 @@ def _shared_project(db: Session, token: str) -> Project:
     return project
 
 
+def _record_share_event(db: Session, project: Project, kind: str) -> None:
+    """Never a reason for the page not to load."""
+    try:
+        db.add(ShareEvent(project_id=project.id, owner_id=project.owner_id, kind=kind))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 @public_router.get("/s/{token}/video.mp4")
-def shared_video(token: str, db: Annotated[Session, Depends(get_db)]):
+def shared_video(
+    token: str,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+):
     project = _shared_project(db, token)
+    # A play, counted once: seeking fires many ranged requests, and only the
+    # one that starts at the top is somebody pressing play.
+    range_header = request.headers.get("range", "")
+    if not range_header or range_header.startswith("bytes=0-"):
+        _record_share_event(db, project, "play")
     video = settings.outputs_dir / project.id / "audiogram.mp4"
     if not video.exists():
         raise HTTPException(status_code=404, detail="This link is no longer available")
@@ -1896,6 +1914,7 @@ def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
     import html
 
     project = _shared_project(db, token)
+    _record_share_event(db, project, "view")
     title = html.escape(project.title)
     ratio = project.aspect_ratio.replace(":", " / ")
     return f"""<!doctype html>
@@ -2230,6 +2249,60 @@ def post_to_social(
     project.scene_json = json.dumps(scene)
     db.commit()
     return result
+
+
+@router.get("/analytics")
+def analytics(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Who opened your shared clips: per project, and in total.
+
+    Only what the share pages themselves saw. Nothing is tracked inside the
+    app, and nothing identifies a viewer.
+    """
+    rows = db.execute(
+        select(
+            ShareEvent.project_id,
+            ShareEvent.kind,
+            func.count().label("n"),
+            func.max(ShareEvent.created_at).label("last"),
+        )
+        .where(ShareEvent.owner_id == user.id)
+        .group_by(ShareEvent.project_id, ShareEvent.kind)
+    ).all()
+    per: dict[str, dict] = {}
+    for project_id, kind, n, last in rows:
+        entry = per.setdefault(project_id, {"project_id": project_id, "views": 0, "plays": 0, "last": None})
+        entry["views" if kind == "view" else "plays"] += n
+        stamp = last.isoformat() if last else None
+        if stamp and (entry["last"] is None or stamp > entry["last"]):
+            entry["last"] = stamp
+    projects = {
+        p.id: p for p in db.scalars(select(Project).where(Project.owner_id == user.id)).all()
+    }
+    links = {
+        l.project_id
+        for l in db.scalars(select(ShareLink).where(ShareLink.owner_id == user.id, ShareLink.revoked.is_(False))).all()
+    }
+    out = []
+    for entry in per.values():
+        project = projects.get(entry["project_id"])
+        out.append({
+            **entry,
+            "title": project.title if project else "Deleted project",
+            "rendered": bool(project) and (settings.outputs_dir / entry["project_id"] / "audiogram.mp4").exists(),
+            "link_live": entry["project_id"] in links,
+        })
+    out.sort(key=lambda e: e["last"] or "", reverse=True)
+    return {
+        "clips": out,
+        "totals": {
+            "views": sum(e["views"] for e in out),
+            "plays": sum(e["plays"] for e in out),
+            "links_live": len(links),
+        },
+    }
 
 
 @router.get("/jobs")

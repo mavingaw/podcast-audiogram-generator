@@ -554,6 +554,11 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  analytics: () =>
+    request<{
+      clips: { project_id: string; title: string; views: number; plays: number; last: string | null; rendered: boolean; link_live: boolean }[];
+      totals: { views: number; plays: number; links_live: number };
+    }>("/api/analytics"),
   updateProfile: (body: { display_name?: string; avatar_media_id?: string; clear_avatar?: boolean }) =>
     request<{ user: User }>("/api/me", { method: "PATCH", body: JSON.stringify(body) }),
   changePassword: (current: string, next: string) =>

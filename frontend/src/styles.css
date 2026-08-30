@@ -2976,3 +2976,23 @@ html.large-text #root { zoom: 1.18; }
   .password-change summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
   .password-change form { margin-top: var(--s-3); }
 }
+
+@layer views {
+  .stat-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 180px)); gap: var(--s-3); margin-top: var(--s-6); }
+  .stat-card {
+    display: grid; gap: 2px; padding: var(--s-4);
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  }
+  .stat-card strong { font-size: 28px; }
+  .stat-card span { color: var(--text-muted); font-size: 12.5px; }
+  .analytics-list { display: grid; gap: var(--s-1); margin-top: var(--s-6); max-width: 760px; }
+  .analytics-row {
+    display: flex; gap: var(--s-3); align-items: center;
+    padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  }
+  .analytics-title { display: grid; gap: 2px; min-width: 0; flex: 1; }
+  .analytics-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .analytics-nums { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .analytics-nums small { color: var(--text-muted); font-weight: 500; }
+  @media (max-width: 780px) { .stat-cards { grid-template-columns: 1fr 1fr 1fr; } }
+}
