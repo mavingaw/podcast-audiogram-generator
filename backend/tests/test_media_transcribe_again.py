@@ -63,3 +63,21 @@ def test_somebody_elses_file_is_not_found(client):
     media = upload(client)
     register_second_user(client, "friend")
     assert client.post(f"/api/media/{media['id']}/transcribe").status_code == 404
+
+
+def test_an_empty_transcript_is_not_still_being_prepared(client):
+    """A tone or music-only file finishes transcribing with zero segments;
+    the suggestions panel must not claim work is still happening."""
+    import json as _json
+
+    login(client)
+    media = upload(client)
+    from app.db.models import MediaAsset
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        db.get(MediaAsset, media["id"]).transcript_json = _json.dumps({"segments": []})
+        db.commit()
+    body = client.get(f"/api/media/{media['id']}/clips").json()
+    assert body["ready"] is True
+    assert "No speech" in body["reason"]

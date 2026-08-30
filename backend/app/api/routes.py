@@ -1442,9 +1442,14 @@ def suggest_clips(
         raise HTTPException(status_code=400, detail="limit must be 1..25")
 
     transcript = json.loads(media.transcript_json) if media.transcript_json else None
-    if not transcript or not transcript.get("segments"):
+    if not transcript:
         return {"ready": False, "clips": [],
                 "reason": "The transcript is still being prepared."}
+    if not transcript.get("segments"):
+        # A finished transcript with nothing in it: silence, music, or a tone.
+        # Saying "still being prepared" here contradicts the rest of the page.
+        return {"ready": True, "clips": [],
+                "reason": "No speech was found in this audio, so there is nothing to suggest."}
 
     # The same function the batch button and the feed watcher use, so a clip
     # suggested here is the clip those would have made. It puts anything the
