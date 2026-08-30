@@ -2891,3 +2891,34 @@ html.large-text #root { zoom: 1.18; }
   .branding-slot label.disabled { opacity: 0.5; pointer-events: none; }
   .show-artwork-text .error { color: #ff8f8f; }
 }
+
+@layer views {
+  .welcome h2 { font-size: clamp(26px, 4vw, 40px); margin: var(--s-2) 0; }
+  .creation-grid.five { grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 1180px) { .creation-grid.five { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 780px) { .creation-grid.five { grid-template-columns: 1fr 1fr; } }
+  .creation-tile[data-tint="teal"] { --tint: #2dd4bf; }
+  .creation-tile[data-tint="violet"] { --tint: #a78bfa; }
+  .creation-tile[data-tint="amber"] { --tint: #fbbf24; }
+  .creation-tile[data-tint="pink"] { --tint: #f472b6; }
+  .creation-tile[data-tint="purple"] { --tint: #818cf8; }
+  .creation-tile[data-tint] { border-color: color-mix(in oklab, var(--tint) 35%, var(--line)); }
+  .creation-tile[data-tint] .tile-icon { color: var(--tint); background: color-mix(in oklab, var(--tint) 14%, var(--surface-sunken)); }
+  .creation-tile[data-tint]:hover { border-color: color-mix(in oklab, var(--tint) 70%, transparent); }
+
+  .home-templates { margin-top: var(--s-12); }
+  .pill-tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--r-full); }
+  .pill-tabs button { padding: 7px 16px; border-radius: var(--r-full); font-weight: 600; font-size: 13px; color: var(--text-muted); }
+  .pill-tabs button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+  .home-template-row { display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: var(--s-3); margin-top: var(--s-4); align-items: stretch; }
+  @media (max-width: 1180px) { .home-template-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 780px) { .home-template-row { grid-template-columns: 1fr 1fr; } }
+  .home-template-tile { display: grid; gap: 6px; text-align: left; }
+  .home-template-tile .template-thumb { aspect-ratio: 9 / 12; }
+  .home-template-tile small { color: var(--text-muted); font-weight: 600; }
+  .home-template-tile .saved-swatch {
+    aspect-ratio: 9 / 12; display: grid; place-items: center; border-radius: var(--r-md);
+    border: 1px solid var(--line); font-weight: 800; font-size: 26px;
+  }
+  .home-template-more { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-weight: 600; justify-self: start; align-self: center; }
+}

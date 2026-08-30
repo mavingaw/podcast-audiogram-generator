@@ -738,6 +738,8 @@ export function App() {
           <Home
             onCreate={() => setView("quick")}
             onShowMe={() => setCoaching(true)}
+            onTemplates={() => setView("templates")}
+            saved={saved}
             onStudio={() => setView("studio")}
             onFeeds={() => setView("feeds")}
             projects={projects}
@@ -979,6 +981,8 @@ function Home({
   onShowMe,
   onStudio,
   onFeeds,
+  onTemplates,
+  saved,
   projects,
   mediaCount,
   username,
@@ -988,6 +992,8 @@ function Home({
   onShowMe: () => void;
   onStudio: () => void;
   onFeeds: () => void;
+  onTemplates: () => void;
+  saved: SavedTemplate[];
   projects: Project[];
   mediaCount: number;
   username: string;
@@ -1006,34 +1012,17 @@ function Home({
   });
   const showGuide = !guideDismissed && projects.length === 0 && mediaCount === 0;
   const actions = [
-    [
-      "Create Audiogram",
-      "Turn a podcast into a social video",
-      Sparkles,
-      onCreate,
-    ],
-    [
-      "Clip & Caption",
-      "Start from a transcript moment",
-      WandSparkles,
-      onCreate,
-    ],
-    ["Full Episode Video", "Build a long-form visual episode", Film, onCreate],
-    ["Studio Editor", "Open a blank creative canvas", Settings2, onStudio],
+    ["Manual audiograms", "Pick the moment yourself", AudioLines, onCreate, "teal"],
+    ["Automatic audiograms", "Kinder picks the best moments for you", WandSparkles, onCreate, "violet"],
+    ["Video podcasting", "A full episode as a video", Film, onCreate, "amber"],
+    ["Transcribe, edit & grow", "Every word, editable and cuttable", Sparkles, onCreate, "pink"],
+    ["Advanced editor", "The whole Studio, blank canvas", Settings2, onStudio, "purple"],
   ] as const;
   return (
     <div className="home">
       <section className="welcome">
-        <span className="kicker">Creator workspace</span>
-        <h2>
-          Make the moment
-          <br />
-          worth sharing.
-        </h2>
-        <p>
-          Choose a starting point. Your projects, captions, and exports stay on
-          your server.
-        </p>
+        <h2>What shall we create today?</h2>
+        <p>Everything stays on your own server, and nothing posts without you.</p>
       </section>
       {showGuide && (
         <section className="first-run">
@@ -1086,9 +1075,9 @@ function Home({
           </ol>
         </section>
       )}
-      <div className="creation-grid">
-        {actions.map(([title, detail, Icon, action]) => (
-          <button className="creation-tile" key={title} onClick={action}>
+      <div className="creation-grid five">
+        {actions.map(([title, detail, Icon, action, tint]) => (
+          <button className="creation-tile" data-tint={tint} key={title} onClick={action}>
             <span className="tile-icon">
               <Icon size={21} />
             </span>
@@ -1100,6 +1089,7 @@ function Home({
           </button>
         ))}
       </div>
+      <HomeTemplates saved={saved} onCreate={onCreate} onTemplates={onTemplates} />
       <FeedNudge onFeeds={onFeeds} />
       <section className="recent-section">
         <div className="section-bar">
@@ -4233,6 +4223,73 @@ function projectMenu(
     });
   }
   return items;
+}
+
+/** The templates strip on Home: try ours or save your own. */
+function HomeTemplates({
+  saved,
+  onCreate,
+  onTemplates,
+}: {
+  saved: SavedTemplate[];
+  onCreate: () => void;
+  onTemplates: () => void;
+}) {
+  const [tab, setTab] = useState<"all" | "saved">("all");
+  return (
+    <section className="home-templates">
+      <div className="section-bar">
+        <div>
+          <span className="kicker">Templates</span>
+          <h2>Try ours or save your own</h2>
+        </div>
+        <div className="pill-tabs" role="tablist">
+          <button className={tab === "all" ? "on" : ""} onClick={() => setTab("all")}>All</button>
+          <button className={tab === "saved" ? "on" : ""} onClick={() => setTab("saved")}>
+            Saved{saved.length ? ` · ${saved.length}` : ""}
+          </button>
+        </div>
+      </div>
+      {tab === "all" ? (
+        <div className="home-template-row">
+          {templates.slice(0, 6).map((t) => (
+            <button key={t.id} className="home-template-tile" title={`${t.name} — ${t.style}`} onClick={onCreate}>
+              <TemplateThumb template={t} />
+              <small>{t.name}</small>
+            </button>
+          ))}
+          <button className="home-template-more" onClick={onTemplates}>
+            All looks <ChevronRight size={14} />
+          </button>
+        </div>
+      ) : saved.length ? (
+        <div className="home-template-row">
+          {saved.slice(0, 6).map((t) => (
+            <button key={t.id} className="home-template-tile" onClick={onTemplates}>
+              <span
+                className="saved-swatch"
+                style={{
+                  background: typeof t.scene.background === "string" ? t.scene.background : "#0B0D11",
+                  color: typeof t.scene.accent === "string" ? t.scene.accent : "#89CFF0",
+                }}
+              >
+                Aa
+              </span>
+              <small>{t.name}</small>
+            </button>
+          ))}
+          <button className="home-template-more" onClick={onTemplates}>
+            Manage <ChevronRight size={14} />
+          </button>
+        </div>
+      ) : (
+        <p className="muted">
+          Nothing saved yet. In the Studio, save the look you have made and it appears here for
+          every future episode.
+        </p>
+      )}
+    </section>
+  );
 }
 
 /** Seconds as "m:ss.s" — what somebody reads off a player, not "83.5". */
