@@ -1358,6 +1358,50 @@
   .export-list > div:hover { border-color: var(--line-strong); }
   .export-list > div > div:nth-child(2) { display: grid; gap: 3px; flex: 1; min-width: 0; }
   .export-list small { color: var(--text-muted); }
+  .export-list .button-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: var(--r-md);
+    background: var(--accent-500); color: var(--n-950); font-weight: 600; font-size: 13px;
+    text-decoration: none;
+  }
+  .export-list .button-link.quiet { background: var(--surface-sunken); color: var(--text); border: 1px solid var(--line); }
+  .source-row .source-failed { color: #ff8f8f; }
+  .source-row .source-retry {
+    padding: 6px 10px; border-radius: var(--r-md); font-size: 12.5px; font-weight: 600;
+    background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--line);
+  }
+  .library-grid small em { font-style: normal; color: var(--accent-text); }
+
+  /* --- Right-click menus ------------------------------------------------ */
+  .context-menu {
+    position: fixed; z-index: 1000; min-width: 200px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: var(--r-md); box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    display: grid; gap: 2px;
+  }
+  .context-menu-title {
+    padding: 6px 10px 8px; font-size: 11.5px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+  }
+  .context-menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+  .context-menu button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 8px 10px; border-radius: 6px; text-align: left; font-size: 13.5px;
+    color: var(--text); background: transparent; border: 0;
+  }
+  .context-menu button small { margin-left: auto; color: var(--text-muted); font-size: 11.5px; }
+  .context-menu button.focused:not(:disabled) { background: var(--hover); }
+  .context-menu button.danger { color: #ff8f8f; }
+  .context-menu button.danger.focused:not(:disabled) { background: rgb(255 120 120 / 0.12); }
+  .context-menu button:disabled { opacity: 0.45; cursor: default; }
+  .menu-button {
+    width: 30px; height: 30px; border-radius: var(--r-md); font-size: 16px; line-height: 1;
+    color: var(--text-muted); background: transparent; border: 1px solid transparent;
+  }
+  .menu-button:hover { background: var(--hover); color: var(--text); border-color: var(--line); }
+  .card-actions { display: flex; gap: 4px; align-items: center; }
+  .source-row .menu-button { align-self: center; }
+  .export-list .menu-button { flex: 0 0 30px; }
   .export-icon {
     display: grid;
     place-items: center;

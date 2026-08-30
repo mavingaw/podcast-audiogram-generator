@@ -129,7 +129,7 @@ await step("quick-create-flow", async () => {
   // at all they must be actionable, not decoration.
   const suggestions = page.locator(".suggestion");
   if (await suggestions.count()) {
-    const before = await page.locator('input[type="number"]').first().inputValue();
+    const before = await page.locator('.clip-fields input').first().inputValue();
     const text = await suggestions.first().innerText();
     if (!/\d+s/.test(text)) {
       problems.push("suggested clips: a suggestion shows no duration");
@@ -139,7 +139,7 @@ await step("quick-create-flow", async () => {
     }
     await suggestions.first().click();
     await page.waitForTimeout(900);
-    const after = await page.locator('input[type="number"]').first().inputValue();
+    const after = await page.locator('.clip-fields input').first().inputValue();
     if (before === after) {
       problems.push("suggested clips: picking one did not move the clip");
     }
@@ -165,7 +165,9 @@ await step("quick-create-flow", async () => {
   await page.locator(".transcript-pick button").first().click();
   await page.waitForTimeout(400);
   const end = await page.locator('.clip-fields input').nth(1).inputValue();
-  if (!Number(end)) problems.push("quick-create-flow: picking a line did not set the clip end");
+  // Times read "m:ss.s" now; a bare number is still accepted.
+  const endSeconds = end.split(":").reduce((acc, part) => acc * 60 + Number(part), 0);
+  if (!endSeconds) problems.push("quick-create-flow: picking a line did not set the clip end");
 
   // Zoom must narrow the visible window without moving the clip.
   const zoomIn = page.locator('.zoom-controls button[title*="Zoom"]');
@@ -198,11 +200,44 @@ await step("projects", async () => {
   await page.locator('.main-nav button:has-text("Projects")').first().click();
 });
 
+// Right-click is how most people expect to find "delete"; the menu has to
+// appear, offer it, and go away again without doing anything by itself.
+await step("context-menu", async () => {
+  const card = page.locator(".library-card").first();
+  if ((await card.count()) === 0) return;
+  await card.click({ button: "right" });
+  await page.waitForTimeout(300);
+  const menu = page.locator(".context-menu");
+  if ((await menu.count()) === 0) {
+    problems.push("context-menu: right-clicking a project opened nothing");
+    return;
+  }
+  const text = await menu.innerText();
+  for (const expected of ["Open in Studio", "Rename", "Delete"]) {
+    if (!text.includes(expected)) problems.push(`context-menu: no "${expected}" item`);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  if (await menu.count()) problems.push("context-menu: Escape did not close it");
+  // The "⋯" button is the same menu for people who do not right-click.
+  const more = card.locator(".menu-button");
+  if (await more.count()) {
+    await more.click();
+    await page.waitForTimeout(300);
+    if ((await menu.count()) === 0) problems.push("context-menu: the ⋯ button opened nothing");
+    await page.keyboard.press("Escape");
+  }
+});
+
 await step("studio", async () => {
   const card = page.locator(".library-grid button, .project-cards button").first();
   if (await card.count()) {
     await card.click();
-    await page.waitForTimeout(2200);
+    // Through the tunnel the Studio takes a few seconds to arrive; wait for
+    // it rather than for a fixed time, up to a limit that would itself be a
+    // finding.
+    await page.locator(".design-canvas").first().waitFor({ timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(600);
   }
 });
 

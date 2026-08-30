@@ -68,6 +68,7 @@ import {
   Transcript,
   User,
 } from "./api";
+import { ContextMenuHost, MenuButton, MenuItem, openMenu } from "./ContextMenu";
 import { DesignPanel } from "./DesignPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { SfxCue, SfxPanel } from "./SfxPanel";
@@ -438,12 +439,17 @@ export function App() {
           if (!ignore) setAuth("bootstrap");
           return;
         }
-        const me = await api.me();
-        if (!ignore) {
-          setUser(me.user);
-          setAuth("app");
-          await loadData(me.user);
+        // A 200 whether or not anyone is signed in: a cold load of the
+        // sign-in page should not begin with an error in the console.
+        const session = await api.session();
+        if (ignore) return;
+        if (!session.user) {
+          setAuth("login");
+          return;
         }
+        setUser(session.user);
+        setAuth("app");
+        await loadData(session.user);
       } catch {
         if (!ignore) setAuth("login");
       }
@@ -599,6 +605,7 @@ export function App() {
     );
   return (
     <div className={`app-shell ${navOpen ? "nav-open" : ""}`}>
+      <ContextMenuHost />
       <Sidebar
         inboxCount={inboxCount}
         user={user}
@@ -612,6 +619,11 @@ export function App() {
         }}
         onNew={() => setView("quick")}
         onClose={() => setNavOpen(false)}
+        onDelete={async (p) => {
+          await api.deleteProject(p.id);
+          if (selectedId === p.id) setSelectedId(null);
+          await loadData();
+        }}
       />
       <main className="app-main">
         <header className="app-header">
@@ -734,6 +746,10 @@ export function App() {
               if (selectedId === p.id) setSelectedId(null);
               await loadData();
             }}
+            onRename={async (p, title) => {
+              await api.updateProject(p, { title });
+              await loadData();
+            }}
           />
         )}
         {view === "templates" && (
@@ -770,7 +786,17 @@ export function App() {
         {view === "feeds" && (
           <Feeds templates={saved} jobs={jobs} onReload={() => loadData()} />
         )}
-        {view === "exports" && <Exports jobs={jobs} onReload={() => loadData()} />}
+        {view === "exports" && (
+          <Exports
+            jobs={jobs}
+            projects={projects}
+            onReload={() => loadData()}
+            onOpen={(p) => {
+              setSelectedId(p.id);
+              setView("studio");
+            }}
+          />
+        )}
         {user?.is_admin && (
           <AdminStrip
             isAdmin={Boolean(user?.is_admin)}
@@ -797,6 +823,7 @@ function Sidebar({
   projects,
   selected,
   setSelected,
+  onDelete,
   onNew,
   onClose,
 }: {
@@ -807,6 +834,7 @@ function Sidebar({
   projects: Project[];
   selected: Project | null;
   setSelected: (p: Project) => void;
+  onDelete?: (p: Project) => Promise<void>;
   onNew: () => void;
   onClose: () => void;
 }) {
@@ -857,7 +885,13 @@ function Sidebar({
           <button
             className={selected?.id === p.id ? "active" : ""}
             key={p.id}
-                onClick={() => { setSelected(p); onClose(); }}
+            onClick={() => { setSelected(p); onClose(); }}
+            onContextMenu={(e) =>
+              openMenu(e, projectMenu(p, {
+                open: () => { setSelected(p); onClose(); },
+                remove: onDelete,
+              }), p.title)
+            }
           >
             <Film size={14} />
             <span>{p.title}</span>
@@ -1065,6 +1099,10 @@ function QuickCreate({
     media.find((m) => m.id === sourceId) ?? selectedMedia ?? media[0] ?? null;
   const duration = Math.max(60, source?.duration_seconds ?? 180);
   const segments = source?.transcript?.segments ?? [];
+  // Images are artwork, not something to cut a clip from; they are chosen
+  // from the Design panel instead. Listing them here as sources that were
+  // forever "analyzing" was the most-asked question in the first week.
+  const sources = media.filter((m) => !m.content_type.startsWith("image/"));
   const sourceJobs = source
     ? jobs.filter(
         (job) =>
@@ -1222,57 +1260,91 @@ function QuickCreate({
               )}
             </div>
           )}
-          {media.length > 0 && (
+          {sources.length > 0 && (
             <div className="source-list">
-              {media.map((m) => (
+              {sources.map((m) => {
+                const state = sourceState(m, jobs);
+                const removeSource = async () => {
+                  if (
+                    !window.confirm(
+                      `Remove ${m.original_name} from the library? Clips you have already made from it are kept.`,
+                    )
+                  )
+                    return;
+                  try {
+                    await api.deleteMedia(m.id);
+                    if (source?.id === m.id) setSourceId("");
+                    await onRefresh();
+                  } catch (error) {
+                    setUploadError(errorMessage(error));
+                  }
+                };
+                const sourceMenu: MenuItem[] = [
+                  { label: "Use this file", onSelect: () => setSourceId(m.id) },
+                  {
+                    label: state.kind === "failed" ? "Transcribe again" : "Transcribe again",
+                    hint: state.kind === "working" ? "already running" : undefined,
+                    disabled: state.kind === "working",
+                    onSelect: async () => {
+                      try {
+                        await api.transcribeMedia(m.id);
+                        await onRefresh();
+                      } catch (error) {
+                        setUploadError(errorMessage(error));
+                      }
+                    },
+                  },
+                  "separator",
+                  { label: "Remove from library…", danger: true, onSelect: () => void removeSource() },
+                ];
+                return (
                 <div
                   className={`source-row${source?.id === m.id ? " selected" : ""}`}
                   key={m.id}
+                  onContextMenu={(e) => openMenu(e, sourceMenu, m.original_name)}
                 >
                   <button onClick={() => setSourceId(m.id)}>
                     <FileAudio size={18} />
                     <span>
                       {m.original_name}
-                      <small>
-                        {m.has_transcript
-                          ? "Transcript ready"
-                          : "Analyzing media"}
+                      <small className={state.kind === "failed" ? "source-failed" : undefined}>
+                        {state.text}
                       </small>
                     </span>
                     {source?.id === m.id && <b>✓</b>}
                   </button>
+                  {state.kind === "failed" && (
+                    <button
+                      className="source-retry"
+                      onClick={async () => {
+                        setUploadError(null);
+                        try {
+                          await api.transcribeMedia(m.id);
+                          await onRefresh();
+                        } catch (error) {
+                          setUploadError(errorMessage(error));
+                        }
+                      }}
+                    >
+                      Try again
+                    </button>
+                  )}
+                  <MenuButton items={sourceMenu} title={m.original_name} />
                   <button
                     className="source-remove"
                     title={`Remove ${m.original_name}`}
                     aria-label={`Remove ${m.original_name}`}
-                    onClick={async () => {
-                      // Deleting a source does not delete the clips made from
-                      // it, so this is not the destructive act it looks like;
-                      // it is still worth confirming, because the file itself
-                      // is gone and would have to be uploaded again.
-                      if (
-                        !window.confirm(
-                          `Remove ${m.original_name} from the library? Clips you have already made from it are kept.`,
-                        )
-                      )
-                        return;
-                      try {
-                        await api.deleteMedia(m.id);
-                        if (source?.id === m.id) setSourceId("");
-                        await onRefresh();
-                      } catch (error) {
-                        setUploadError(
-                          error instanceof Error
-                            ? error.message
-                            : "That file could not be removed.",
-                        );
-                      }
-                    }}
+                    // Deleting a source does not delete the clips made from
+                    // it, so this is not the destructive act it looks like;
+                    // it is still worth confirming, because the file itself
+                    // is gone and would have to be uploaded again.
+                    onClick={() => void removeSource()}
                   >
                     <Trash2 size={15} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           {source && (
@@ -1540,7 +1612,7 @@ function SpeakerPanel({ mediaId }: { mediaId: string | null }) {
     <div className="speaker-panel">
       <div className="speaker-head">
         <Users size={13} />
-        <strong>Who is talking?</strong>
+        <strong>How many people are talking?</strong>
         <div className="speaker-counts">
           {[1, 2, 3, 4].map((count) => (
             <button
@@ -1624,7 +1696,7 @@ function SuggestedClips({
   }, [mediaId, transcriptReady]);
 
   if (!mediaId || !transcriptReady) return null;
-  if (busy) return <p className="muted suggestion-note">Looking for clips…</p>;
+  if (busy) return <p className="muted suggestion-note">Finding the best moments for you…</p>;
   if (note) return <p className="muted suggestion-note">{note}</p>;
   if (!clips || !clips.length) return null;
 
@@ -2314,6 +2386,37 @@ function Studio({
     setSelectedLayer(next.at(-1)?.id ?? "background");
     void save(next);
   }
+  function duplicateLayer(id: string) {
+    const index = layers.findIndex((l) => l.id === id);
+    const layer = layers[index];
+    if (!layer || layer.type === "background") return;
+    // Offset a little so the copy is visibly a second thing, not a glitch.
+    const copy: Layer = {
+      ...layer,
+      id: `${layer.type}-${Date.now()}`,
+      name: `${layer.name} copy`,
+      x: Math.min(90, layer.x + 3),
+      y: Math.min(90, layer.y + 3),
+    };
+    const next = [...layers.slice(0, index + 1), copy, ...layers.slice(index + 1)];
+    setSelectedLayer(copy.id);
+    void save(next);
+  }
+  function layerMenu(layer: Layer): MenuItem[] {
+    const index = layers.findIndex((l) => l.id === layer.id);
+    const fixed = layer.type === "background";
+    return [
+      { label: "Edit", onSelect: () => setSelectedLayer(layer.id) },
+      { label: layer.visible ? "Hide" : "Show", disabled: fixed, onSelect: () => updateLayer(layer.id, { visible: !layer.visible }) },
+      { label: layer.locked ? "Unlock" : "Lock", disabled: fixed, onSelect: () => updateLayer(layer.id, { locked: !layer.locked }) },
+      "separator",
+      { label: "Bring forward", disabled: fixed || index >= layers.length - 1, onSelect: () => moveLayer(layer.id, 1) },
+      { label: "Send backward", disabled: fixed || index <= 1, onSelect: () => moveLayer(layer.id, -1) },
+      { label: "Duplicate", disabled: fixed, onSelect: () => duplicateLayer(layer.id) },
+      "separator",
+      { label: "Delete layer", danger: true, disabled: fixed, onSelect: () => deleteLayer(layer.id) },
+    ];
+  }
   async function saveTranscript(next = transcriptDraft) {
     if (!media || !next) return;
     await onTranscriptUpdate(media.id, next);
@@ -2516,6 +2619,10 @@ function Studio({
                 .map((layer) => (
                   <div
                     key={layer.id}
+                    onContextMenu={(e) => {
+                      setSelectedLayer(layer.id);
+                      openMenu(e, layerMenu(layer), layer.name);
+                    }}
                     className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}${layer.enter && layer.enter !== "none" && playing ? ` enter-${layer.enter}` : ""}`}
                     style={{
                       ["--enter-seconds" as string]: `${layer.enterSeconds ?? 0.5}s`,
@@ -3095,18 +3202,18 @@ function TimeField({
   const [text, setText] = useState<string | null>(null);
   const commit = () => {
     if (text === null) return;
-    const parsed = Number(text);
-    if (Number.isFinite(parsed)) onCommit(Math.max(min, parsed));
+    const parsed = parseClock(text);
+    if (parsed !== null) onCommit(Math.max(min, parsed));
     setText(null);
   };
   return (
     <label>
       {label}
       <input
-        type="number"
-        min={min}
-        step="0.1"
-        value={text ?? value.toFixed(1)}
+        type="text"
+        inputMode="decimal"
+        placeholder="m:ss"
+        value={text ?? clockText(value)}
         onFocus={(e) => setText(e.target.value)}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
@@ -3119,6 +3226,83 @@ function TimeField({
       />
     </label>
   );
+}
+
+/** What you can do to a project, wherever it is listed. */
+function projectMenu(
+  p: Project,
+  actions: {
+    open: () => void;
+    rename?: (title: string) => Promise<void>;
+    remove?: (p: Project) => Promise<void>;
+  },
+): MenuItem[] {
+  const items: MenuItem[] = [{ label: "Open in Studio", onSelect: actions.open }];
+  if (actions.rename) {
+    const rename = actions.rename;
+    items.push({
+      label: "Rename…",
+      onSelect: () => {
+        const title = window.prompt("New name for this project", p.title);
+        if (title && title.trim() && title.trim() !== p.title) void rename(title.trim());
+      },
+    });
+  }
+  if (actions.remove) {
+    const remove = actions.remove;
+    items.push("separator", {
+      label: "Delete…",
+      danger: true,
+      onSelect: () => {
+        if (window.confirm(`Delete "${p.title}"? Its render is thrown away too.`)) void remove(p);
+      },
+    });
+  }
+  return items;
+}
+
+/** Seconds as "m:ss.s" — what somebody reads off a player, not "83.5". */
+function clockText(seconds: number): string {
+  const total = Math.max(0, seconds);
+  const minutes = Math.floor(total / 60);
+  const rest = total - minutes * 60;
+  return `${minutes}:${rest < 10 ? "0" : ""}${rest.toFixed(1)}`;
+}
+
+/** Reads "1:23.5", "1:23", "83.5" or "83" — whatever somebody types. */
+function parseClock(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":");
+  if (parts.length > 3 || parts.some((p) => p === "" || !/^[0-9.]+$/.test(p))) return null;
+  const numbers = parts.map(Number);
+  if (numbers.some((n) => !Number.isFinite(n))) return null;
+  return numbers.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+/** What a source row says about itself, from its jobs rather than a guess. */
+function sourceState(
+  m: MediaAsset,
+  jobs: Job[],
+): { kind: "ready" | "working" | "failed" | "waiting"; text: string } {
+  if (m.has_transcript) return { kind: "ready", text: "Transcript ready" };
+  const own = jobs.filter((j) => j.subject_id === m.id);
+  const transcribe = own.find((j) => j.kind === "transcribe");
+  if (transcribe && ["queued", "running"].includes(transcribe.status)) {
+    return {
+      kind: "working",
+      text: transcribe.status === "running"
+        ? `Transcribing… ${Math.round(transcribe.progress)}%`
+        : "Waiting to transcribe",
+    };
+  }
+  if (own.some((j) => ["queued", "running"].includes(j.status))) {
+    return { kind: "working", text: "Analyzing audio…" };
+  }
+  if (transcribe?.status === "failed") {
+    return { kind: "failed", text: "Transcription failed" };
+  }
+  return { kind: "failed", text: "Not transcribed yet" };
 }
 
 // Family names as the @font-face rules declare them. Mirrors FONTS in
@@ -3430,14 +3614,25 @@ function ProjectBrowser({
   projects,
   onOpen,
   onDelete,
+  onRename,
 }: {
   projects: Project[];
   onOpen: (p: Project) => void;
   onDelete: (p: Project) => Promise<void>;
+  onRename: (p: Project, title: string) => Promise<void>;
 }) {
   // Deleting a project throws away a render, so it asks once. Confirming in
   // place rather than through a modal keeps the answer next to the question.
   const [confirming, setConfirming] = useState<string | null>(null);
+  const menuFor = (p: Project) =>
+    projectMenu(p, {
+      open: () => onOpen(p),
+      rename: (title) => onRename(p, title),
+      remove: () => {
+        setConfirming(p.id);
+        return Promise.resolve();
+      },
+    });
   return (
     <div className="library-page">
       <div className="page-heading">
@@ -3447,7 +3642,11 @@ function ProjectBrowser({
       </div>
       <div className="library-grid">
         {projects.map((p) => (
-          <div key={p.id} className="library-card">
+          <div
+            key={p.id}
+            className="library-card"
+            onContextMenu={(e) => openMenu(e, menuFor(p), p.title)}
+          >
             <button onClick={() => onOpen(p)}>
               <div
                 className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}
@@ -3456,7 +3655,7 @@ function ProjectBrowser({
               </div>
               <strong>{p.title}</strong>
               <small>
-                {p.aspect_ratio} · {(p.clip_end - p.clip_start).toFixed(1)}s
+                {p.aspect_ratio} · {clockText(p.clip_end - p.clip_start)} · <em>Open in Studio</em>
               </small>
             </button>
             {confirming === p.id ? (
@@ -3473,13 +3672,16 @@ function ProjectBrowser({
                 <button onClick={() => setConfirming(null)}>Keep</button>
               </div>
             ) : (
-              <button
-                className="icon-button danger"
-                title={`Delete ${p.title}`}
-                onClick={() => setConfirming(p.id)}
-              >
-                <Trash2 size={15} />
-              </button>
+              <div className="card-actions">
+                <MenuButton items={menuFor(p)} title={p.title} />
+                <button
+                  className="icon-button danger"
+                  title={`Delete ${p.title}`}
+                  onClick={() => setConfirming(p.id)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -4241,10 +4443,21 @@ function Feeds({
   );
 }
 
-function Exports({ jobs, onReload }: { jobs: Job[]; onReload: () => Promise<void> }) {
+function Exports({
+  jobs,
+  projects,
+  onReload,
+  onOpen,
+}: {
+  jobs: Job[];
+  projects: Project[];
+  onReload: () => Promise<void>;
+  onOpen: (p: Project) => void;
+}) {
   const done = jobs.filter(
     (j) => j.kind === "render" && j.status === "complete",
   );
+  const byId = new Map(projects.map((p) => [p.id, p]));
   // Renders run several at a time now, so the queue is worth showing — and
   // worth being able to stop.
   const active = jobs.filter(
@@ -4269,22 +4482,50 @@ function Exports({ jobs, onReload }: { jobs: Job[]; onReload: () => Promise<void
       )}
       {done.length ? (
         <div className="export-list">
-          {done.map((j) => (
-            <div key={j.id}>
+          {done.map((j) => {
+            const project = j.subject_id ? byId.get(j.subject_id) : undefined;
+            const when = new Date(j.updated_at);
+            const downloads = j.result?.downloads ?? {};
+            const go = (url?: string) => {
+              if (!url) return;
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "";
+              a.click();
+            };
+            const exportMenu: MenuItem[] = [
+              { label: "Download video", disabled: !downloads.mp4, onSelect: () => go(downloads.mp4) },
+              { label: "Download captions (SRT)", disabled: !downloads.srt, onSelect: () => go(downloads.srt) },
+              { label: "Download captions (VTT)", disabled: !downloads.vtt, onSelect: () => go(downloads.vtt) },
+              "separator",
+              { label: "Open project in Studio", disabled: !project, onSelect: () => project && onOpen(project) },
+            ];
+            return (
+            <div key={j.id} onContextMenu={(e) => openMenu(e, exportMenu, project?.title)}>
               <div className="export-icon">
                 <Film size={18} />
               </div>
               <div>
-                <strong>{j.message}</strong>
-                <small>Ready to download</small>
+                <strong>{project?.title ?? "Deleted project"}</strong>
+                <small>
+                  {project ? `${project.aspect_ratio} · ${clockText(project.clip_end - project.clip_start)} · ` : ""}
+                  {Number.isNaN(when.getTime()) ? "" : when.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                </small>
               </div>
               {j.result?.downloads?.mp4 && (
-                <a href={j.result.downloads.mp4} title="Download MP4">
-                  <Download size={17} />
+                <a className="button-link" href={j.result.downloads.mp4} download>
+                  <Download size={15} /> Video
                 </a>
               )}
+              {j.result?.downloads?.srt && (
+                <a className="button-link quiet" href={j.result.downloads.srt} download>
+                  Captions
+                </a>
+              )}
+              <MenuButton items={exportMenu} title={project?.title} />
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="empty-state">

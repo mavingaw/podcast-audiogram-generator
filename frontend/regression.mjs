@@ -56,7 +56,7 @@ try {
   await page.locator(".flow-next .primary").click();
   await page.waitForTimeout(1500);
 
-  const nums = page.locator('input[type="number"]');
+  const nums = page.locator('.clip-fields input');
   await nums.nth(0).click({ clickCount: 3 });
   await page.keyboard.type("60", { delay: 30 });
   await page.keyboard.press("Tab");

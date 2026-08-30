@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_admin, current_user
+from app.api.deps import current_admin, current_user, optional_user
 from app.core.config import settings
 from app.db.models import (
     AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project,
@@ -414,6 +414,17 @@ def me(user: Annotated[User, Depends(current_user)]) -> dict:
     return {"user": serialize_user(user)}
 
 
+@router.get("/session")
+def session_state(user: Annotated[User | None, Depends(optional_user)]) -> dict:
+    """Who is signed in, if anyone — a 200 either way.
+
+    The app asks this on every cold load. Asking `/me` instead meant every
+    visit to the sign-in page began with a 401 in the browser console, which
+    is noise for anyone debugging and a false alarm for the smoke test.
+    """
+    return {"user": serialize_user(user) if user else None}
+
+
 @router.get("/users")
 def list_users(db: Annotated[Session, Depends(get_db)], _: Annotated[User, Depends(current_admin)]) -> dict:
     users = db.scalars(select(User).order_by(User.created_at.asc())).all()
@@ -727,6 +738,37 @@ def get_media(
 ) -> dict:
     """One media record with its transcript."""
     return {"media": serialize_media(_owned_media(db, media_id, user))}
+
+
+@router.post("/media/{media_id}/transcribe")
+def transcribe_media_again(
+    media_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Queue transcription for a source that has none.
+
+    A transcription can fail for reasons that have nothing to do with the
+    audio — a model that could not be downloaded, a box restarted mid-job —
+    and until now the only way past was to upload the file again. One job is
+    queued; asking twice while it is still pending returns the pending one.
+    """
+    media = _owned_media(db, media_id, user)
+    if is_image(media.original_name):
+        raise HTTPException(status_code=400, detail="That file is an image; there is nothing to transcribe.")
+    pending = db.scalar(
+        select(Job).where(
+            Job.subject_id == media.id,
+            Job.kind == JobKind.transcribe,
+            Job.status.in_((JobStatus.queued, JobStatus.running)),
+        )
+    )
+    if pending is None:
+        pending = Job(owner_id=user.id, kind=JobKind.transcribe, subject_id=media.id, message="Queued transcription")
+        db.add(pending)
+        db.commit()
+        start_worker_once()
+    return {"job": serialize_job(pending)}
 
 
 @router.get("/media/{media_id}/file")

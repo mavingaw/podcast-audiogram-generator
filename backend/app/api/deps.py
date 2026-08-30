@@ -19,6 +19,14 @@ def current_user(
     return user
 
 
+def optional_user(
+    db: Session = Depends(get_db),
+    pas_session: str | None = Cookie(default=None, alias=settings.session_cookie),
+) -> User | None:
+    """The signed-in user, or None — for the one call that asks rather than requires."""
+    return get_user_by_token(db, pas_session)
+
+
 def current_admin(user: User = Depends(current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")

@@ -320,6 +320,8 @@ export type Job = {
   subject_id: string | null;
   message: string;
   error: string | null;
+  created_at: string;
+  updated_at: string;
   result: {
     downloads?: Record<string, string>;
     files?: Record<string, string>;
@@ -544,6 +546,7 @@ export const api = {
       body: JSON.stringify({ open }),
     }),
   me: () => request<{ user: User }>("/api/me"),
+  session: () => request<{ user: User | null }>("/api/session"),
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/auth/login", {
       method: "POST",
@@ -743,6 +746,8 @@ export const api = {
   mediaLight: () => request<{ media: MediaAsset[] }>("/api/media?transcripts=0"),
   /** One media record with its transcript. */
   mediaOne: (mediaId: string) => request<{ media: MediaAsset }>(`/api/media/${mediaId}`),
+  transcribeMedia: (mediaId: string) =>
+    request<{ job: Job }>(`/api/media/${mediaId}/transcribe`, { method: "POST" }),
   deleteMedia: (mediaId: string) =>
     request<{ ok: boolean; projects_affected: number }>(`/api/media/${mediaId}`, {
       method: "DELETE",
