@@ -4,6 +4,8 @@ export type User = {
   is_admin: boolean;
   disabled: boolean;
   created_at: string;
+  display_name: string;
+  avatar_media_id: string | null;
 };
 
 export type MediaAsset = {
@@ -552,6 +554,14 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  updateProfile: (body: { display_name?: string; avatar_media_id?: string; clear_avatar?: boolean }) =>
+    request<{ user: User }>("/api/me", { method: "PATCH", body: JSON.stringify(body) }),
+  changePassword: (current: string, next: string) =>
+    request<{ ok: boolean }>("/api/me/password", {
+      method: "POST",
+      body: JSON.stringify({ current, new: next }),
+    }),
+  logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   socialAccounts: () =>
     request<{ accounts: { key: string; label: string; posts: string; configured: boolean; connected: boolean; name: string }[] }>(
       "/api/social/accounts",

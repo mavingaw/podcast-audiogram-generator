@@ -47,6 +47,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What the person likes to be called; the username stays the login.
+    display_name: Mapped[str | None] = mapped_column(String(80), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
 
 

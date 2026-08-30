@@ -694,7 +694,6 @@ export function App() {
             </h1>
           </div>
           <div className="header-actions">
-            <span className="saved-dot">Local workspace</span>
             <button
               className="primary compact mobile-new"
               onClick={() => setView("quick")}
@@ -702,6 +701,14 @@ export function App() {
             >
               + New
             </button>
+            <UserMenu
+              user={user}
+              onSettings={() => setView("settings")}
+              onSignOut={async () => {
+                await api.logout().catch(() => undefined);
+                window.location.reload();
+              }}
+            />
             <HelpButton
               view={view}
               onStart={() => {
@@ -991,9 +998,7 @@ function Sidebar({
           </button>
         ))}
       </div>
-      <div className="sidebar-footer">
-        <span className="status-light" /> Local processing
-      </div>
+
     </aside>
   );
 }
@@ -4275,6 +4280,7 @@ function SettingsPage({
           <p>Signed in as <strong>{user?.username}</strong>{user?.is_admin ? " · admin" : ""}.</p>
         </div>
       </div>
+      <ProfileSection user={user} media={media} onUpload={onUpload} onRefresh={onRefresh} />
       <section className="settings-section">
         <h3>Your show</h3>
         <p className="muted">These apply to every clip you make.</p>
@@ -4292,11 +4298,176 @@ function SettingsPage({
       {admin && (
         <section className="settings-section">
           <h3>Admin</h3>
-          <p className="muted">Models, computer settings, accounts, and the platform app keys.</p>
+          <p className="muted">
+            The machine room: everything here runs on this server, locally — models, computer
+            settings, accounts, and the platform app keys. Only admins see this.
+          </p>
           {admin}
         </section>
       )}
     </div>
+  );
+}
+
+/** The circle in the corner: your picture, your menu. */
+function UserMenu({
+  user,
+  onSettings,
+  onSignOut,
+}: {
+  user: User | null;
+  onSettings: () => void;
+  onSignOut: () => void;
+}) {
+  if (!user) return null;
+  const label = user.display_name || user.username;
+  const items: MenuItem[] = [
+    { label: "Settings", onSelect: onSettings },
+    "separator",
+    { label: "Sign out", onSelect: onSignOut },
+  ];
+  return (
+    <button
+      className="user-avatar"
+      title={`${label} — account menu`}
+      aria-haspopup="menu"
+      onClick={(e) => openMenu(e, items, label)}
+      onContextMenu={(e) => openMenu(e, items, label)}
+    >
+      {user.avatar_media_id ? (
+        <img src={api.mediaFileUrl(user.avatar_media_id)} alt="" />
+      ) : (
+        <span>{(label[0] ?? "?").toUpperCase()}</span>
+      )}
+    </button>
+  );
+}
+
+/** Name, picture, password — the person's own corner of Settings. */
+function ProfileSection({
+  user,
+  media,
+  onUpload,
+  onRefresh,
+}: {
+  user: User | null;
+  media: MediaAsset[];
+  onUpload: (f: File, onProgress?: (fraction: number) => void) => Promise<MediaAsset>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [name, setName] = useState(user?.display_name ?? "");
+  const [note, setNote] = useState<string | null>(null);
+  const [pw, setPw] = useState({ current: "", next: "" });
+  const [pwNote, setPwNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!user) return null;
+  return (
+    <section className="settings-section">
+      <h3>Profile</h3>
+      <p className="muted">Who you are on this Kinder.</p>
+      <div className="profile-row">
+        <button
+          className="user-avatar large"
+          title="Change your picture"
+          onClick={() => document.getElementById("avatar-input")?.click()}
+        >
+          {user.avatar_media_id ? (
+            <img src={api.mediaFileUrl(user.avatar_media_id)} alt="" />
+          ) : (
+            <span>{((user.display_name || user.username)[0] ?? "?").toUpperCase()}</span>
+          )}
+        </button>
+        <input
+          id="avatar-input"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            setBusy(true);
+            try {
+              const asset = await onUpload(f);
+              await api.updateProfile({ avatar_media_id: asset.id });
+              await onRefresh();
+              window.location.reload();
+            } catch (err) {
+              setNote(errorMessage(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        <div className="profile-fields">
+          <label>
+            Display name
+            <div className="profile-name-row">
+              <input value={name} maxLength={80} placeholder={user.username} onChange={(e) => setName(e.target.value)} />
+              <button
+                className="primary compact"
+                disabled={busy}
+                onClick={async () => {
+                  try {
+                    await api.updateProfile({ display_name: name });
+                    setNote("Saved.");
+                    playSfx("confirm");
+                  } catch (err) {
+                    setNote(errorMessage(err));
+                  }
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </label>
+          <span className="muted small">Signed in as <strong>{user.username}</strong>{user.is_admin ? " · admin" : ""}.</span>
+          {user.avatar_media_id && (
+            <button
+              className="text-button inline"
+              onClick={async () => {
+                await api.updateProfile({ clear_avatar: true });
+                window.location.reload();
+              }}
+            >
+              Remove picture
+            </button>
+          )}
+          {note && <span className="muted small">{note}</span>}
+        </div>
+      </div>
+      <details className="password-change">
+        <summary>Change password</summary>
+        <form
+          className="profile-fields"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setPwNote(null);
+            try {
+              await api.changePassword(pw.current, pw.next);
+              setPw({ current: "", next: "" });
+              setPwNote("Changed. Use the new one next time you sign in.");
+              playSfx("confirm");
+            } catch (err) {
+              setPwNote(errorMessage(err));
+            }
+          }}
+        >
+          <label>
+            Current password
+            <input type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
+          </label>
+          <label>
+            New password (10+ characters)
+            <input type="password" autoComplete="new-password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+          </label>
+          <button className="primary compact" type="submit" disabled={!pw.current || pw.next.length < 10}>
+            Change password
+          </button>
+          {pwNote && <span className="muted small">{pwNote}</span>}
+        </form>
+      </details>
+    </section>
   );
 }
 

@@ -182,10 +182,16 @@ def set_session_cookie(response: Response, token: str, request: Request | None =
     )
 
 
-def serialize_user(user: User) -> dict:
+def serialize_user(user: User, db: Session | None = None) -> dict:
+    avatar = None
+    if db is not None:
+        row = db.get(AppSetting, f"avatar:{user.id}")
+        avatar = row.value if row and row.value else None
     return {
         "id": user.id,
         "username": user.username,
+        "display_name": user.display_name or "",
+        "avatar_media_id": avatar,
         "is_admin": user.is_admin,
         "disabled": user.disabled,
         "created_at": user.created_at.isoformat(),
@@ -421,8 +427,66 @@ def set_signups(
 
 
 @router.get("/me")
-def me(user: Annotated[User, Depends(current_user)]) -> dict:
-    return {"user": serialize_user(user)}
+def me(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    return {"user": serialize_user(user, db)}
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = None
+    avatar_media_id: str | None = None
+    clear_avatar: bool = False
+
+
+@router.patch("/me")
+def update_profile(
+    payload: ProfileUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """The person's own profile: what they are called, and their picture."""
+    if payload.display_name is not None:
+        user.display_name = payload.display_name.strip()[:80]
+    if payload.avatar_media_id:
+        image = db.get(MediaAsset, payload.avatar_media_id)
+        if not image or image.owner_id != user.id:
+            raise HTTPException(status_code=404, detail="Image not found")
+        if not is_image(image.original_name):
+            raise HTTPException(status_code=400, detail="A profile picture must be an image")
+        row = db.get(AppSetting, f"avatar:{user.id}") or AppSetting(key=f"avatar:{user.id}", value="")
+        row.value = image.id
+        db.merge(row)
+    if payload.clear_avatar:
+        row = db.get(AppSetting, f"avatar:{user.id}")
+        if row:
+            row.value = ""
+            db.merge(row)
+    db.commit()
+    return {"user": serialize_user(user, db)}
+
+
+class PasswordChange(BaseModel):
+    current: str
+    new: str
+
+
+@router.post("/me/password")
+def change_password(
+    payload: PasswordChange,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Change your own password. The current one proves it is you — a
+    borrowed open browser must not be enough."""
+    if not verify_password(payload.current, user.password_hash):
+        raise HTTPException(status_code=403, detail="The current password is not right")
+    if len(payload.new) < 10:
+        raise HTTPException(status_code=400, detail="Use at least 10 characters")
+    user.password_hash = hash_password(payload.new)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/facts")
@@ -436,14 +500,17 @@ def random_facts(
 
 
 @router.get("/session")
-def session_state(user: Annotated[User | None, Depends(optional_user)]) -> dict:
+def session_state(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User | None, Depends(optional_user)],
+) -> dict:
     """Who is signed in, if anyone — a 200 either way.
 
     The app asks this on every cold load. Asking `/me` instead meant every
     visit to the sign-in page began with a 401 in the browser console, which
     is noise for anyone debugging and a false alarm for the smoke test.
     """
-    return {"user": serialize_user(user) if user else None}
+    return {"user": serialize_user(user, db) if user else None}
 
 
 @router.get("/users")

@@ -2958,3 +2958,21 @@ html.large-text #root { zoom: 1.18; }
   .font-upload { cursor: pointer; justify-self: start; }
   .font-upload.disabled { opacity: 0.5; pointer-events: none; }
 }
+
+@layer views {
+  .user-avatar {
+    width: 34px; height: 34px; border-radius: 50%; overflow: hidden;
+    display: grid; place-items: center; flex: 0 0 34px;
+    background: var(--accent-500); color: var(--n-950); font-weight: 800; font-size: 15px;
+    border: 2px solid color-mix(in oklab, var(--accent-500) 40%, var(--line));
+  }
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .user-avatar.large { width: 72px; height: 72px; flex-basis: 72px; font-size: 30px; }
+  .profile-row { display: flex; gap: var(--s-4); align-items: flex-start; }
+  .profile-fields { display: grid; gap: 8px; min-width: 0; flex: 1; max-width: 420px; }
+  .profile-fields label { display: grid; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
+  .profile-name-row { display: flex; gap: 8px; }
+  .profile-name-row input { flex: 1; min-width: 0; }
+  .password-change summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+  .password-change form { margin-top: var(--s-3); }
+}
