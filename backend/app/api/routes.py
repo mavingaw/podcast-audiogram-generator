@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import (
     APIRouter, Cookie, Depends, HTTPException, Request, Response, UploadFile,
 )
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -28,6 +28,7 @@ from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
 from app.services import cancellation
 from app.services import facts as fact_service
+from app.services import youtube as youtube_service
 from app.services.encoders import describe as describe_encoder
 from app.services.gpu import discover_gpus
 from app.services.transcription import MODEL_SIZES as WHISPER_MODEL_SIZES
@@ -1711,6 +1712,135 @@ def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
 }})();
 </script>
 </main></body></html>"""
+
+
+# ---------------------------------------------------------------- YouTube
+
+
+class YouTubeClient(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+
+
+@router.get("/settings/youtube")
+def get_youtube_settings(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(current_admin)],
+) -> dict:
+    cid, secret = youtube_service.client(db)
+    return {"client_id": cid, "has_secret": bool(secret)}
+
+
+@router.put("/settings/youtube")
+def set_youtube_settings(
+    payload: YouTubeClient,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(current_admin)],
+) -> dict:
+    youtube_service.set_client(db, payload.client_id, payload.client_secret)
+    cid, secret = youtube_service.client(db)
+    return {"client_id": cid, "has_secret": bool(secret)}
+
+
+def _youtube_redirect(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/api/youtube/callback"
+
+
+@router.get("/youtube/account")
+def youtube_account(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    acct = youtube_service.account(db, user.id)
+    return {
+        "configured": youtube_service.configured(db),
+        "connected": bool(acct),
+        "channel": (acct or {}).get("channel", ""),
+    }
+
+
+@router.get("/youtube/connect")
+def youtube_connect(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """The Google sign-in URL. The browser goes there, approves, and comes
+    back to the callback below with a code."""
+    try:
+        return {"url": youtube_service.begin(db, user.id, _youtube_redirect(request))}
+    except youtube_service.YouTubeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/youtube/callback")
+def youtube_callback(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    if error or not code:
+        return RedirectResponse(url="/?youtube=denied", status_code=303)
+    try:
+        youtube_service.finish(db, user.id, _youtube_redirect(request), code, state)
+    except youtube_service.YouTubeError as failure:
+        return RedirectResponse(url="/?youtube=failed&why=" + requests_quote(str(failure)), status_code=303)
+    return RedirectResponse(url="/?youtube=connected", status_code=303)
+
+
+def requests_quote(text: str) -> str:
+    from urllib.parse import quote
+
+    return quote(text[:200])
+
+
+@router.delete("/youtube/account")
+def youtube_disconnect(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    youtube_service.disconnect(db, user.id)
+    return {"connected": False}
+
+
+class YouTubePost(BaseModel):
+    title: str = ""
+    description: str = ""
+    privacy: str = "private"
+
+
+@router.post("/projects/{project_id}/post/youtube")
+def post_to_youtube(
+    project_id: str,
+    payload: YouTubePost,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Upload this project's rendered video to the connected channel."""
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    video = settings.outputs_dir / project.id / "audiogram.mp4"
+    try:
+        result = youtube_service.upload(
+            db, user.id, video,
+            title=payload.title.strip() or project.title,
+            description=payload.description,
+            privacy=payload.privacy,
+        )
+    except youtube_service.YouTubeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    # Remembered on the project, so the card can show "Posted" next time.
+    scene = json.loads(project.scene_json or "{}")
+    posts = list(scene.get("posted") or [])
+    posts.append({"platform": "youtube", "url": result["url"], "privacy": result["privacy"]})
+    scene["posted"] = posts
+    project.scene_json = json.dumps(scene)
+    db.commit()
+    return result
 
 
 @router.get("/jobs")

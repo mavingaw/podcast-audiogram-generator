@@ -551,6 +551,21 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  youtubeAccount: () =>
+    request<{ configured: boolean; connected: boolean; channel: string }>("/api/youtube/account"),
+  youtubeConnect: () => request<{ url: string }>("/api/youtube/connect"),
+  youtubeDisconnect: () => request<{ connected: boolean }>("/api/youtube/account", { method: "DELETE" }),
+  youtubeSettings: () => request<{ client_id: string; has_secret: boolean }>("/api/settings/youtube"),
+  setYoutubeSettings: (client_id: string, client_secret: string) =>
+    request<{ client_id: string; has_secret: boolean }>("/api/settings/youtube", {
+      method: "PUT",
+      body: JSON.stringify({ client_id, client_secret }),
+    }),
+  postToYoutube: (projectId: string, body: { title?: string; description?: string; privacy: string }) =>
+    request<{ id: string; url: string; privacy: string; title: string }>(
+      `/api/projects/${projectId}/post/youtube`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   share: (projectId: string) =>
     request<{ token: string; url: string }>(`/api/projects/${projectId}/share`, { method: "POST" }),
   unshare: (projectId: string) =>

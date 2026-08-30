@@ -46,6 +46,7 @@ import {
   Image as ImageIcon,
   Link2,
   ExternalLink,
+
 } from "lucide-react";
 import {
   api,
@@ -440,6 +441,17 @@ export function App() {
   // paint, before anyone has signed in.
   useEffect(() => {
     applyLargeText(readLargeText());
+    // Back from Google's sign-in.
+    const q = new URLSearchParams(window.location.search);
+    const yt = q.get("youtube");
+    if (yt) {
+      window.history.replaceState({}, "", window.location.pathname);
+      window.setTimeout(() => {
+        if (yt === "connected") window.alert("YouTube is connected. Every finished clip now has a Post to YouTube button.");
+        else if (yt === "denied") window.alert("YouTube was not connected — the sign-in was cancelled.");
+        else window.alert("YouTube was not connected: " + (q.get("why") || "something went wrong"));
+      }, 300);
+    }
   }, []);
   const [coaching, setCoaching] = useState(false);
   useEffect(() => {
@@ -2231,6 +2243,164 @@ function ShareButton({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * Post this clip to the person's own YouTube channel. Connect once (Google's
+ * sign-in), then every ready card has the button. Private by default.
+ */
+function YouTubePost({ projectId, defaultTitle }: { projectId: string; defaultTitle: string }) {
+  const [acct, setAcct] = useState<{ configured: boolean; connected: boolean; channel: string } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [ytTitle, setYtTitle] = useState(defaultTitle);
+  const [description, setDescription] = useState("");
+  const [privacy, setPrivacy] = useState("private");
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [result, setResult] = useState<string | null>(null);
+  useEffect(() => {
+    api.youtubeAccount().then(setAcct).catch(() => setAcct(null));
+  }, []);
+  if (!acct || !acct.configured) return null;
+  if (!acct.connected) {
+    return (
+      <div className="yt-post">
+        <button
+          className="ghost"
+          onClick={async () => {
+            try {
+              const { url } = await api.youtubeConnect();
+              window.location.href = url;
+            } catch (e) {
+              setResult(errorMessage(e));
+            }
+          }}
+        >
+          <Upload size={14} /> Connect YouTube to post from here
+        </button>
+        {result && <small className="error">{result}</small>}
+      </div>
+    );
+  }
+  if (state === "done" && result) {
+    return (
+      <div className="yt-post done">
+        <Check size={15} /> Posted to YouTube ({privacy}) —{" "}
+        <a href={result} target="_blank" rel="noreferrer">{result}</a>
+      </div>
+    );
+  }
+  return (
+    <div className="yt-post">
+      {!open ? (
+        <button className="ghost" onClick={() => setOpen(true)}>
+          <Upload size={14} /> Post to YouTube{acct.channel ? ` (${acct.channel})` : ""}
+        </button>
+      ) : (
+        <form
+          className="yt-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setState("busy");
+            try {
+              const r = await api.postToYoutube(projectId, { title: ytTitle, description, privacy });
+              setResult(r.url);
+              setState("done");
+              playSfx("confirm");
+            } catch (err) {
+              setResult(errorMessage(err));
+              setState("error");
+            }
+          }}
+        >
+          <label>
+            Title
+            <input value={ytTitle} maxLength={100} onChange={(e) => setYtTitle(e.target.value)} />
+          </label>
+          <label>
+            Description
+            <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+          <label>
+            Who can see it
+            <select value={privacy} onChange={(e) => setPrivacy(e.target.value)}>
+              <option value="private">Only me (private)</option>
+              <option value="unlisted">Anyone with the link (unlisted)</option>
+              <option value="public">Everyone (public)</option>
+            </select>
+          </label>
+          <div className="yt-form-actions">
+            <button className="primary" type="submit" disabled={state === "busy"}>
+              <Upload size={14} /> {state === "busy" ? "Uploading to YouTube…" : "Post"}
+            </button>
+            <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+          {state === "error" && result && <small className="error">{result}</small>}
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** Admin: the Google OAuth client that lets people connect their channel. */
+function YouTubeAdmin() {
+  const [clientId, setClientId] = useState("");
+  const [secret, setSecret] = useState("");
+  const [hasSecret, setHasSecret] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [acct, setAcct] = useState<{ connected: boolean; channel: string } | null>(null);
+  useEffect(() => {
+    api.youtubeSettings().then((s) => { setClientId(s.client_id); setHasSecret(s.has_secret); }).catch(() => undefined);
+    api.youtubeAccount().then(setAcct).catch(() => undefined);
+  }, []);
+  const callback = `${window.location.origin}/api/youtube/callback`;
+  return (
+    <details className="yt-admin">
+      <summary><Upload size={14} /> YouTube posting {hasSecret && clientId ? "· set up" : "· not set up"}</summary>
+      <p className="muted small">
+        Lets people connect their own YouTube channel and post clips from Kinder. Needs a Google
+        OAuth client: in Google Cloud Console create a project, enable the <em>YouTube Data API v3</em>,
+        make an OAuth client of type <em>Web application</em>, and add this redirect URL:{" "}
+        <code>{callback}</code>. Paste the client ID and secret here.
+      </p>
+      <form
+        className="yt-admin-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            const s = await api.setYoutubeSettings(clientId, secret);
+            setHasSecret(s.has_secret);
+            setSecret("");
+            setNote("Saved. Anyone can now press Connect YouTube on a finished clip.");
+          } catch (err) {
+            setNote(errorMessage(err));
+          }
+        }}
+      >
+        <label>
+          Client ID
+          <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="1234-abcd.apps.googleusercontent.com" />
+        </label>
+        <label>
+          Client secret
+          <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={hasSecret ? "(saved — leave blank to keep)" : "GOCSPX-…"} />
+        </label>
+        <button className="primary compact" type="submit">Save</button>
+        {acct?.connected && (
+          <button
+            type="button"
+            className="ghost compact"
+            onClick={async () => {
+              await api.youtubeDisconnect();
+              setAcct({ connected: false, channel: "" });
+            }}
+          >
+            Disconnect my channel{acct.channel ? ` (${acct.channel})` : ""}
+          </button>
+        )}
+      </form>
+      {note && <p className="muted small">{note}</p>}
+    </details>
+  );
+}
+
 /** Where the finished file can be posted, as a row of ticks and crosses. */
 function ReadyDestinations({ projectId }: { projectId: string }) {
   const [rows, setRows] = useState<Destination[] | null>(null);
@@ -2355,6 +2525,7 @@ function ReadyCard({
           <video className="ready-video" src={downloads.mp4} controls playsInline preload="metadata" />
         )}
         {job.subject_id && <ReadyDestinations projectId={job.subject_id} />}
+        {job.subject_id && <YouTubePost projectId={job.subject_id} defaultTitle={title} />}
         <div className="ready-actions">
           {downloads.mp4 && (
             <a className="button-link" href={downloads.mp4} download>
@@ -5415,6 +5586,7 @@ function AdminStrip({
         <Users size={16} /> Admin · {users.length} users · {gpus.length} GPUs
       </summary>
       <TranscriptionPanel isAdmin={isAdmin} />
+      <YouTubeAdmin />
       <div className="admin-content">
         <form
           onSubmit={async (e) => {
