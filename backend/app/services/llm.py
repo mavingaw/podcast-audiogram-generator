@@ -271,6 +271,8 @@ Lines:
 # What a host says when the sponsor is paying. Any two of these in one
 # excerpt is an ad read; one alone can be conversation ("I got a discount").
 AD_PENALTY = 0.15
+# How close to a detected read a clip can be before it is treated as part of it.
+AD_BLOCK_SECONDS = 45.0
 _AD_PHRASES = (
     "promo code", "use code", "use the code", "discount code", "coupon",
     "brought to you by", "sponsored by", "this episode is sponsored",
@@ -435,5 +437,22 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
             clip["score"] = round(clip.get("score", 0.0) * AD_PENALTY, 3)
             clip["ad"] = True
             clip.setdefault("reasons", []).insert(0, "Sounds like a sponsor read")
+    # Sponsor reads come in blocks: the line before the promo code is the
+    # product's origin story, and it carries none of the give-away words.
+    # A clip that sits next to a detected read is part of the same block.
+    flagged = [c for c in scored if c.get("ad")]
+    for clip in scored:
+        if clip.get("ad"):
+            continue
+        near = any(
+            abs(float(clip.get("start", 0)) - float(ad.get("end", 0))) <= AD_BLOCK_SECONDS
+            or abs(float(ad.get("start", 0)) - float(clip.get("end", 0))) <= AD_BLOCK_SECONDS
+            or (float(clip.get("start", 0)) < float(ad.get("end", 0)) and float(clip.get("end", 0)) > float(ad.get("start", 0)))
+            for ad in flagged
+        )
+        if near:
+            clip["score"] = round(clip.get("score", 0.0) * AD_PENALTY, 3)
+            clip["ad"] = True
+            clip.setdefault("reasons", []).insert(0, "Right next to a sponsor read")
     scored.sort(key=lambda item: item.get("score", 0.0), reverse=True)
     return scored

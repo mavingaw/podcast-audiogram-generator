@@ -366,7 +366,7 @@ def test_a_sponsor_read_sinks_to_the_bottom(monkeypatch):
     monkeypatch.setattr(llm, "rate", lambda text: ratings[text])
     clips = [
         {"text": "ad text", "score": 0.9, "start": 0, "end": 10},
-        {"text": "real text", "score": 0.5, "start": 20, "end": 30},
+        {"text": "real text", "score": 0.5, "start": 900, "end": 930},
     ]
     ranked = llm.rerank(clips)
     assert ranked[0]["text"] == "real text"
@@ -381,3 +381,18 @@ def test_the_model_reply_carries_the_ad_flag():
     assert rating and rating["ad"] is True
     rating = _parse('{"hook": 8, "standalone": 7, "interest": 6, "best_line": 1, "reason": "x"}', ["a line"])
     assert rating and rating["ad"] is False
+
+
+def test_the_line_before_the_promo_code_is_part_of_the_read(monkeypatch):
+    from app.services import llm
+
+    monkeypatch.setattr(llm, "available", lambda: True)
+    monkeypatch.setattr(llm, "rate", lambda text: {"hook": 7, "standalone": 7, "interest": 7, "ad": False, "reason": "ok", "headline": ""})
+    clips = [
+        {"text": "Food in Italy just feels different", "score": 0.9, "start": 0, "end": 43},
+        {"text": "Use promo code TRIBE for 20% off at brami .com", "score": 0.8, "start": 50, "end": 80},
+        {"text": "my father was a person who worked in", "score": 0.6, "start": 900, "end": 930},
+    ]
+    ranked = llm.rerank(clips)
+    assert ranked[0]["text"].startswith("my father")
+    assert all(c.get("ad") for c in ranked[1:])
