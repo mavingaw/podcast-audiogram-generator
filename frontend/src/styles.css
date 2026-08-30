@@ -2480,3 +2480,13 @@
   .layer-caption[data-preset="card"] { background: #ffffff; color: #111111; font-weight: 800; border-radius: 8px; text-shadow: none; }
   .layer-caption[data-preset="outline"] { background: transparent; font-weight: 800; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
 }
+
+@layer views {
+  .template-thumb.look { display: grid; grid-template-rows: 1fr auto auto; gap: 6px; padding: 12px; align-items: end; justify-items: center; }
+  .template-thumb.look > div { display: none; }
+  .look-title { font-weight: 800; font-size: 15px; line-height: 1.1; text-align: center; align-self: center; }
+  .look-caption { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+  .look-caption em { font-style: normal; font-weight: 800; }
+  .look-bars { display: flex; align-items: center; gap: 2px; height: 22px; width: 70%; }
+  .look-bars i { flex: 1; border-radius: 2px; opacity: 0.9; }
+}

@@ -3755,13 +3755,30 @@ function TemplatePanel({
 }
 
 function TemplateThumb({ template }: { template: (typeof templates)[number] }) {
+  // A tile has to show the *look*, not two colour blocks: the typeface, the
+  // caption plate and the bars are what differ between Frost and Neon.
+  const family = FONT_FAMILIES[template.font ?? "inter"] ?? "Inter";
+  const captionFamily = FONT_FAMILIES[template.captionFont ?? template.font ?? "inter"] ?? "Inter";
+  const bars = [0.35, 0.7, 1, 0.55, 0.8, 0.45, 0.9, 0.6, 0.3, 0.75, 0.5, 0.65];
   return (
-    <div className="template-thumb" style={{ background: template.background }}>
-      <div style={{ background: template.accent }} />
-      <span>
-        Episode
-        <br />
-        Title
+    <div
+      className="template-thumb look"
+      style={{ background: template.background, ["--accent-500" as string]: template.accent, ["--n-950" as string]: template.background } as CSSProperties}
+    >
+      <span className="look-title" style={{ fontFamily: family, color: template.captionColor ?? "#ffffff" }}>
+        Episode Title
+      </span>
+      <span
+        className="layer-caption look-caption"
+        data-preset={template.captionPreset ?? "social"}
+        style={{ fontFamily: captionFamily, color: template.captionColor ?? "#ffffff" }}
+      >
+        the spoken <em style={{ color: typeof template.peakAccent === "string" ? template.peakAccent : "#D4AF37" }}>word</em>
+      </span>
+      <span className="look-bars" aria-hidden="true">
+        {bars.map((h, i) => (
+          <i key={i} style={{ height: `${h * 100}%`, background: template.accent }} />
+        ))}
       </span>
     </div>
   );
