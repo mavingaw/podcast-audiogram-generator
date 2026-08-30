@@ -1009,6 +1009,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     mp4_path = work_dir / "audiogram.mp4"
     if not _ffmpeg_available():
         raise RuntimeError("FFmpeg is not installed or not on PATH")
+    source_has_video = (media.content_type or "").startswith("video/")
     _render_audiogram_mp4(
         source_path=media_path,
         output_path=mp4_path,
@@ -1025,6 +1026,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         plates=plates,
         job_id=job.id,
         sfx=sfx_cues,
+        source_has_video=source_has_video,
         # Where the speech is, in clip seconds, so the bed can dip exactly
         # under it rather than as far as a compressor happens to reach.
         speech_spans=speech_spans_of(transcript, clip_start, clip_start + duration),
@@ -1386,6 +1388,7 @@ def build_render_command(
     token_context: dict[str, str] | None = None,
     sfx: "list[sfx_service.ResolvedCue] | None" = None,
     speech_spans: "list[tuple[float, float]] | None" = None,
+    source_has_video: bool = False,
 ) -> list[str]:
     """Assemble the FFmpeg invocation for one audiogram render.
 
@@ -1435,8 +1438,20 @@ def build_render_command(
         audio_label = "[anorm]"
 
     video_label = "[1:v]"
+    use_footage = source_has_video and parsed.video_background
 
-    if background_input is not None:
+    if use_footage:
+        # The source's own picture is the background: scaled to fill the
+        # canvas, centre-cropped, at the render's frame rate. Input 0 is
+        # already trimmed to the clip by -ss/-t, so the footage lines up
+        # with the audio by construction.
+        audio_chains.append(
+            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},fps=30,setsar=1[vsrc]"
+        )
+        video_label = "[vsrc]"
+
+    if not use_footage and background_input is not None:
         # The plate is already scaled, blurred and dimmed to exactly the canvas
         # size, so this is a plain composite with no per-frame filter work.
         audio_chains.append(f"{video_label}[{background_input}:v]overlay=x=0:y=0[vbg]")
@@ -1990,6 +2005,7 @@ def _render_audiogram_mp4(
     token_context: dict[str, str] | None = None,
     sfx: "list[sfx_service.ResolvedCue] | None" = None,
     speech_spans: "list[tuple[float, float]] | None" = None,
+    source_has_video: bool = False,
 ) -> None:
     # Measure the mix first so the encode can be delivered at a known loudness.
     # A failed measurement is not a failed render: the clip simply goes out at
@@ -2023,6 +2039,7 @@ def _render_audiogram_mp4(
             token_context=token_context,
             sfx=sfx,
             speech_spans=speech_spans,
+            source_has_video=source_has_video,
         ),
         cwd=ass_path.parent,
         capture_output=True,

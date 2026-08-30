@@ -3032,3 +3032,7 @@ html.large-text #root { zoom: 1.18; }
   }
   .card-actions .icon-button.danger { width: 34px; height: 34px; }
 }
+
+@layer views {
+  .canvas-backdrop.video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+}

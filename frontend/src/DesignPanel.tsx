@@ -130,11 +130,13 @@ export function DesignPanel({
   media,
   onScene,
   onMediaAdded,
+  sourceIsVideo = false,
 }: {
   project: Project | null;
   media: MediaAsset[];
   onScene: (patch: Scene) => Promise<void>;
   onMediaAdded: (asset: MediaAsset) => void;
+  sourceIsVideo?: boolean;
 }) {
   const customFonts = useCustomFonts();
   const [uploading, setUploading] = useState(false);
@@ -236,6 +238,16 @@ export function DesignPanel({
 
       <div className="design-group">
         <span className="sidebar-label">Background image</span>
+        {sourceIsVideo && (
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={scene.videoBackground !== false}
+              onChange={(event) => void onScene({ videoBackground: event.target.checked })}
+            />
+            Use the video's own picture as the background
+          </label>
+        )}
         <p className="muted">
           A soft, blurred version of your cover picture fills the whole video
           behind everything else. Turn the blur down to see it clearly.

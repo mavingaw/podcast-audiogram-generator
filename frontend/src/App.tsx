@@ -2578,6 +2578,27 @@ function YouTubeAdmin() {
   );
 }
 
+/** The clip's own footage behind the canvas, kept in step with playback.
+
+ Sync is deliberately loose: the video is a backdrop, and correcting only
+ when it drifts past a third of a second avoids the stutter of constant
+ seeking. */
+function VideoBackdrop({ src, time, playing }: { src: string; time: number; playing: boolean }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (playing) void el.play().catch(() => undefined);
+    else el.pause();
+  }, [playing]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !Number.isFinite(time)) return;
+    if (Math.abs(el.currentTime - time) > 0.35) el.currentTime = time;
+  }, [time]);
+  return <video ref={ref} className="canvas-backdrop video" src={src} muted playsInline preload="auto" />;
+}
+
 /** The rendered clip's own frame as the card image, when there is one. */
 function Poster({
   projectId,
@@ -3487,7 +3508,14 @@ function Studio({
                 ["--caption-font" as string]: familyOf(String(project?.scene?.captionFont ?? "inter")),
               } as CSSProperties}
             >
-              {backgroundImageUrl && (
+              {media?.content_type.startsWith("video/") && project?.scene?.videoBackground !== false && (
+                <VideoBackdrop
+                  src={api.mediaFileUrl(media.id)}
+                  time={clipStart + localPlayhead}
+                  playing={playing}
+                />
+              )}
+              {backgroundImageUrl && !(media?.content_type.startsWith("video/") && project?.scene?.videoBackground !== false) && (
                 /* Mirrors the render's plate: cover, blur, darken. The blur is
                    scaled to the preview so it reads the same as the export at
                    a fraction of the pixels. */
@@ -3717,6 +3745,7 @@ function Studio({
           <DesignPanel
             project={project}
             media={allMedia}
+            sourceIsVideo={Boolean(media?.content_type.startsWith("video/"))}
             onScene={(patch) => saveScene(patch)}
             onMediaAdded={onMediaAdded}
           />

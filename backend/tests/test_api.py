@@ -38,6 +38,11 @@ def create_test_client(monkeypatch, tmp_path) -> TestClient:
     import app.services.scene as scene_service
     import app.services.library as library
     import app.services.music_bed as music_bed
+    import app.services.social as social
+    import app.services.youtube as youtube
+    import app.services.branding as branding
+    import app.services.fonts as fonts
+    import app.services.notes as notes
     import app.services.batching as batching
     import app.services.jobs as jobs
     import app.api.routes as routes
@@ -62,6 +67,13 @@ def create_test_client(monkeypatch, tmp_path) -> TestClient:
     importlib.reload(music_bed)
     # Reloaded before routes: it binds model classes at import time, so a
     # stale copy leaves two registries and mappers stop resolving.
+    # The newer services bind model classes at import time too; a stale
+    # copy is two registries and mappers that stop resolving mid-suite.
+    importlib.reload(social)
+    importlib.reload(youtube)
+    importlib.reload(branding)
+    importlib.reload(fonts)
+    importlib.reload(notes)
     importlib.reload(batching)
     importlib.reload(jobs)
     importlib.reload(routes)

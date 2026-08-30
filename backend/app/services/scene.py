@@ -553,6 +553,9 @@ class Scene:
     wave_scale: str = DEFAULT_WAVE_SCALE
     caption_preset: str = DEFAULT_CAPTION_PRESET
     caption_color: str = DEFAULT_CAPTION_COLOR
+    # For video sources: use the footage itself as the background. On by
+    # default because that is why somebody uploads a video.
+    video_background: bool = True
     # Light each word as it is spoken. On by default: it is what a social
     # caption looks like now, and the word timings are already there.
     word_highlight: bool = True
@@ -672,6 +675,7 @@ def parse(
         wave_scale=scale,
         caption_preset=preset,
         caption_color=_color(scene.get("captionColor"), DEFAULT_CAPTION_COLOR),
+        video_background=scene.get("videoBackground") is not False,
         word_highlight=scene.get("wordHighlight") is not False,
         # Bounded to a second either way: beyond that the captions belong to a
         # different sentence, which is not a timing problem any more.
