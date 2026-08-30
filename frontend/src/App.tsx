@@ -145,28 +145,50 @@ const destinations = [
     size: "1280 x 720",
   },
 ];
-const templates = [
-  {
-    id: "kinder",
-    name: "Kinder",
-    style: "Obsidian / baby blue",
-    background: BRAND.obsidian,
-    accent: BRAND.blue,
-  },
-  {
-    id: "paper",
-    name: "Paper Cut",
-    style: "Editorial / clean",
-    background: "#f3eee5",
-    accent: "#8d3f35",
-  },
-  {
-    id: "midnight",
-    name: "Midnight Gold",
-    style: "Podcast / contrast",
-    background: BRAND.surface,
-    accent: BRAND.gold,
-  },
+/**
+ * Starting looks for Quick Create. Each is a whole look — colours, caption
+ * style, typeface, waveform — not just two colours, and every one stays
+ * editable in Studio. Kept to looks that read at thumbnail size: a feed is
+ * where these are seen.
+ */
+type StarterTemplate = {
+  id: string;
+  name: string;
+  style: string;
+  background: string;
+  accent: string;
+  captionPreset?: string;
+  captionColor?: string;
+  font?: string;
+  captionFont?: string;
+  waveStyle?: string;
+  peakAccent?: string | false;
+};
+const templates: StarterTemplate[] = [
+  { id: "kinder", name: "Kinder", style: "Obsidian / baby blue", background: BRAND.obsidian, accent: BRAND.blue,
+    captionPreset: "social", font: "inter", waveStyle: "pulse" },
+  { id: "frost", name: "Frost", style: "Frosted glass on light", background: "#e9eef5", accent: "#2f6fed",
+    captionPreset: "frost", captionColor: "#0f1a2b", font: "manrope", waveStyle: "pulseFine", peakAccent: "#2f6fed" },
+  { id: "smoke", name: "Smoke", style: "Dark glass over artwork", background: "#0b0d11", accent: "#a9b7c6",
+    captionPreset: "smoke", font: "sora", waveStyle: "pulse", peakAccent: "#ffffff" },
+  { id: "midnight", name: "Midnight Gold", style: "Podcast / contrast", background: BRAND.surface, accent: BRAND.gold,
+    captionPreset: "boxed", font: "inter", waveStyle: "pulseChunky", peakAccent: BRAND.gold },
+  { id: "paper", name: "Paper Cut", style: "Editorial / clean", background: "#f3eee5", accent: "#8d3f35",
+    captionPreset: "card", captionColor: "#1a1512", font: "manrope", waveStyle: "envelope", peakAccent: "#8d3f35" },
+  { id: "neon", name: "Neon", style: "Club poster", background: "#0a0612", accent: "#ff3fd1",
+    captionPreset: "shout", font: "bebas", captionFont: "bebas", waveStyle: "pulseFine", peakAccent: "#3fefff" },
+  { id: "ocean", name: "Ocean", style: "Cool and calm", background: "#061a2b", accent: "#3fb8ff",
+    captionPreset: "outline", font: "sora", waveStyle: "pulse", peakAccent: "#ffffff" },
+  { id: "ember", name: "Ember", style: "Warm and loud", background: "#14100f", accent: "#ffb454",
+    captionPreset: "shout", font: "bebas", waveStyle: "pulseChunky", peakAccent: "#ff6b3d" },
+  { id: "forest", name: "Forest", style: "Earthy", background: "#0e1a14", accent: "#7bd88f",
+    captionPreset: "smoke", font: "manrope", waveStyle: "pulse", peakAccent: "#d4f5a3" },
+  { id: "grape", name: "Grape", style: "Late night", background: "#160f24", accent: "#c792ea",
+    captionPreset: "social", font: "inter", waveStyle: "pulseFine", peakAccent: "#ffd166" },
+  { id: "sand", name: "Sand", style: "Warm light", background: "#f3e9d8", accent: "#c2743a",
+    captionPreset: "frost", captionColor: "#2a1f14", font: "sora", waveStyle: "envelopeFine", peakAccent: "#c2743a" },
+  { id: "mono", name: "Mono", style: "Black and white", background: "#000000", accent: "#ffffff",
+    captionPreset: "outline", font: "inter", waveStyle: "pulse", peakAccent: false },
 ];
 /** The default stack, per shape.
  *
@@ -523,6 +545,13 @@ export function App() {
       background: template.background,
       accent: template.accent,
       template: template.id,
+      // The rest of the look. Absent fields fall back to the scene defaults.
+      ...(template.captionPreset ? { captionPreset: template.captionPreset } : {}),
+      ...(template.captionColor ? { captionColor: template.captionColor } : {}),
+      ...(template.font ? { font: template.font } : {}),
+      ...(template.captionFont ? { captionFont: template.captionFont } : {}),
+      ...(template.waveStyle ? { waveStyle: template.waveStyle } : {}),
+      ...(template.peakAccent !== undefined ? { peakAccent: template.peakAccent } : {}),
       layers: defaultLayers(ratio).map((layer) =>
         layer.type === "artwork" && artwork ? { ...layer, mediaId: artwork } : layer,
       ),

@@ -2107,8 +2107,11 @@ def _write_ass(
         # plate colour too, so no dark fringe shows at the box edge.
         border_style = 3
         primary = ass_color(preset.get("plate_text", "#000000"))
-        outline = ass_color(plate)
-        back = ass_color(plate)
+        # A translucent plate is what turns a box into glass. libass takes
+        # the alpha in the colour; "00" is opaque, "FF" invisible.
+        plate_alpha = preset.get("plate_alpha", "00")
+        outline = ass_color(plate, plate_alpha)
+        back = ass_color(plate, plate_alpha)
     else:
         border_style = 3 if preset["back_alpha"] != "00" else 1
         primary = ass_color(colour)
@@ -2157,7 +2160,7 @@ def _write_ass(
             else None
         )
         if highlight and len(words) > 1:
-            lines.extend(_karaoke_events(caption, words, highlight, upper, voice))
+            lines.extend(_karaoke_events(caption, words, highlight, upper, voice, plated=bool(preset.get("plate"))))
             continue
         text = caption["text"].upper() if upper else caption["text"]
         body = _ass_escape(text)
@@ -2178,8 +2181,15 @@ def _karaoke_events(
     highlight: str,
     upper: bool,
     voice: str | None = None,
+    plated: bool = False,
 ) -> list[str]:
     r"""One subtitle event per word, with the spoken word recoloured.
+
+    On a plated preset the plate is drawn by one extra event whose text is
+    fully transparent, and the word events draw no plate of their own. With
+    BorderStyle 3 libass boxes each *text run* separately, and a colour
+    override splits the line into runs — so a plate under karaoke was three
+    boxes abutting, which a translucent plate showed as seams.
 
     Word-by-word highlighting is what a social caption looks like now, and it is
     the most recognisable thing about a Headliner clip.
@@ -2192,6 +2202,20 @@ def _karaoke_events(
     """
     colour = ass_color(highlight)
     events: list[str] = []
+    # Word events must not draw plates when the carrier does: outline and
+    # shadow alpha fully transparent, which under BorderStyle 3 is the box.
+    no_plate = "{\\3a&HFF&\\4a&HFF&}" if plated else ""
+    if plated:
+        whole = " ".join(
+            _ass_escape(str(w.get("text", "")).upper() if upper else str(w.get("text", "")))
+            for w in words
+        )
+        events.append(
+            "Dialogue: 0,"
+            f"{_ass_timestamp(float(caption['start']))},"
+            f"{_ass_timestamp(float(caption['end']))},"
+            "Default,,0,0,0,,{\\1a&HFF&}" + whole
+        )
     for index, word in enumerate(words):
         start = float(word.get("start", caption["start"]))
         # Each word holds until the next one starts, so there is no gap where
@@ -2221,10 +2245,13 @@ def _karaoke_events(
             else:
                 rendered.append(token)
         events.append(
-            "Dialogue: 0,"
+            # Layer 1 over the plate's layer 0: libass only keeps events
+            # apart when they share a layer, and these must sit on top of
+            # the plate, not above it.
+            f"Dialogue: {1 if plated else 0},"
             f"{_ass_timestamp(start)},"
             f"{_ass_timestamp(end)},"
-            f"Default,,0,0,0,,{' '.join(rendered)}"
+            f"Default,,0,0,0,,{no_plate}{' '.join(rendered)}"
         )
     return events
 

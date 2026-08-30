@@ -51,9 +51,13 @@ const PLATFORMS: [string, string][] = [
 
 const CAPTION_PRESETS: [string, string][] = [
   ["social", "Social — big and bold"],
-  ["boxed", "Boxed — solid plate"],
   ["shout", "Shout — uppercase"],
+  ["frost", "Frost — frosted glass plate"],
+  ["smoke", "Smoke — dark glass plate"],
+  ["card", "Card — solid light plate"],
+  ["boxed", "Boxed — solid dark plate"],
   ["kinder", "Kinder — baby blue plate"],
+  ["outline", "Outline — thin, no plate"],
   ["clean", "Clean — understated"],
 ];
 
@@ -63,12 +67,22 @@ const CAPTION_PRESETS: [string, string][] = [
  * size. Each is background / accent / caption.
  */
 const THEMES: { name: string; background: string; accent: string; caption: string }[] = [
+  { name: "Obsidian", background: "#0B0D11", accent: "#89CFF0", caption: "#F8FAFC" },
   { name: "Midnight", background: "#0b1020", accent: "#5fe9c9", caption: "#ffffff" },
   { name: "Ember", background: "#14100f", accent: "#ffb454", caption: "#ffffff" },
   { name: "Grape", background: "#160f24", accent: "#c792ea", caption: "#ffffff" },
   { name: "Signal", background: "#0d1117", accent: "#ff6b6b", caption: "#ffffff" },
   { name: "Forest", background: "#0e1a14", accent: "#7bd88f", caption: "#ffffff" },
+  { name: "Ocean", background: "#061a2b", accent: "#3fb8ff", caption: "#eaf6ff" },
+  { name: "Neon", background: "#0a0612", accent: "#ff3fd1", caption: "#f6f0ff" },
+  { name: "Lime", background: "#101a0a", accent: "#c8f542", caption: "#f7ffe8" },
+  { name: "Rose", background: "#1c0f14", accent: "#ff8fa3", caption: "#fff3f5" },
+  { name: "Slate", background: "#1e242c", accent: "#a9b7c6", caption: "#f2f5f8" },
   { name: "Paper", background: "#f5f0e8", accent: "#9a3b3b", caption: "#1a1512" },
+  { name: "Frost", background: "#e9eef5", accent: "#2f6fed", caption: "#0f1a2b" },
+  { name: "Sand", background: "#f3e9d8", accent: "#c2743a", caption: "#2a1f14" },
+  { name: "Mint", background: "#e6f4ee", accent: "#1f7a5c", caption: "#0f2a20" },
+  { name: "Lavender", background: "#efeafa", accent: "#6a4fd8", caption: "#1f1740" },
 ];
 
 type Scene = Record<string, unknown>;

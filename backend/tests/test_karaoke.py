@@ -80,7 +80,12 @@ def test_word_timings_are_relative_to_the_clip():
 
 
 def test_one_event_per_word(tmp_path):
-    assert len(events(write(tmp_path, {"captionPreset": "kinder"}))) == 3
+    rows = events(write(tmp_path, {"captionPreset": "kinder"}))
+    # A plated preset adds one carrier event that draws the plate with
+    # invisible text; the word events are still one per word.
+    words = [row for row in rows if "{\\1a&HFF&}" not in row]
+    assert len(words) == 3
+    assert len(rows) == 4
 
 
 def test_each_event_highlights_exactly_one_word(tmp_path):
@@ -154,3 +159,48 @@ def test_zero_length_words_are_skipped(tmp_path):
 def test_the_plate_preset_highlights_against_its_plate(tmp_path):
     """Kinder is obsidian type on baby blue, so the lit word must not be blue."""
     assert CAPTION_PRESETS["kinder"]["highlight"] != BRAND["blue"]
+
+
+
+def test_a_frosted_plate_is_translucent(tmp_path):
+    """The plate alpha is what makes frost glass rather than a white box."""
+    from app.services.jobs import _write_ass
+    from app.services.scene import parse as parse_scene
+
+    path = tmp_path / "c.ass"
+    _write_ass(path, [{"start": 0.0, "end": 1.0, "text": "hi"}], "9:16",
+               parse_scene({"captionPreset": "frost"}, 10.0))
+    style = next(line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("Style:"))
+    fields = style.split(",")
+    outline_colour, back_colour = fields[5], fields[6]
+    assert outline_colour.startswith("&H55") and back_colour.startswith("&H55"), style
+    assert fields[15] == "3", "a plate needs BorderStyle 3"
+
+
+def test_every_preset_the_picker_offers_renders_a_style(tmp_path):
+    from app.services.jobs import _write_ass
+    from app.services.scene import CAPTION_PRESETS, parse as parse_scene
+
+    for name in CAPTION_PRESETS:
+        path = tmp_path / f"{name}.ass"
+        _write_ass(path, [{"start": 0.0, "end": 1.0, "text": "hi"}], "9:16",
+                   parse_scene({"captionPreset": name}, 10.0))
+        assert "Style: Default," in path.read_text(encoding="utf-8"), name
+
+
+
+def test_a_plated_karaoke_line_draws_its_plate_once(tmp_path):
+    """libass boxes each text run; a colour override splits the line into runs,
+    and a translucent plate showed the seams between them."""
+    from app.services.jobs import _write_ass
+    from app.services.scene import parse as parse_scene
+
+    path = tmp_path / "c.ass"
+    _write_ass(path, [{"start": 0.0, "end": 2.0, "text": "a b", "words": [
+        {"start": 0.0, "end": 1.0, "text": "a"}, {"start": 1.0, "end": 2.0, "text": " b"},
+    ]}], "9:16", parse_scene({"captionPreset": "frost"}, 10.0))
+    events = [l for l in path.read_text(encoding="utf-8").splitlines() if l.startswith("Dialogue:")]
+    carriers = [e for e in events if "{\\1a&HFF&}" in e]
+    words = [e for e in events if "{\\3a&HFF&\\4a&HFF&}" in e]
+    assert len(carriers) == 1, events
+    assert len(words) == 2, events

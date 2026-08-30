@@ -2464,3 +2464,19 @@
   .first-run-steps strong { font-size: 15px; }
   .first-run-steps span { color: var(--text-muted); max-width: 60ch; }
 }
+
+@layer views {
+  /* The preview must match what the renderer burns in; these mirror the plate
+     presets in backend/app/services/scene.py. backdrop-filter is how the
+     preview shows a translucent plate over blurred artwork. */
+  .layer-caption[data-preset="frost"] {
+    background: rgb(245 247 250 / 0.66); color: #0B0D11; font-weight: 800; border-radius: 10px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); text-shadow: none;
+  }
+  .layer-caption[data-preset="smoke"] {
+    background: rgb(11 13 17 / 0.6); color: #F8FAFC; font-weight: 800; border-radius: 10px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); text-shadow: none;
+  }
+  .layer-caption[data-preset="card"] { background: #ffffff; color: #111111; font-weight: 800; border-radius: 8px; text-shadow: none; }
+  .layer-caption[data-preset="outline"] { background: transparent; font-weight: 800; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
+}
