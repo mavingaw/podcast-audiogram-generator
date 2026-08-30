@@ -1060,6 +1060,7 @@ function Home({
           </button>
         ))}
       </div>
+      <FeedNudge onFeeds={onFeeds} />
       <section className="recent-section">
         <div className="section-bar">
           <div>
@@ -1095,6 +1096,82 @@ function Home({
     </div>
   );
 }
+/**
+ * The one thing that makes Kinder effortless is a watched feed: episodes
+ * arrive, get transcribed and cut on their own. Until one is set, Home says
+ * so and takes the link right here.
+ */
+function FeedNudge({ onFeeds }: { onFeeds: () => void }) {
+  const [feedCount, setFeedCount] = useState<number | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    api.feeds().then((r) => setFeedCount(r.feeds.length)).catch(() => setFeedCount(null));
+  }, []);
+  if (feedCount === null || feedCount > 0 || done) {
+    return done ? (
+      <section className="feed-nudge done">
+        <Rss size={18} />
+        <div>
+          <strong>Watching {done}.</strong>
+          <span className="muted"> New episodes arrive, get their words written down, and clips are suggested — nothing is posted anywhere.</span>
+        </div>
+        <button className="ghost compact" onClick={onFeeds}>See feeds</button>
+      </section>
+    ) : null;
+  }
+  async function watch() {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.addFeed(trimmed);
+      setDone(r.feed.title || trimmed);
+      playSfx("confirm");
+    } catch (error) {
+      setNote(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="feed-nudge">
+      <Rss size={18} />
+      <div className="feed-nudge-text">
+        <strong>Let episodes come to you</strong>
+        <span className="muted">
+          Paste your podcast's RSS link and every new episode is fetched, transcribed and cut into
+          suggested clips on its own. Find the link on your podcast host under “Share” or “RSS”.
+        </span>
+        {note && <span className="error">{note}</span>}
+      </div>
+      <form
+        className="feed-nudge-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void watch();
+        }}
+      >
+        <input
+          type="url"
+          inputMode="url"
+          placeholder="https://example.com/feed.xml"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          disabled={busy}
+          aria-label="RSS link"
+        />
+        <button className="primary compact" type="submit" disabled={busy || !url.trim()}>
+          {busy ? "Checking…" : "Watch my feed"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function QuickCreate({
   onRefresh,
   onGoToExports,

@@ -2767,3 +2767,20 @@ html.large-text #root { zoom: 1.18; }
   .show-artwork-actions label.disabled { opacity: 0.5; pointer-events: none; }
   @media (max-width: 780px) { .show-artwork { grid-template-columns: 56px 1fr; } .show-artwork-actions { grid-column: 1 / -1; justify-content: start; } }
 }
+
+@layer views {
+  .feed-nudge {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--s-4); align-items: center;
+    margin-top: var(--s-10); padding: var(--s-4) var(--s-5);
+    background: linear-gradient(135deg, color-mix(in oklab, var(--accent-500) 12%, var(--surface)), var(--surface));
+    border: 1px solid color-mix(in oklab, var(--accent-500) 35%, var(--line)); border-radius: var(--r-lg);
+    color: var(--accent-text);
+  }
+  .feed-nudge.done { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .feed-nudge-text { display: grid; gap: 4px; color: var(--text); font-size: 13.5px; }
+  .feed-nudge-text strong { font-size: 15px; }
+  .feed-nudge-text .error { color: #ff8f8f; }
+  .feed-nudge-form { display: flex; gap: var(--s-2); min-width: min(420px, 100%); }
+  .feed-nudge-form input { flex: 1; min-width: 0; min-height: 40px; }
+  @media (max-width: 780px) { .feed-nudge { grid-template-columns: auto 1fr; } .feed-nudge-form { grid-column: 1 / -1; } }
+}
