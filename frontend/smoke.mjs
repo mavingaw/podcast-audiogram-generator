@@ -200,6 +200,28 @@ await step("projects", async () => {
   await page.locator('.main-nav button:has-text("Projects")').first().click();
 });
 
+// The "?" must explain the screen you are on, in words, and go away again.
+await step("help", async () => {
+  const button = page.locator(".help-button").first();
+  if ((await button.count()) === 0) {
+    problems.push("help: no help button in the header");
+    return;
+  }
+  await button.click();
+  await page.waitForTimeout(300);
+  const card = page.locator(".help-card");
+  if ((await card.count()) === 0) {
+    problems.push("help: the button opened nothing");
+    return;
+  }
+  const text = await card.innerText();
+  if (text.length < 120) problems.push("help: the guide is too short to help anyone");
+  if ((await card.locator(".help-switch input").count()) === 0) problems.push("help: no large-text switch");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  if (await card.count()) problems.push("help: Escape did not close it");
+});
+
 // Right-click is how most people expect to find "delete"; the menu has to
 // appear, offer it, and go away again without doing anything by itself.
 await step("context-menu", async () => {

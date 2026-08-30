@@ -2564,3 +2564,37 @@
   .look-bars { display: flex; align-items: center; gap: 2px; height: 22px; width: 70%; }
   .look-bars i { flex: 1; border-radius: 2px; opacity: 0.9; }
 }
+
+@layer views {
+  /* --- Help ------------------------------------------------------------- */
+  .help-button { font-weight: 800; font-size: 16px; }
+  .help-overlay {
+    position: fixed; inset: 0; z-index: 900;
+    background: rgb(0 0 0 / 0.55); backdrop-filter: blur(3px);
+    display: grid; place-items: center; padding: var(--s-4);
+  }
+  .help-card {
+    width: min(560px, 100%); padding: var(--s-6);
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg); box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+    display: grid; gap: var(--s-4);
+    font-size: 15.5px; line-height: 1.5;
+  }
+  .help-head h2 { margin: 2px 0 0; font-size: 24px; }
+  .help-what { margin: 0; color: var(--text); }
+  .help-steps { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; }
+  .help-tip {
+    margin: 0; padding: 10px 12px; border-radius: var(--r-md);
+    background: var(--accent-soft); color: var(--text);
+  }
+  .help-foot { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+  .help-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .help-switch input { width: 20px; height: 20px; }
+  .help-actions { display: flex; gap: var(--s-2); }
+  .help-actions button { padding: 9px 16px; border-radius: var(--r-md); font-weight: 600; border: 1px solid var(--line); background: var(--surface-sunken); color: var(--text); }
+  .help-actions button.primary { background: var(--accent-500); color: var(--n-950); border-color: transparent; }
+}
+
+/* Large text: one switch, everything grows. `zoom` scales px sizes too,
+   which a root font-size would not. */
+html.large-text #root { zoom: 1.18; }

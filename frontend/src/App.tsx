@@ -70,6 +70,7 @@ import {
 } from "./api";
 import { ContextMenuHost, MenuButton, MenuItem, openMenu } from "./ContextMenu";
 import { DesignPanel } from "./DesignPanel";
+import { HelpButton, applyLargeText, readLargeText } from "./Help";
 import { HistoryPanel } from "./HistoryPanel";
 import { SfxCue, SfxPanel } from "./SfxPanel";
 import { VoiceoverPanel } from "./VoiceoverPanel";
@@ -430,6 +431,11 @@ export function App() {
       .catch(() => undefined);
     if (!selectedId && p.projects[0]) setSelectedId(p.projects[0].id);
   }
+  // The large-text choice is per browser and must hold from the very first
+  // paint, before anyone has signed in.
+  useEffect(() => {
+    applyLargeText(readLargeText());
+  }, []);
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -644,6 +650,7 @@ export function App() {
           </div>
           <div className="header-actions">
             <span className="saved-dot">Local workspace</span>
+            <HelpButton view={view} onStart={() => setView("quick")} />
             <button
               className="icon-button"
               title={soundOn ? "Mute interface sounds" : "Unmute interface sounds"}
