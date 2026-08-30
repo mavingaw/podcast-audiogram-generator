@@ -342,7 +342,7 @@ def test_deleting_a_project_takes_its_history(client, monkeypatch):
     from app.db.models import ProjectRevision
     from app.db.session import SessionLocal
 
-    client.delete(f"/api/projects/{project}")
+    client.delete(f"/api/projects/{project}", params={"forever": "1"})
     with SessionLocal() as db:
         left = db.query(ProjectRevision).filter(
             ProjectRevision.project_id == project

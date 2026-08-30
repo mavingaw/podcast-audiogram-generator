@@ -401,7 +401,9 @@ await step("transcript-cuts", async () => {
   const leftover = page.locator('.cuts-summary button:has-text("Restore all")');
   if (await leftover.count()) {
     await leftover.click();
-    await page.waitForTimeout(900);
+    // Long enough for the save to land; a word clicked while the restore is
+    // still in flight toggles against stale state and looks like a no-op.
+    await page.waitForTimeout(2500);
   }
 
   const summary = page.locator(".cuts-summary span").first();

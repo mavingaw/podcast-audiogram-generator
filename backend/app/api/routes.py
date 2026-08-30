@@ -1529,8 +1529,11 @@ def delete_project(
 
 
 def _destroy_project(db: Session, project: Project) -> None:
+    from app.db.models import ProjectRevision
+
     db.execute(delete(Job).where(Job.subject_id == project.id))
     db.execute(delete(ShareLink).where(ShareLink.project_id == project.id))
+    db.execute(delete(ProjectRevision).where(ProjectRevision.project_id == project.id))
     project_id = project.id
     db.delete(project)
     # Best effort: a leftover directory is clutter, not a failure worth
