@@ -75,6 +75,7 @@ import { HelpButton, applyLargeText, readLargeText } from "./Help";
 import { HistoryPanel } from "./HistoryPanel";
 import { SfxCue, SfxPanel } from "./SfxPanel";
 import { VoiceoverPanel } from "./VoiceoverPanel";
+import { WorkingCard, plainStage } from "./Working";
 import { CutRange, TranscriptCuts, cutDuration, merge as mergeCuts } from "./TranscriptCuts";
 import { VariantsPanel } from "./VariantsPanel";
 import { MusicPanel } from "./MusicPanel";
@@ -1108,7 +1109,7 @@ function QuickCreate({
   const [step, setStep] = useState(0);
   const [ratio, setRatio] = useState<Ratio>("9:16");
   const [template, setTemplate] = useState(templates[0]);
-  const [upload, setUpload] = useState<{ name: string; fraction: number } | null>(
+  const [upload, setUpload] = useState<{ name: string; fraction: number; startedAt: number } | null>(
     null,
   );
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -1191,21 +1192,12 @@ function QuickCreate({
           <label className={`upload-drop${upload ? " busy" : ""}`}>
             <Upload size={26} />
             {upload ? (
-              <>
-                <strong>{upload.name}</strong>
-                <span>
-                  {upload.fraction >= 1
-                    ? "Finishing…"
-                    : `Uploading ${Math.round(upload.fraction * 100)}%`}
-                </span>
-                <div
-                  className="upload-bar"
-                  role="progressbar"
-                  aria-valuenow={Math.round(upload.fraction * 100)}
-                >
-                  <i style={{ width: `${Math.max(2, upload.fraction * 100)}%` }} />
-                </div>
-              </>
+              <WorkingCard
+                title={`Uploading ${upload.name}`}
+                stage={upload.fraction >= 1 ? "Nearly there — the box is checking the file…" : "Sending the file to your Kinder…"}
+                fraction={upload.fraction >= 1 ? null : upload.fraction}
+                startedAt={upload.startedAt}
+              />
             ) : (
               <>
                 <strong>Upload episode media</strong>
@@ -1224,10 +1216,10 @@ function QuickCreate({
                 // selection, so a retry would do nothing at all.
                 e.target.value = "";
                 setUploadError(null);
-                setUpload({ name: f.name, fraction: 0 });
+                setUpload({ name: f.name, fraction: 0, startedAt: Date.now() });
                 try {
                   const uploaded = await onUpload(f, (fraction) =>
-                    setUpload({ name: f.name, fraction }),
+                    setUpload((u) => ({ name: f.name, fraction, startedAt: u?.startedAt ?? Date.now() })),
                   );
                   setSourceId(uploaded.id);
                 } catch (error) {
@@ -1490,6 +1482,7 @@ const JOB_LABELS: Record<string, string> = {
 
 const ACTIVE = ["queued", "running"];
 
+const jobSeenAt = new Map<string, number>();
 function JobProgressPanel({
   title,
   jobs,
@@ -1520,9 +1513,23 @@ function JobProgressPanel({
     }
   }
 
+  const lead = jobs.find((job) => ACTIVE.includes(job.status));
+  // Timed from when this browser first saw the job, not from the server's
+  // clock: the two are in different time zones and the difference showed
+  // as a stopwatch stuck at 0:00.
+  if (lead && !jobSeenAt.has(lead.id)) jobSeenAt.set(lead.id, Date.now());
   return (
     <div className="job-progress-panel">
       <span className="sidebar-label">{title}</span>
+      {lead && (
+        <WorkingCard
+          title={JOB_LABELS[lead.kind] ?? lead.kind}
+          stage={plainStage(lead.message, lead.kind)}
+          fraction={lead.status === "running" && lead.progress > 0 ? lead.progress / 100 : null}
+          startedAt={jobSeenAt.get(lead.id) ?? Date.now()}
+          compact
+        />
+      )}
       {jobs.length ? (
         jobs.map((job) => (
           <div className={`job-progress-row ${job.status}`} key={job.id}>

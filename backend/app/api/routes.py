@@ -27,6 +27,7 @@ from app.db.models import (
 from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
 from app.services import cancellation
+from app.services import facts as fact_service
 from app.services.encoders import describe as describe_encoder
 from app.services.gpu import discover_gpus
 from app.services.transcription import MODEL_SIZES as WHISPER_MODEL_SIZES
@@ -412,6 +413,16 @@ def set_signups(
 @router.get("/me")
 def me(user: Annotated[User, Depends(current_user)]) -> dict:
     return {"user": serialize_user(user)}
+
+
+@router.get("/facts")
+def random_facts(
+    _: Annotated[User, Depends(current_user)],
+    n: int = 8,
+) -> dict:
+    """Trivia for the progress bar. Served from a pool the box fills in the
+    background; the browser never waits on the internet for these."""
+    return {"facts": fact_service.pool.sample(max(1, min(30, n)))}
 
 
 @router.get("/session")

@@ -2620,3 +2620,47 @@ html.large-text #root { zoom: 1.18; }
   .coach-count { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-text); }
   .coach-actions { display: flex; gap: var(--s-3); justify-content: flex-end; }
 }
+
+@layer views {
+  /* --- Working card ----------------------------------------------------- */
+  .working-card {
+    display: grid; gap: 8px; width: 100%;
+    padding: 14px 16px;
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+  }
+  .working-card.compact { padding: 10px 12px; gap: 6px; background: var(--surface-inset); }
+  .working-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-3); }
+  .working-head strong { font-size: 14px; }
+  .working-clock { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .working-stage { font-size: 15px; color: var(--text); }
+  .working-card.compact .working-stage { font-size: 13px; }
+  .working-bar {
+    position: relative; height: 12px; border-radius: var(--r-full); overflow: hidden;
+    background: var(--surface-sunken); border: 1px solid var(--line);
+  }
+  .working-bar i {
+    display: block; height: 100%; border-radius: inherit;
+    background:
+      repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.18) 0 10px, transparent 10px 20px),
+      var(--accent-500);
+    background-size: 28px 28px, auto;
+    animation: working-stripes 0.9s linear infinite;
+    transition: width 400ms ease;
+  }
+  .working-bar.indeterminate i {
+    width: 34%;
+    animation: working-stripes 0.9s linear infinite, working-slide 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes working-stripes { to { background-position: 28px 0, 0 0; } }
+  @keyframes working-slide { from { margin-left: 0; } to { margin-left: 66%; } }
+  .working-foot { display: flex; gap: var(--s-3); align-items: baseline; min-height: 1.4em; }
+  .working-percent { font-weight: 700; color: var(--accent-text); font-variant-numeric: tabular-nums; min-width: 3ch; }
+  .working-fact { font-size: 13px; color: var(--text-muted); animation: working-fade 600ms ease; }
+  .working-fact em { font-style: normal; color: var(--accent-text); }
+  @keyframes working-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .upload-drop .working-card { text-align: left; }
+  @media (prefers-reduced-motion: reduce) {
+    .working-bar i, .working-bar.indeterminate i, .working-fact { animation: none; }
+  }
+}

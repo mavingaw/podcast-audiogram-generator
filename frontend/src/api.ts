@@ -547,6 +547,7 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  facts: (n = 8) => request<{ facts: string[] }>(`/api/facts?n=${n}`),
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/auth/login", {
       method: "POST",
