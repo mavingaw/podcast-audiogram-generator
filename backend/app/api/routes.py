@@ -29,6 +29,7 @@ from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
 from app.services import cancellation
 from app.services import facts as fact_service
+from app.services import social as social_service
 from app.services import youtube as youtube_service
 from app.services.encoders import describe as describe_encoder
 from app.services.gpu import discover_gpus
@@ -1919,6 +1920,167 @@ def post_to_youtube(
     scene = json.loads(project.scene_json or "{}")
     posts = list(scene.get("posted") or [])
     posts.append({"platform": "youtube", "url": result["url"], "privacy": result["privacy"]})
+    scene["posted"] = posts
+    project.scene_json = json.dumps(scene)
+    db.commit()
+    return result
+
+
+# ---------------------------------------------------------------- social
+
+
+@router.get("/settings/social")
+def get_social_settings(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(current_admin)],
+) -> dict:
+    providers = []
+    for key, spec in social_service.PROVIDERS.items():
+        cid, secret = social_service.creds(db, key)
+        providers.append({
+            "key": key, "label": spec.label, "note": spec.note, "posts": spec.posts,
+            "client_id": cid, "has_secret": bool(secret),
+        })
+    return {"providers": providers}
+
+
+class SocialCreds(BaseModel):
+    provider: str
+    client_id: str = ""
+    client_secret: str = ""
+
+
+@router.put("/settings/social")
+def set_social_settings(
+    payload: SocialCreds,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(current_admin)],
+) -> dict:
+    try:
+        social_service.set_creds(db, payload.provider, payload.client_id, payload.client_secret)
+    except social_service.SocialError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    cid, secret = social_service.creds(db, payload.provider)
+    return {"provider": payload.provider, "client_id": cid, "has_secret": bool(secret)}
+
+
+def _social_redirect(request: Request, provider: str) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/social/{provider}/callback"
+
+
+@router.get("/social/accounts")
+def social_accounts(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Every platform, whether its keys are in, and whether this person is
+    connected — the one call the Post buttons need."""
+    rows = []
+    for key, spec in social_service.PROVIDERS.items():
+        acct = social_service.account(db, key, user.id)
+        rows.append({
+            "key": key,
+            "label": spec.label,
+            "posts": spec.posts,
+            "configured": social_service.configured(db, key),
+            "connected": bool(acct),
+            "name": (acct or {}).get("name", ""),
+        })
+    yt = youtube_service.account(db, user.id)
+    rows.insert(0, {
+        "key": "youtube", "label": "YouTube", "posts": "video (private by default)",
+        "configured": youtube_service.configured(db),
+        "connected": bool(yt), "name": (yt or {}).get("channel", ""),
+    })
+    return {"accounts": rows}
+
+
+@router.get("/social/{provider}/connect")
+def social_connect(
+    provider: str,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    try:
+        return {"url": social_service.begin(db, provider, user.id, _social_redirect(request, provider))}
+    except social_service.SocialError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/social/{provider}/callback")
+def social_callback(
+    provider: str,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    if error or not code:
+        return RedirectResponse(url=f"/?social={provider}&result=denied", status_code=303)
+    try:
+        social_service.finish(db, provider, user.id, _social_redirect(request, provider), code, state)
+    except social_service.SocialError as failure:
+        return RedirectResponse(url=f"/?social={provider}&result=failed&why=" + requests_quote(str(failure)), status_code=303)
+    return RedirectResponse(url=f"/?social={provider}&result=connected", status_code=303)
+
+
+@router.delete("/social/{provider}/account")
+def social_disconnect(
+    provider: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    social_service.disconnect(db, provider, user.id)
+    return {"connected": False}
+
+
+class SocialPost(BaseModel):
+    title: str = ""
+    description: str = ""
+
+
+@router.post("/projects/{project_id}/post/{provider}")
+def post_to_social(
+    project_id: str,
+    provider: str,
+    payload: SocialPost,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    if provider == "youtube":
+        raise HTTPException(status_code=404, detail="Use /post/youtube's own route")
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    video = settings.outputs_dir / project.id / "audiogram.mp4"
+    share_url = ""
+    if provider == "x":
+        # X posts the public link, so make (or reuse) one.
+        link = db.scalar(select(ShareLink).where(ShareLink.project_id == project.id, ShareLink.revoked.is_(False)))
+        if link is None and video.exists():
+            import secrets as _secrets
+
+            link = ShareLink(token=_secrets.token_urlsafe(24), project_id=project.id, owner_id=user.id)
+            db.add(link)
+            db.commit()
+        if link is not None:
+            share_url = str(request.base_url).rstrip("/") + f"/s/{link.token}"
+    try:
+        result = social_service.post(
+            db, provider, user.id, video,
+            title=payload.title.strip() or project.title,
+            description=payload.description,
+            share_url=share_url,
+        )
+    except social_service.SocialError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    scene = json.loads(project.scene_json or "{}")
+    posts = list(scene.get("posted") or [])
+    posts.append({"platform": provider, "url": result.get("url", ""), "detail": result.get("detail", "")})
     scene["posted"] = posts
     project.scene_json = json.dumps(scene)
     db.commit()

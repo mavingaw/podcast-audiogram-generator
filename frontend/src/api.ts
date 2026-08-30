@@ -552,6 +552,27 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  socialAccounts: () =>
+    request<{ accounts: { key: string; label: string; posts: string; configured: boolean; connected: boolean; name: string }[] }>(
+      "/api/social/accounts",
+    ),
+  socialConnect: (provider: string) => request<{ url: string }>(`/api/social/${provider}/connect`),
+  socialDisconnect: (provider: string) =>
+    request<{ connected: boolean }>(`/api/social/${provider}/account`, { method: "DELETE" }),
+  socialSettings: () =>
+    request<{ providers: { key: string; label: string; note: string; posts: string; client_id: string; has_secret: boolean }[] }>(
+      "/api/settings/social",
+    ),
+  setSocialSettings: (provider: string, client_id: string, client_secret: string) =>
+    request<{ provider: string; client_id: string; has_secret: boolean }>("/api/settings/social", {
+      method: "PUT",
+      body: JSON.stringify({ provider, client_id, client_secret }),
+    }),
+  postToSocial: (projectId: string, provider: string, body: { title?: string; description?: string }) =>
+    request<{ platform: string; url: string; detail: string }>(`/api/projects/${projectId}/post/${provider}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   youtubeAccount: () =>
     request<{ configured: boolean; connected: boolean; channel: string }>("/api/youtube/account"),
   youtubeConnect: () => request<{ url: string }>("/api/youtube/connect"),

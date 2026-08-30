@@ -443,6 +443,17 @@ export function App() {
     applyLargeText(readLargeText());
     // Back from Google's sign-in.
     const q = new URLSearchParams(window.location.search);
+    const social = q.get("social");
+    if (social) {
+      const result = q.get("result");
+      window.history.replaceState({}, "", window.location.pathname);
+      window.setTimeout(() => {
+        if (result === "connected") window.alert(`${social} is connected. Finished clips now have a Post button for it.`);
+        else if (result === "denied") window.alert(`${social} was not connected — the sign-in was cancelled.`);
+        else window.alert(`${social} was not connected: ` + (q.get("why") || "something went wrong"));
+      }, 300);
+      return;
+    }
     const yt = q.get("youtube");
     if (yt) {
       window.history.replaceState({}, "", window.location.pathname);
@@ -2343,6 +2354,135 @@ function YouTubePost({ projectId, defaultTitle }: { projectId: string; defaultTi
   );
 }
 
+/**
+ * Post buttons for every connected platform, and Connect buttons for the
+ * configured-but-not-connected ones. Shows nothing until an admin has put
+ * at least one platform's keys in.
+ */
+function SocialPostRow({ projectId, defaultTitle }: { projectId: string; defaultTitle: string }) {
+  const [accounts, setAccounts] = useState<
+    { key: string; label: string; posts: string; configured: boolean; connected: boolean; name: string }[]
+  >([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api.socialAccounts().then((r) => setAccounts(r.accounts.filter((a) => a.key !== "youtube" && a.configured))).catch(() => undefined);
+  }, []);
+  if (!accounts.length) return null;
+  const note = (key: string, text: string) => setNotes((n) => ({ ...n, [key]: text }));
+  return (
+    <div className="social-row">
+      {accounts.map((a) =>
+        a.connected ? (
+          <button
+            key={a.key}
+            className="ghost compact"
+            disabled={busy === a.key}
+            title={`Posts ${a.posts}`}
+            onClick={async () => {
+              setBusy(a.key);
+              try {
+                const r = await api.postToSocial(projectId, a.key, { title: defaultTitle });
+                note(a.key, r.detail + (r.url ? ` — ${r.url}` : ""));
+                playSfx("confirm");
+              } catch (e) {
+                note(a.key, errorMessage(e));
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            <Share2 size={13} /> {busy === a.key ? `Posting to ${a.label}…` : `Post to ${a.label}${a.name ? ` (${a.name})` : ""}`}
+          </button>
+        ) : (
+          <button
+            key={a.key}
+            className="ghost compact"
+            title={a.posts}
+            onClick={async () => {
+              try {
+                const { url } = await api.socialConnect(a.key);
+                window.location.href = url;
+              } catch (e) {
+                note(a.key, errorMessage(e));
+              }
+            }}
+          >
+            Connect {a.label}
+          </button>
+        ),
+      )}
+      {Object.entries(notes).map(([k, v]) => (
+        <small key={k} className="social-note">{v}</small>
+      ))}
+    </div>
+  );
+}
+
+/** Admin: one row of app keys per platform. Drop the keys in and the
+ * Connect buttons light up for everyone. */
+function SocialAdmin() {
+  const [rows, setRows] = useState<
+    { key: string; label: string; note: string; posts: string; client_id: string; has_secret: boolean }[]
+  >([]);
+  const [drafts, setDrafts] = useState<Record<string, { id: string; secret: string }>>({});
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    api.socialSettings().then((r) => {
+      setRows(r.providers);
+      setDrafts(Object.fromEntries(r.providers.map((p) => [p.key, { id: p.client_id, secret: "" }])));
+    }).catch(() => undefined);
+  }, []);
+  if (!rows.length) return null;
+  return (
+    <details className="yt-admin">
+      <summary><Share2 size={14} /> Social posting · {rows.filter((r) => r.has_secret && r.client_id).length} of {rows.length} set up</summary>
+      <p className="muted small">
+        Each platform needs its own developer app. Make the app on the platform's developer site, set its
+        redirect URL to <code>{window.location.origin}/api/social/&lt;platform&gt;/callback</code> (e.g.{" "}
+        <code>/api/social/meta/callback</code>), then drop the keys in here — Connect and Post buttons appear
+        for everyone as soon as a row is saved.
+      </p>
+      {rows.map((r) => (
+        <form
+          key={r.key}
+          className="social-admin-row"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const d = drafts[r.key] ?? { id: "", secret: "" };
+            try {
+              const saved = await api.setSocialSettings(r.key, d.id, d.secret);
+              setRows((all) => all.map((row) => (row.key === r.key ? { ...row, client_id: saved.client_id, has_secret: saved.has_secret } : row)));
+              setDrafts((all) => ({ ...all, [r.key]: { id: saved.client_id, secret: "" } }));
+              setNote(`${r.label} saved.`);
+            } catch (err) {
+              setNote(errorMessage(err));
+            }
+          }}
+        >
+          <strong>{r.label}</strong>
+          <small className="muted">{r.note}</small>
+          <div className="social-admin-fields">
+            <input
+              placeholder="Client / app ID"
+              value={drafts[r.key]?.id ?? ""}
+              onChange={(e) => setDrafts((all) => ({ ...all, [r.key]: { id: e.target.value, secret: all[r.key]?.secret ?? "" } }))}
+            />
+            <input
+              type="password"
+              placeholder={r.has_secret ? "(saved — leave blank to keep)" : "Client secret"}
+              value={drafts[r.key]?.secret ?? ""}
+              onChange={(e) => setDrafts((all) => ({ ...all, [r.key]: { id: all[r.key]?.id ?? "", secret: e.target.value } }))}
+            />
+            <button className="primary compact" type="submit">Save</button>
+          </div>
+        </form>
+      ))}
+      {note && <p className="muted small">{note}</p>}
+    </details>
+  );
+}
+
 /** Admin: the Google OAuth client that lets people connect their channel. */
 function YouTubeAdmin() {
   const [clientId, setClientId] = useState("");
@@ -2583,6 +2723,7 @@ function ReadyCard({
         )}
         {job.subject_id && <ReadyDestinations projectId={job.subject_id} />}
         {job.subject_id && <YouTubePost projectId={job.subject_id} defaultTitle={title} />}
+        {job.subject_id && <SocialPostRow projectId={job.subject_id} defaultTitle={title} />}
         <div className="ready-actions">
           {downloads.mp4 && (
             <a className="button-link" href={downloads.mp4} download>
@@ -4409,6 +4550,7 @@ function ProjectBrowser({
   // Deleting a project throws away a render, so it asks once. Confirming in
   // place rather than through a modal keeps the answer next to the question.
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
   const menuFor = (p: Project) =>
     projectMenu(p, {
       open: () => onOpen(p),
@@ -4421,9 +4563,23 @@ function ProjectBrowser({
   return (
     <div className="library-page">
       <div className="page-heading">
-        <span className="kicker">Library</span>
-        <h2>Projects</h2>
-        <p>Everything you create stays available on this server.</p>
+        <div>
+          <span className="kicker">Library</span>
+          <h2>Projects</h2>
+          <p>Everything you create stays available on this server.</p>
+        </div>
+        <button
+          className="ghost compact trash-link"
+          onClick={() => {
+            setTrashOpen(true);
+            window.setTimeout(
+              () => document.querySelector(".trash-section")?.scrollIntoView({ behavior: "smooth", block: "center" }),
+              50,
+            );
+          }}
+        >
+          <Trash2 size={14} /> Trash
+        </button>
       </div>
       <div className="library-grid">
         {projects.map((p) => (
@@ -4472,28 +4628,41 @@ function ProjectBrowser({
           </div>
         ))}
       </div>
-      <TrashSection onChanged={onRefreshAll} />
+      <TrashSection onChanged={onRefreshAll} open={trashOpen} onToggle={setTrashOpen} />
     </div>
   );
 }
 
 /** What was deleted in the last week, and the way back. */
-function TrashSection({ onChanged }: { onChanged: () => Promise<void> }) {
+function TrashSection({
+  onChanged,
+  open,
+  onToggle,
+}: {
+  onChanged: () => Promise<void>;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+}) {
   const [items, setItems] = useState<Project[]>([]);
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const load = () => api.trashedProjects().then((r) => setItems(r.projects)).catch(() => undefined);
   useEffect(() => {
     void load();
   }, []);
-  if (!items.length) return null;
+  // Re-check when it is opened: something may have been deleted since load.
+  useEffect(() => {
+    if (open) void load();
+  }, [open]);
   return (
     <section className="trash-section">
-      <button className="trash-head" onClick={() => setOpen((v) => !v)}>
-        <Trash2 size={14} /> Trash · {items.length} — kept for 7 days
+      <button className="trash-head" onClick={() => onToggle(!open)}>
+        <Trash2 size={14} /> Trash{items.length ? ` · ${items.length}` : ""} — deleted projects wait here for 7 days
         <small>{open ? "Hide" : "Show"}</small>
       </button>
-      {open && (
+      {open && items.length === 0 && (
+        <p className="muted small">The trash is empty. Delete a project and it lands here, restorable for a week.</p>
+      )}
+      {open && items.length > 0 && (
         <div className="trash-list">
           {items.map((p) => (
             <div key={p.id} className="trash-row">
@@ -5655,6 +5824,7 @@ function Exports({
               {project && (
                 <div className="export-post">
                   <YouTubePost projectId={project.id} defaultTitle={project.title} />
+                  <SocialPostRow projectId={project.id} defaultTitle={project.title} />
                 </div>
               )}
             </div>
@@ -5710,6 +5880,7 @@ function AdminStrip({
       </summary>
       <TranscriptionPanel isAdmin={isAdmin} />
       <YouTubeAdmin />
+      <SocialAdmin />
       <div className="admin-content">
         <form
           onSubmit={async (e) => {

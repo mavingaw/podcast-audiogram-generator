@@ -2864,3 +2864,16 @@ html.large-text #root { zoom: 1.18; }
   .trash-actions { display: flex; gap: var(--s-2); }
   .ghost.danger { color: #ff8f8f; }
 }
+
+@layer views {
+  .trash-link { display: inline-flex; gap: 6px; align-items: center; align-self: center; }
+}
+
+@layer views {
+  .social-row { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+  .social-note { flex-basis: 100%; color: var(--text-muted); font-size: 12.5px; }
+  .social-admin-row { display: grid; gap: 4px; margin-top: var(--s-3); max-width: 640px; }
+  .social-admin-row small { line-height: 1.4; }
+  .social-admin-fields { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+  @media (max-width: 780px) { .social-admin-fields { grid-template-columns: 1fr; } }
+}
