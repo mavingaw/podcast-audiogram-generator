@@ -358,7 +358,7 @@ export function App() {
     : null;
   async function loadData(active = user) {
     const [m, p, j, g, s, u, t] = await Promise.all([
-      api.media(),
+      api.mediaLight(),
       api.projects(),
       api.jobs(),
       api.gpus(),
@@ -366,10 +366,34 @@ export function App() {
       active?.is_admin ? api.users() : Promise.resolve({ users: [] }),
       api.templates(),
     ]);
-    setMedia(m.media);
+    // Keep transcripts already in hand; fetch the rest one at a time, the
+    // selected project's media first, then the most recent. The full list
+    // was 1.5 MB on every load with two transcribed episodes.
+    setMedia((current) => {
+      const known = new Map(current.map((item) => [item.id, item]));
+      return m.media.map((item) => ({ ...item, transcript: known.get(item.id)?.transcript ?? null }));
+    });
     setProjects(p.projects);
     setJobs(j.jobs);
     setSaved(t.templates);
+    const selectedMediaId = p.projects.find((project) => project.id === selectedId)?.media_id ?? null;
+    const wanted = m.media
+      .filter((item) => item.has_transcript)
+      .sort((a, b) => (a.id === selectedMediaId ? -1 : b.id === selectedMediaId ? 1 : 0))
+      .slice(0, 4);
+    void (async () => {
+      for (const item of wanted) {
+        const detail = await api.mediaOne(item.id).catch(() => null);
+        if (!detail) continue;
+        setMedia((current) =>
+          current.map((entry) =>
+            entry.id === item.id && !entry.transcript
+              ? { ...entry, transcript: detail.media.transcript ?? null }
+              : entry,
+          ),
+        );
+      }
+    })();
     // Cheap, and it is what tells you a feed did something while you were away.
     api.inbox().then((result) => setInboxCount(result.count)).catch(() => undefined);
     setGpus(g.gpus);
@@ -1901,6 +1925,17 @@ function Studio({
   const [transcriptDraft, setTranscriptDraft] = useState<Transcript | null>(
     media?.transcript ?? null,
   );
+  // A 93-minute episode is 1,100 lines, each a textarea. Rendering all of
+  // them made Studio sluggish for a panel whose job is the clip in front of
+  // you; the minute either side of it is what gets edited.
+  const [showWholeTranscript, setShowWholeTranscript] = useState(false);
+  const nearbySegments = useMemo(
+    () =>
+      (transcriptDraft?.segments ?? []).filter(
+        (segment) => segment.end >= clipStart - 60 && segment.start <= clipEnd + 60,
+      ),
+    [transcriptDraft, clipStart, clipEnd],
+  );
   const canvasRef = useRef<HTMLDivElement>(null);
   const textFieldRef = useRef<HTMLTextAreaElement>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
@@ -2875,7 +2910,17 @@ function Studio({
               )}
             </div>
             {transcriptDraft?.segments.length ? (
-              transcriptDraft.segments.map((segment) => (
+              <>
+                {!showWholeTranscript && transcriptDraft.segments.length > nearbySegments.length && (
+                  <p className="muted small">
+                    Showing the minute around the clip ({nearbySegments.length} of{" "}
+                    {transcriptDraft.segments.length} lines).{" "}
+                    <button className="link-button" onClick={() => setShowWholeTranscript(true)}>
+                      Show the whole episode
+                    </button>
+                  </p>
+                )}
+                {(showWholeTranscript ? transcriptDraft.segments : nearbySegments).map((segment) => (
                 <div className="transcript-row" key={segment.id}>
                   <button onClick={() => void useSegmentAsClip(segment.start, segment.end)}>
                     {formatTime(segment.start)}
@@ -2886,7 +2931,8 @@ function Studio({
                     onBlur={() => void saveTranscript()}
                   />
                 </div>
-              ))
+                ))}
+              </>
             ) : (
               <p className="muted">Upload media and wait for transcription to edit captions.</p>
             )}
