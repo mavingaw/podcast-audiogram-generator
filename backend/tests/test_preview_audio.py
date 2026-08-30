@@ -69,12 +69,17 @@ def test_a_repeat_request_is_served_from_the_cache(monkeypatch, tmp_path):
     client, project_id = seeded(monkeypatch, tmp_path)
     from app.core.config import settings
 
+    from app.services import preview
+
     client.get(f"/api/projects/{project_id}/preview.m4a")
-    cached = list((settings.work_dir / "previews").glob("*.m4a"))
-    assert len(cached) == 1
-    stamp = cached[0].stat().st_mtime_ns
+    assert len(list((settings.work_dir / "previews").glob("*.m4a"))) == 1
+    # Serving touches the file (that is how the sweep knows it was opened),
+    # so "not cut again" is checked by counting cuts, not by the timestamp.
+    cuts = []
+    original = preview._cut
+    monkeypatch.setattr(preview, "_cut", lambda *a, **k: (cuts.append(1), original(*a, **k))[1])
     client.get(f"/api/projects/{project_id}/preview.m4a")
-    assert cached[0].stat().st_mtime_ns == stamp, "the clip was cut again"
+    assert cuts == [], "the clip was cut again"
 
 
 @ffmpeg_required
@@ -99,3 +104,28 @@ def test_saving_the_range_cuts_the_preview_ahead_of_time(monkeypatch, tmp_path):
             break
         time.sleep(0.1)
     assert any(p.name.endswith("-3.000-9.000.m4a") for p in (settings.work_dir / "previews").glob("*.m4a")),         "the preview was not cut in the background"
+
+
+
+def test_stale_previews_are_swept_and_opened_ones_are_kept(monkeypatch, tmp_path):
+    """A clip edge nudged ten times leaves ten files; nothing else deletes them."""
+    import os
+    import time
+
+    from tests.test_api import create_test_client
+
+    create_test_client(monkeypatch, tmp_path)
+    from app.core.config import settings
+    from app.services import preview
+
+    cache = settings.work_dir / "previews"
+    cache.mkdir(parents=True, exist_ok=True)
+    old = cache / "m-1.000-2.000.m4a"
+    fresh = cache / "m-3.000-4.000.m4a"
+    old.write_bytes(b"x")
+    fresh.write_bytes(b"x")
+    long_ago = time.time() - 30 * 86400
+    os.utime(old, (long_ago, long_ago))
+
+    assert preview.sweep() == 1
+    assert not old.exists() and fresh.exists()

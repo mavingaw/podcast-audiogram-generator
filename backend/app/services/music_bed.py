@@ -13,8 +13,10 @@ layer, because it is not positioned on the canvas and it always spans the clip::
       "loop": true
     }
 
-Ducking is done with FFmpeg's sidechain compressor keyed off the voice track,
-so it works whether or not the clip has a transcript.
+Ducking is exact when the clip has a transcript — the bed is dipped by the
+number on the slider precisely while someone is speaking, driven by the word
+timings — and falls back to FFmpeg's sidechain compressor keyed off the voice
+track when it does not.
 """
 
 from __future__ import annotations
@@ -169,6 +171,64 @@ def voice_shaping(gain_db: float, fade_in: float, fade_out: float, duration: flo
     return ("," + ",".join(parts)) if parts else ""
 
 
+# How ducking driven by the transcript moves. Ramps are short so the bed is
+# out of the way by the first syllable, and the release waits long enough
+# that a breath between sentences does not pump the bed up and down.
+DUCK_ATTACK = 0.12
+DUCK_RELEASE = 0.35
+DUCK_JOIN_GAP = 0.6
+
+
+def duck_keyframes(
+    speech_spans, duck_db: float, duration: float
+) -> tuple[tuple[float, float], ...]:
+    """Level keyframes that dip the bed exactly while someone is speaking.
+
+    The sidechain compressor's reduction depends on how far the voice exceeds
+    its threshold, so "-12 dB" there was a calibration, not a promise. With
+    word timings, the dip can be exactly the number on the slider: down by
+    the first word, back up after the last, and gaps shorter than a breath
+    are bridged so the bed does not surface between sentences.
+    """
+    spans = []
+    for start, end in sorted((float(a), float(b)) for a, b in speech_spans):
+        start, end = max(0.0, start), min(duration, end)
+        if end <= start:
+            continue
+        if spans and start - spans[-1][1] <= DUCK_JOIN_GAP:
+            spans[-1][1] = max(spans[-1][1], end)
+        else:
+            spans.append([start, end])
+    if not spans:
+        return ()
+    # One expression evaluates every keyframe every frame, so a long, chatty
+    # clip is bridged more coarsely until the count is sane: past sixty
+    # stretches the difference is inaudible and the graph stays readable.
+    gap = DUCK_JOIN_GAP
+    while len(spans) > 60:
+        gap *= 2
+        merged = [list(spans[0])]
+        for start, end in spans[1:]:
+            if start - merged[-1][1] <= gap:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        spans = merged
+    points: list[tuple[float, float]] = []
+    for start, end in spans:
+        down_at = max(0.0, start - DUCK_ATTACK)
+        up_at = min(duration, end + DUCK_RELEASE)
+        if points and down_at <= points[-1][0]:
+            # Overlapping ramps: stay down rather than blipping up.
+            points.pop()
+        else:
+            points.append((round(down_at, 3), 0.0))
+        points.append((round(min(start, up_at), 3), duck_db))
+        points.append((round(max(end, down_at), 3), duck_db))
+        points.append((round(up_at, 3), 0.0))
+    return tuple(points)
+
+
 def audio_filters(
     bed: MusicBed,
     duration: float,
@@ -176,6 +236,7 @@ def audio_filters(
     voice_gain_db: float = 0.0,
     voice_fade_in: float = 0.0,
     voice_fade_out: float = 0.0,
+    speech_spans=None,
 ) -> tuple[list[str], str]:
     """Build the audio half of the render's ``-filter_complex``.
 
@@ -208,16 +269,27 @@ def audio_filters(
         f"apad,atrim=duration={duration:.3f},asetpts=PTS-STARTPTS,"
         f"volume={bed.gain_db:.2f}dB"
     )
+    # Two rides can apply: the person's own keyframes, and — when the
+    # transcript says where the speech is — an exact dip under it. They are
+    # separate volume filters, so each stays a straight line in dB and the
+    # combination is their sum.
     ride = automation_expression(bed.automation, duration)
     if ride:
         music += "," + ride
+    exact_duck = None
+    if bed.ducking_enabled and speech_spans:
+        exact_duck = automation_expression(
+            duck_keyframes(speech_spans, bed.duck_db, duration), duration
+        )
+    if exact_duck:
+        music += "," + exact_duck
     if fade_in > 0:
         music += f",afade=t=in:st=0:d={fade_in:.3f}"
     if fade_out > 0:
         music += f",afade=t=out:st={max(0.0, duration - fade_out):.3f}:d={fade_out:.3f}"
     chains.append(f"{music}[musicraw]")
 
-    if bed.ducking_enabled:
+    if bed.ducking_enabled and not exact_duck:
         chains.append(
             f"[musicraw][duckkey]sidechaincompress=threshold=0.03:"
             f"ratio={duck_ratio(bed.duck_db)}:attack=20:release=400:"

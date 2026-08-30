@@ -13,8 +13,10 @@ what the export is for; this is what you scrub.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from app.core.config import settings
@@ -40,12 +42,58 @@ def _lock_for(key: str) -> threading.Lock:
         return _locks.setdefault(key, threading.Lock())
 
 
+# Previews are a cache. A clip edge nudged ten times leaves ten files behind,
+# each under a megabyte, and nothing else ever deletes them.
+MAX_AGE_DAYS = float(os.getenv("PAS_PREVIEW_DAYS", "7"))
+_last_sweep = 0.0
+
+
+def sweep(now: float | None = None, max_age_days: float | None = None) -> int:
+    """Remove previews nobody has opened for a week. Cheap: one directory listing."""
+    now = time.time() if now is None else now
+    age_limit = (MAX_AGE_DAYS if max_age_days is None else max_age_days) * 86400
+    removed = 0
+    cache = settings.work_dir / "previews"
+    if not cache.is_dir():
+        return 0
+    for path in cache.glob("*.m4a"):
+        try:
+            # atime is unreliable on some mounts; mtime is bumped on every serve
+            # below, so it doubles as "last opened".
+            if now - path.stat().st_mtime > age_limit:
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def _sweep_occasionally() -> None:
+    global _last_sweep
+    now = time.time()
+    if now - _last_sweep < 3600:
+        return
+    _last_sweep = now
+    try:
+        removed = sweep(now)
+        if removed:
+            log.info("removed %d stale previews", removed)
+    except Exception:
+        log.debug("preview sweep failed", exc_info=True)
+
+
 def ensure(source: Path, media_id: str, start: float, end: float) -> Path:
     """Cut the clip if it is not already cached; return the file."""
+    _sweep_occasionally()
     start = max(0.0, float(start))
     end = max(start + 0.5, float(end))
     target = cache_path(media_id, start, end)
     if target.exists():
+        # Touch it: "last opened" is what the sweep goes by.
+        try:
+            os.utime(target, None)
+        except OSError:
+            pass
         return target
     with _lock_for(target.name):
         if target.exists():

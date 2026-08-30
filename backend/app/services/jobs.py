@@ -998,6 +998,9 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         plates=plates,
         job_id=job.id,
         sfx=sfx_cues,
+        # Where the speech is, in clip seconds, so the bed can dip exactly
+        # under it rather than as far as a compressor happens to reach.
+        speech_spans=speech_spans_of(transcript, clip_start, clip_start + duration),
         # What {{episode}} and friends mean for this clip.
         token_context=token_service.context_for(
             project=project, media=media, episode=token_episode, feed=token_feed,
@@ -1120,6 +1123,27 @@ def _resolve_scene_images(db, parsed: Scene, owner_id: str) -> dict[str, Path]:
     return resolved
 
 
+def speech_spans_of(transcript: dict, start: float, end: float) -> list[tuple[float, float]]:
+    """(start, end) of every stretch of speech inside the clip, clip-relative.
+
+    Word timings when there are any, segment bounds otherwise. Either way the
+    result is what the exact ducking dips under.
+    """
+    spans: list[tuple[float, float]] = []
+    for segment in (transcript or {}).get("segments", []):
+        words = segment.get("words") or []
+        pieces = words if words else [segment]
+        for piece in pieces:
+            try:
+                a, b = float(piece.get("start", 0.0)), float(piece.get("end", 0.0))
+            except (TypeError, ValueError):
+                continue
+            a, b = max(a, start), min(b, end)
+            if b > a:
+                spans.append((round(a - start, 3), round(b - start, 3)))
+    return spans
+
+
 def _resolve_sfx(db, scene: dict, duration: float):
     """Library files for the scene's cues, plus any credits their packs need.
 
@@ -1231,6 +1255,7 @@ def measure_loudness(
     music_path: Path | None = None,
     job_id: str | None = None,
     scene: dict | None = None,
+    speech_spans: "list[tuple[float, float]] | None" = None,
 ) -> dict | None:
     """Measure the finished mix so the encode can hit a known level.
 
@@ -1251,6 +1276,7 @@ def measure_loudness(
         voice_gain_db=shape.voice_gain_db,
         voice_fade_in=shape.fade_in,
         voice_fade_out=shape.fade_out,
+        speech_spans=speech_spans,
     )
 
     input_args = [
@@ -1288,6 +1314,7 @@ def build_render_command(
     loudness_measurement: dict | None = None,
     token_context: dict[str, str] | None = None,
     sfx: "list[sfx_service.ResolvedCue] | None" = None,
+    speech_spans: "list[tuple[float, float]] | None" = None,
 ) -> list[str]:
     """Assemble the FFmpeg invocation for one audiogram render.
 
@@ -1305,6 +1332,7 @@ def build_render_command(
         voice_gain_db=parsed.voice_gain_db,
         voice_fade_in=parsed.fade_in,
         voice_fade_out=parsed.fade_out,
+        speech_spans=speech_spans,
     )
     plates = plates or Plates()
     images = image_paths or {}
@@ -1872,6 +1900,7 @@ def _render_audiogram_mp4(
     job_id: str | None = None,
     token_context: dict[str, str] | None = None,
     sfx: "list[sfx_service.ResolvedCue] | None" = None,
+    speech_spans: "list[tuple[float, float]] | None" = None,
 ) -> None:
     # Measure the mix first so the encode can be delivered at a known loudness.
     # A failed measurement is not a failed render: the clip simply goes out at
@@ -1884,6 +1913,7 @@ def _render_audiogram_mp4(
         music_path=music_path,
         job_id=job_id,
         scene=scene,
+        speech_spans=speech_spans,
     )
     completed = cancellation.run(
         job_id,
@@ -1903,6 +1933,7 @@ def _render_audiogram_mp4(
             loudness_measurement=measurement,
             token_context=token_context,
             sfx=sfx,
+            speech_spans=speech_spans,
         ),
         cwd=ass_path.parent,
         capture_output=True,
