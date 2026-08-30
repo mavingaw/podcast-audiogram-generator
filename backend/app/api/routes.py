@@ -785,6 +785,12 @@ async def save_voiceover(
     )
     db.add(media)
     db.commit()
+    # Its words belong in the captions. Transcription only: a ten-second
+    # aside needs no waveform or analysis, and the job is quick.
+    db.add(Job(owner_id=user.id, kind=JobKind.transcribe, subject_id=media.id,
+               message="Queued voice-over transcription"))
+    db.commit()
+    start_worker_once()
     return {"media": serialize_media(media)}
 
 

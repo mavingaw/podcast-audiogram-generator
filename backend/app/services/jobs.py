@@ -862,6 +862,12 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     # pre-pass, and everything after this point works on the shortened file
     # without knowing anything was taken out. See services/cuts.py for why the
     # mapping lives in one place rather than in each downstream stage.
+    # Cues are placed on the uncut clip. Resolved here, before the cuts, so
+    # each can be moved to where its moment lands once audio is removed
+    # ahead of it — a stinger on the punchline stays on the punchline.
+    sfx_cues, sfx_credits, sfx_missing = _resolve_sfx(db, scene, clip_end - clip_start)
+    uncut_clip_start = clip_start
+
     cut_spans = cuts.parse(scene.get("cuts"), clip_start, clip_end)
     keep_spans: list[cuts.Span] = []
     if cut_spans:
@@ -885,6 +891,17 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
                 resample_peaks(media.peaks_json, share, span.start, span.end)
             )
         transcript = cuts.remap_transcript(transcript, keep_spans)
+        sfx_cues = [
+            sfx_service.ResolvedCue(
+                path=cue.path,
+                at=round(cuts.map_clamped(uncut_clip_start + cue.at, keep_spans), 3),
+                gain_db=cue.gain_db,
+                transcript=cue.transcript,
+            )
+            for cue in sfx_cues
+            # A cue inside a removed span goes with the words it sat on.
+            if cuts.map_time(uncut_clip_start + cue.at, keep_spans) is not None
+        ]
         removed = duration - remaining
         warnings.append(
             f"{removed:.1f}s removed by {len(cut_spans)} transcript cut"
@@ -903,7 +920,6 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     # say so in the job message the UI displays.
     if scene.get("music") and bed is None:
         warnings.append("music bed skipped: the track is missing from the library")
-    sfx_cues, sfx_credits, sfx_missing = _resolve_sfx(db, scene, duration)
     if sfx_missing:
         warnings.append(f"{sfx_missing} sound effect(s) skipped: missing from the library")
     bed_credits = bed_credits + [c for c in sfx_credits if c not in bed_credits]
@@ -918,6 +934,9 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         clip_peaks = resample_peaks(
             media.peaks_json, 240, clip_start, clip_start + duration
         )
+
+    # A transcribed voice-over's words are captioned at its moment.
+    transcript = sfx_service.merge_voiceover_captions(transcript, sfx_cues, clip_start)
 
     _step(db, job, 20, "Building render plan")
     captions = _clip_captions(
@@ -1159,6 +1178,7 @@ def _resolve_sfx(db, scene: dict, duration: float):
     from app.services.library import credits_for
 
     for cue in cues:
+        words = None
         if cue.media_id:
             # A recording of the owner's own: a voice-over made in Studio.
             media = db.get(MediaAsset, cue.media_id)
@@ -1166,13 +1186,20 @@ def _resolve_sfx(db, scene: dict, duration: float):
                 contained_path(settings.uploads_dir, settings.uploads_dir / media.stored_name)
                 if media is not None else None
             )
+            if media is not None and media.transcript_json:
+                try:
+                    words = json.loads(media.transcript_json)
+                except ValueError:
+                    words = None
         else:
             sound = db.get(SoundAsset, cue.sound_id)
             path = sound_path(sound) if sound is not None else None
         if path is None or not path.exists():
             missing += 1
             continue
-        resolved.append(sfx_service.ResolvedCue(path=path, at=cue.at, gain_db=cue.gain_db))
+        resolved.append(sfx_service.ResolvedCue(
+            path=path, at=cue.at, gain_db=cue.gain_db, transcript=words,
+        ))
     if resolved:
         try:
             credits = credits_for(db, [cue.sound_id for cue in cues if cue.sound_id])

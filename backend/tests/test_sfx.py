@@ -121,9 +121,11 @@ def test_a_voiceover_is_saved_without_the_episode_jobs(monkeypatch, tmp_path):
     assert response.status_code == 200, response.text
     media = response.json()["media"]
     assert media["original_name"].startswith("Voice-over for")
-    # No analysis, waveform or transcription queued for a ten-second aside.
-    kinds = {job["kind"] for job in client.get("/api/jobs").json()["jobs"]}
-    assert "transcribe" not in kinds
+    # Transcription only: its words belong in the captions, but a
+    # ten-second aside needs no waveform or analysis.
+    kinds = [job["kind"] for job in client.get("/api/jobs").json()["jobs"]]
+    assert kinds.count("transcribe") == 1
+    assert "waveform" not in kinds and "analyze_media" not in kinds
 
     from app.core.config import settings
 
@@ -169,3 +171,43 @@ def test_a_browser_recording_in_webm_opus_mixes_in(tmp_path):
                             "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
     level = float(re.search(r"max_volume: (-?[0-9.]+) dB", probe.stderr).group(1))
     assert level > -30, f"the recording is not audible at its time ({level} dB)"
+
+
+
+def test_voiceover_words_are_captioned_at_the_cue():
+    """The recording's timings start at zero; they land at the cue's moment."""
+    from pathlib import Path
+
+    base = {"segments": [
+        {"id": 1, "speaker": "Host", "start": 600.0, "end": 603.0, "text": "hello there",
+         "words": [{"start": 600.0, "end": 601.0, "text": "hello"}, {"start": 601.5, "end": 603.0, "text": " there"}]},
+    ]}
+    take = {"segments": [
+        {"id": 1, "speaker": "Speaker 1", "start": 0.0, "end": 1.5, "text": "quick note",
+         "words": [{"start": 0.0, "end": 0.6, "text": "quick"}, {"start": 0.7, "end": 1.5, "text": " note"}]},
+    ]}
+    cue = sfx.ResolvedCue(Path("take.webm"), at=5.0, gain_db=0.0, transcript=take)
+    merged = sfx.merge_voiceover_captions(base, [cue], clip_start=600.0)
+    assert [s["text"] for s in merged["segments"]] == ["hello there", "quick note"]
+    note = merged["segments"][1]
+    assert note["start"] == 605.0 and note["words"][1]["end"] == 606.5
+    assert note["speaker"] == "Voice-over"
+    assert [s["id"] for s in merged["segments"]] == [1, 2]
+
+
+def test_an_untranscribed_cue_changes_nothing():
+    from pathlib import Path
+
+    base = {"segments": [{"id": 1, "start": 0, "end": 1, "text": "a", "words": []}]}
+    cue = sfx.ResolvedCue(Path("whoosh.mp3"), at=0.5, gain_db=0.0)
+    assert sfx.merge_voiceover_captions(base, [cue], 0.0) is base
+
+
+def test_cues_move_with_transcript_cuts():
+    """Ten seconds removed ahead of a stinger means the stinger fires ten
+    seconds earlier; one placed inside the removed stretch goes with it."""
+    from app.services import cuts
+
+    keep = cuts.kept(cuts.parse([{"start": 605, "end": 615}], 600, 640), 600, 640)
+    assert cuts.map_clamped(600 + 20.0, keep) == pytest.approx(10.0)
+    assert cuts.map_time(600 + 8.0, keep) is None

@@ -67,6 +67,58 @@ class ResolvedCue:
     path: Path
     at: float
     gain_db: float
+    # The recording's transcript, when the cue is a voice-over that has been
+    # transcribed: its words are captioned at the cue's time.
+    transcript: dict | None = None
+
+
+def merge_voiceover_captions(transcript: dict, cues, clip_start: float) -> dict:
+    """Add each transcribed voice-over's words to the clip's transcript.
+
+    The recording's timings start at zero; they are shifted to where the cue
+    sits in the source timeline (`clip_start + at`, the coordinates the
+    caption builder works in) and slotted in by time. Segments are renumbered
+    so nothing downstream sees two lines with the same id.
+    """
+    added = []
+    for cue in cues:
+        if not cue.transcript:
+            continue
+        offset = clip_start + cue.at
+        for segment in cue.transcript.get("segments", []):
+            try:
+                start = float(segment.get("start", 0.0)) + offset
+                end = float(segment.get("end", 0.0)) + offset
+            except (TypeError, ValueError):
+                continue
+            words = []
+            for word in segment.get("words") or []:
+                try:
+                    words.append({
+                        **word,
+                        "start": round(float(word["start"]) + offset, 3),
+                        "end": round(float(word["end"]) + offset, 3),
+                    })
+                except (KeyError, TypeError, ValueError):
+                    continue
+            added.append({
+                **segment,
+                # Whisper labels everything "Speaker 1"; a recorded aside is
+                # not one of the show's speakers and must not be tinted as one.
+                "speaker": "Voice-over",
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "words": words,
+            })
+    if not added:
+        return transcript
+    segments = sorted(
+        list(transcript.get("segments", [])) + added,
+        key=lambda item: float(item.get("start", 0.0)),
+    )
+    for index, segment in enumerate(segments, start=1):
+        segment["id"] = index
+    return {**transcript, "segments": segments}
 
 
 def filters(resolved: list[ResolvedCue], first_input: int, mix_label: str) -> tuple[list[str], str]:
