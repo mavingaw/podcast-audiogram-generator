@@ -46,7 +46,7 @@ import {
   Image as ImageIcon,
   Link2,
   ExternalLink,
-
+  Droplets,
 } from "lucide-react";
 import {
   api,
@@ -98,6 +98,7 @@ type Layer = {
   type: "title" | "artwork" | "waveform" | "captions" | "background";
   /** How the layer arrives: fade or rise in over `enterSeconds`. */
   enter?: "none" | "fade" | "rise" | "drop" | "slide";
+  opacity?: number;
   enterSeconds?: number;
   x: number;
   y: number;
@@ -3413,6 +3414,27 @@ function Studio({
               {label as string}
             </button>
           ))}
+          <button
+            title="Your logo, faint, in a corner of every frame"
+            onClick={() => {
+              // A watermark is just a small, half-transparent artwork layer
+              // parked in a corner. Everything about it stays editable.
+              const next = [...layersRef.current, {
+                id: `artwork-${Date.now()}`,
+                name: "Watermark",
+                type: "artwork" as const,
+                x: 72, y: 3, width: 24, height: 8,
+                visible: true, locked: false,
+                opacity: 0.55, radius: 0.1,
+                startTime: 0, endTime: clipDuration,
+              }];
+              setSelectedLayer(next.at(-1)?.id ?? "");
+              void save(next);
+            }}
+          >
+            <Droplets size={17} />
+            Watermark
+          </button>
         </aside>
         <section className="canvas-area">
           <div
@@ -3486,6 +3508,7 @@ function Studio({
                     className={`canvas-layer layer-${layer.type} ${selectedLayer === layer.id ? "selected" : ""}${layer.enter && layer.enter !== "none" && playing ? ` enter-${layer.enter}` : ""}`}
                     style={{
                       ["--enter-seconds" as string]: `${layer.enterSeconds ?? 0.5}s`,
+                      opacity: layer.opacity ?? 1,
                       left: `${layer.x}%`,
                       // Captions are the one layer whose position the renderer
                       // does not take from the scene: it places them from the
@@ -4010,6 +4033,18 @@ function Studio({
                   />
                 </label>
               </div>
+              {active.type !== "background" && active.type !== "captions" && (
+                <label>
+                  See-through {Math.round((active.opacity ?? 1) * 100)}%
+                  <input
+                    type="range"
+                    min={5}
+                    max={100}
+                    value={Math.round((active.opacity ?? 1) * 100)}
+                    onChange={(e) => updateLayer(active.id, { opacity: Number(e.target.value) / 100 })}
+                  />
+                </label>
+              )}
               <button
                 className="ghost compact danger"
                 disabled={active.type === "background"}

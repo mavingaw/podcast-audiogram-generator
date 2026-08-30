@@ -1429,6 +1429,13 @@ def build_render_command(
         source = f"[{index}:v]"
         x_expr: str = str(x)
         y_expr: str = str(y)
+        if layer.opacity < 1.0:
+            # A translucent plate — the watermark case. aa scales the alpha
+            # channel; everything else passes through.
+            audio_chains.append(
+                f"{source}format=rgba,colorchannelmixer=aa={layer.opacity:.3f}[vimgop{offset}]"
+            )
+            source = f"[vimgop{offset}]"
         if layer.enter != "none":
             # The plate fades in over its entrance and, for the moving styles,
             # drifts into place. overlay evaluates x/y per frame, so the drift
@@ -1927,8 +1934,10 @@ def _text_filters(
         options.append(f"fontfile='{escape_drawtext(str(font_file))}'")
         if layer.enter != "none":
             options.append(
-                f"alpha='min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))'"
+                f"alpha='{layer.opacity:.3f}*min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))'"
             )
+        elif layer.opacity < 1.0:
+            options.append(f"alpha={layer.opacity:.3f}")
         guard = enable_expression(layer.start, layer.end, duration)
         if guard:
             options.append(f"enable='{guard}'")

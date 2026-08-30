@@ -485,6 +485,9 @@ class RenderLayer:
     media_id: str | None = None
     # Artwork corner rounding, as a fraction of the shorter side.
     radius: float = 0.0
+    # 1.0 is solid; a watermark sits at about half. Applied to artwork and
+    # text layers alike.
+    opacity: float = 1.0
     # How the layer arrives: one of ENTER_STYLES — fade, or fade while
     # drifting up / down / in from the left into place. Applied over
     # `enter_seconds` from the layer's start.
@@ -696,6 +699,7 @@ def _layer(entry: object, clip_duration: float) -> RenderLayer | None:
         visible=bool(entry.get("visible", True)),
         media_id=str(entry["mediaId"]) if entry.get("mediaId") else None,
         radius=_clamp(_number(entry.get("radius"), 0.0), 0.0, 0.5),
+        opacity=_clamp(_number(entry.get("opacity"), 1.0), 0.05, 1.0),
         enter=str(entry.get("enter")) if entry.get("enter") in ENTER_STYLES else "none",
         enter_seconds=_clamp(_number(entry.get("enterSeconds"), 0.5), 0.1, 3.0),
     )
