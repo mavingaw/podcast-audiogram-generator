@@ -86,6 +86,19 @@ ENVELOPE_STYLES = {
     "envelope": (58, 0.34, False),
     "envelopeFine": (104, 0.28, False),
     "envelopeChunky": (34, 0.40, False),
+    # Gap 0: the bars fuse into a solid mirrored silhouette of the clip.
+    "solid": (120, 0.0, False),
+}
+
+# The old showwaves styles drew a thin ribbon whatever the audio did — the
+# instantaneous-amplitude problem described above. Scenes that still name
+# them get the nearest style that actually fills its box.
+LEGACY_WAVE_STYLES = {
+    "line": "solid",
+    "edge": "solid",
+    "bars": "envelope",
+    "wideBars": "envelopeChunky",
+    "points": "envelopeFine",
 }
 # Bars that move with the voice: a live spectrum, mirrored about the centre
 # line, in the accent colour. This is what "audiogram" means to most people —
@@ -623,9 +636,9 @@ def parse(
     """
     scene = scene if isinstance(scene, dict) else {}
     style = str(scene.get("waveStyle") or DEFAULT_WAVE_STYLE)
+    style = LEGACY_WAVE_STYLES.get(style, style)
     if (
-        style not in WAVE_STYLES
-        and style not in ENVELOPE_STYLES
+        style not in ENVELOPE_STYLES
         and style not in PULSE_STYLES
         and style != "none"
     ):

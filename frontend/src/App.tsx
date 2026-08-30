@@ -122,14 +122,6 @@ const SAFE_AREAS: Record<string, { label: string; bottom: number; top: number; r
 };
 
 // Keep in step with WAVE_STYLES in backend/app/services/scene.py.
-const waveStyles: [string, string][] = [
-  ["line", "Centred line"],
-  ["bars", "Bars"],
-  ["wideBars", "Wide bars"],
-  ["edge", "Edge"],
-  ["points", "Points"],
-  ["none", "No waveform"],
-];
 const destinations = [
   {
     id: "9:16" as Ratio,
@@ -3594,6 +3586,7 @@ function Studio({
                   >
                     <LayerContent
                       layer={layer}
+                      waveStyle={String(project?.scene?.waveStyle ?? "pulse")}
                       title={project?.title ?? "Episode title"}
                       media={media}
                       accent={accent}
@@ -4797,6 +4790,7 @@ function LayerContent({
   caption,
   captionPreset,
   live = null,
+  waveStyle = "pulse",
 }: {
   layer: Layer;
   title: string;
@@ -4806,6 +4800,7 @@ function LayerContent({
   caption?: string | null;
   captionPreset?: string;
   live?: LiveBars | null;
+  waveStyle?: string;
 }) {
   if (layer.type === "artwork")
     return layer.mediaId ? (
@@ -4829,6 +4824,7 @@ function LayerContent({
           color={layer.color ?? accent}
           className="waveform-canvas"
           live={live}
+          styleId={waveStyle}
         />
       </div>
     );

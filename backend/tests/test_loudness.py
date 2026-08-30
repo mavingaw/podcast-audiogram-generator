@@ -124,16 +124,16 @@ def test_the_waveforms_own_normalisation_is_not_the_exports():
     """
     command = build_render_command(
         Path("a.wav"), Path("o.mp4"), "9:16", 0.0, 5.0,
-        scene={"waveStyle": "bars",
+        scene={"waveStyle": "pulse",
                "layers": [{"id": "w", "type": "waveform",
                            "x": 10, "y": 71, "width": 80, "height": 9}]},
         loudness_measurement=MEASURED,
     )
     chain = graph(command)
     assert "dynaudnorm" in chain
-    # The dynaudnorm branch feeds showwaves, not the audio map.
+    # The dynaudnorm branch feeds the live bars, not the audio map.
     wave_branch = next(part for part in chain.split(";") if "dynaudnorm" in part)
-    assert "showwaves" in wave_branch
+    assert "showfreqs" in wave_branch
     assert "[anorm]" not in wave_branch
 
 

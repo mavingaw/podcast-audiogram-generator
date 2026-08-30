@@ -89,6 +89,19 @@ function liveHeights(live: LiveBars): number[] {
   return heights;
 }
 
+// How each style buckets and spaces its bars. Mirrors ENVELOPE_STYLES and
+// PULSE_STYLES in backend/app/services/scene.py so the preview matches the
+// export instead of showing one generic look for every choice.
+const STYLE_SHAPES: Record<string, { bars: number; gap: number }> = {
+  pulse: { bars: 34, gap: 0.33 },
+  pulseFine: { bars: 52, gap: 0.3 },
+  pulseChunky: { bars: 22, gap: 0.36 },
+  envelope: { bars: 58, gap: 0.34 },
+  envelopeFine: { bars: 104, gap: 0.28 },
+  envelopeChunky: { bars: 34, gap: 0.4 },
+  solid: { bars: 120, gap: 0 },
+};
+
 export function WaveformCanvas({
   peaks,
   ready,
@@ -96,6 +109,7 @@ export function WaveformCanvas({
   background = "transparent",
   className,
   live = null,
+  styleId = "envelope",
 }: {
   peaks: number[];
   ready: boolean;
@@ -104,6 +118,8 @@ export function WaveformCanvas({
   className?: string;
   /** When set, draw moving bars at this level instead of the still envelope. */
   live?: LiveBars | null;
+  /** Which sound-bar style to mirror; see STYLE_SHAPES. */
+  styleId?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -153,22 +169,23 @@ export function WaveformCanvas({
         return;
       }
 
-      const step = width / peaks.length;
-      const barWidth = Math.max(1, step - Math.min(1, step * 0.25));
+      // Bucket the peaks to the style's own bar count and spacing, with the
+      // same normalising curve the renderer uses, so choosing a style in
+      // the panel visibly changes the canvas — not just the export.
+      const shape = STYLE_SHAPES[styleId] ?? STYLE_SHAPES.envelope;
+      const pitch = width / shape.bars;
+      const barWidth = Math.max(1, pitch * (1 - shape.gap));
       context.fillStyle = color;
-      // Normalise against the loudest bucket with the same curve the renderer
-      // uses, so the preview and the export show the same waveform. Speech
-      // peaks well below full scale; drawing it raw is a flat line.
       const loudest = Math.max(...peaks) || 1;
-      for (let index = 0; index < peaks.length; index += 1) {
-        const scaled = Math.pow(Math.max(peaks[index], 0) / loudest, 0.65);
+      const bucketStep = peaks.length / shape.bars;
+      for (let index = 0; index < shape.bars; index += 1) {
+        const from = Math.floor(index * bucketStep);
+        const to = Math.max(Math.floor((index + 1) * bucketStep), from + 1);
+        let bucket = 0;
+        for (let k = from; k < to && k < peaks.length; k += 1) bucket = Math.max(bucket, peaks[k]);
+        const scaled = Math.pow(Math.max(bucket, 0) / loudest, 0.65);
         const amplitude = Math.max(0.03, scaled) * middle;
-        context.fillRect(
-          index * step,
-          middle - amplitude,
-          barWidth,
-          amplitude * 2,
-        );
+        context.fillRect(index * pitch, middle - amplitude, barWidth, amplitude * 2);
       }
     };
 
@@ -176,7 +193,7 @@ export function WaveformCanvas({
     const observer = new ResizeObserver(draw);
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [peaks, ready, color, background, live]);
+  }, [peaks, ready, color, background, live, styleId]);
 
   return <canvas className={className} ref={canvasRef} aria-hidden="true" />;
 }

@@ -37,17 +37,18 @@ const FONTS: [string, string][] = [
 ];
 
 // Keep in step with WAVE_STYLE_LABELS in backend/app/services/scene.py.
+// Every entry here has a real renderer and a matching preview; the old
+// showwaves styles ("line", "edge", "points") drew a thin ribbon whatever
+// the audio did and now map to these.
 const WAVE_STYLES: [string, string][] = [
-  ["pulse", "Live bars"],
+  ["pulse", "Live bars — bounce as they speak"],
   ["pulseFine", "Live bars, fine"],
   ["pulseChunky", "Live bars, chunky"],
-  ["envelope", "Bars"],
-  ["envelopeFine", "Fine bars"],
-  ["envelopeChunky", "Chunky bars"],
-  ["line", "Centred line"],
-  ["edge", "Edge"],
-  ["points", "Points"],
-  ["none", "No waveform"],
+  ["envelope", "Still bars — the whole clip's shape"],
+  ["envelopeFine", "Still bars, fine"],
+  ["envelopeChunky", "Still bars, chunky"],
+  ["solid", "Solid shape"],
+  ["none", "No sound bars"],
 ];
 
 // Mirrors PLATFORM_SAFE_AREAS in backend/app/services/scene.py.

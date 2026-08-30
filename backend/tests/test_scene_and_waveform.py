@@ -331,7 +331,9 @@ COVER = {"cover": Path("cover.png")}
 
 
 # A showwaves style, for the tests that exercise that branch specifically.
+# "line" is a legacy name that now maps to the solid envelope style.
 LINE_STYLE = {"waveStyle": "line"}
+PEAKS = [0.2, 0.9, 0.4, 0.7, 0.55, 0.8] * 20
 
 
 WAVE_LAYER = {
@@ -347,10 +349,11 @@ WAVE_LAYER = {
 
 
 def test_render_places_the_waveform_where_the_editor_put_it():
-    graph = render_graph({**LINE_STYLE, "layers": [WAVE_LAYER]})
-    # 9% and 50% of a 1080x1920 canvas.
-    assert "overlay=x=97:y=960" in graph
-    assert "colors=23a094" in graph
+    graph = render_graph({"waveStyle": "envelope", "layers": [WAVE_LAYER]}, peaks=PEAKS)
+    # The first bar starts at 9% of a 1080 canvas, in the layer's colour.
+    assert "drawbox" in graph
+    assert "x=97:" in graph
+    assert "0x23a094" in graph
 
 
 def test_render_uses_the_scene_background():
@@ -362,25 +365,29 @@ def test_render_uses_the_scene_background():
     assert any("color=c=0x1b1030" in token for token in command)
 
 
-def test_every_wave_style_produces_a_valid_showwaves_mode():
-    valid_modes = {"point", "line", "p2p", "cline"}
-    for style in WAVE_STYLES:
-        graph = render_graph({"waveStyle": style, "layers": [WAVE_LAYER]})
-        mode = graph.split("mode=")[1].split(":")[0]
-        assert mode in valid_modes, f"{style} produced mode={mode}"
+def test_every_offered_style_draws_a_wave():
+    from app.services.scene import ENVELOPE_STYLES, PULSE_STYLES
+
+    for style in ENVELOPE_STYLES:
+        graph = render_graph({"waveStyle": style, "layers": [WAVE_LAYER]}, peaks=PEAKS)
+        assert "drawbox" in graph, style
+    for style in PULSE_STYLES:
+        graph = render_graph({"waveStyle": style, "layers": [WAVE_LAYER]}, peaks=PEAKS)
+        assert "showfreqs" in graph, style
 
 
-def test_bar_styles_draw_narrow_and_upscale_with_nearest_neighbour():
-    graph = render_graph({"waveStyle": "wideBars", "layers": [WAVE_LAYER]})
-    assert "flags=neighbor" in graph
-    # 82% of 1080 is 886px; at 18px bars that is a 49px drawing buffer.
-    assert "showwaves=s=49x" in graph
+def test_legacy_styles_never_reach_showwaves():
+    """showwaves mapped sample amplitude to height and drew a thin ribbon
+    whatever the audio did; the old names now take the envelope path."""
+    for legacy in ("line", "bars", "wideBars", "edge", "points"):
+        graph = render_graph({"waveStyle": legacy, "layers": [WAVE_LAYER]}, peaks=PEAKS)
+        assert "showwaves" not in graph, legacy
+        assert "drawbox" in graph, legacy
 
 
-def test_line_style_draws_at_full_width_without_upscaling():
-    graph = render_graph({"waveStyle": "line", "layers": [WAVE_LAYER]})
-    assert "flags=neighbor" not in graph
-    assert "showwaves=s=886x" in graph
+def test_solid_style_fuses_its_bars():
+    graph = render_graph({"waveStyle": "solid", "layers": [WAVE_LAYER]}, peaks=PEAKS)
+    assert graph.count("drawbox") >= 100
 
 
 def test_waveform_is_dropped_when_the_style_is_none():
@@ -433,8 +440,8 @@ def test_text_layers_are_skipped_when_no_font_is_available(monkeypatch):
 
 
 def test_waveform_visual_is_normalised_without_touching_exported_audio():
-    """The showwaves branch is normalised; the exported mix stays untouched."""
-    graph = render_graph({**LINE_STYLE, "layers": [WAVE_LAYER]})
+    """The live-bars branch is normalised; the exported mix stays untouched."""
+    graph = render_graph({"waveStyle": "pulse", "layers": [WAVE_LAYER]}, peaks=PEAKS)
     wave_branch = next(part for part in graph.split(";") if part.startswith("[wavesrc]"))
     assert "dynaudnorm" in wave_branch
     # Every other branch — in particular the one feeding [aout] — must not be.
@@ -629,11 +636,11 @@ def test_caption_colour_is_converted_to_ass_bgr(tmp_path):
 
 
 def test_layer_colour_falls_back_to_the_scene_accent():
-    graph = render_graph({**LINE_STYLE, "accent": "#ff8800", "layers": [
+    graph = render_graph({"waveStyle": "envelope", "accent": "#ff8800", "layers": [
         {"id": "w", "type": "waveform", "x": 9, "y": 50, "width": 82,
          "height": 18, "visible": True}
-    ]})
-    assert "colors=ff8800" in graph
+    ]}, peaks=PEAKS)
+    assert "0xff8800" in graph
 
 
 def test_text_layers_default_to_white_not_the_accent():
