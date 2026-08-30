@@ -3023,3 +3023,12 @@ html.large-text #root { zoom: 1.18; }
   }
   .card-menu-overlay .menu-button:hover { background: rgb(10 14 18 / 0.9); }
 }
+
+@layer views {
+  /* The row under each card: menu + delete, easy to hit, lined up. */
+  .card-actions .menu-button {
+    width: 34px; height: 34px; font-size: 18px; border-radius: var(--r-md);
+    border: 1px solid var(--line); background: var(--surface-inset); color: var(--text);
+  }
+  .card-actions .icon-button.danger { width: 34px; height: 34px; }
+}

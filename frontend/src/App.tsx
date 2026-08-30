@@ -5098,9 +5098,6 @@ function ProjectBrowser({
             className="library-card"
             onContextMenu={(e) => openMenu(e, menuFor(p), p.title)}
           >
-            <span className="card-menu-overlay">
-              <MenuButton items={menuFor(p)} title={p.title} />
-            </span>
             <button onClick={() => onOpen(p)}>
               <Poster projectId={p.id} ratio={p.aspect_ratio} icon={27} rendered={p.rendered} />
               <strong>{p.title}</strong>
@@ -5114,6 +5111,7 @@ function ProjectBrowser({
               )}
             </button>
             <div className="card-actions">
+              <MenuButton items={menuFor(p)} title={p.title} />
               <button
                 className="icon-button danger"
                 title={`Delete ${p.title} (goes to the trash, kept 7 days)`}
