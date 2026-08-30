@@ -626,7 +626,13 @@ export const api = {
     request<{ episodes: FeedEpisode[] }>(`/api/feeds/${feedId}/episodes`),
   batchClips: (
     mediaId: string,
-    options: { count: number; aspect_ratio?: string; render?: boolean; template_id?: string | null },
+    options: {
+      count: number;
+      aspect_ratio?: string;
+      render?: boolean;
+      template_id?: string | null;
+      look?: Record<string, unknown> | null;
+    },
   ) =>
     request<{ projects: Project[]; jobs: Job[]; skipped: number }>(
       `/api/media/${mediaId}/batch`,

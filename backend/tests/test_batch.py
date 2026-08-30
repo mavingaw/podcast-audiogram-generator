@@ -277,3 +277,23 @@ def test_someone_elses_zip_is_not_found(monkeypatch, tmp_path):
     client.post("/api/auth/logout")
     register_second_user(client, "guest", "another-password")
     assert client.get(f"/api/media/{media_id}/exports.zip").status_code == 404
+
+
+def test_a_starter_look_applies_to_the_whole_batch(monkeypatch, tmp_path):
+    """The Quick Create tiles are not saved templates; a batch takes their
+    fields directly. Anything that is not a look field is ignored."""
+    client, media_id = seeded(monkeypatch, tmp_path)
+    body = client.post(
+        f"/api/media/{media_id}/batch",
+        json={"count": 2, "render": False, "look": {
+            "template": "frost", "captionPreset": "frost", "font": "manrope",
+            "accent": "#2f6fed", "layers": "nope", "clip_start": 999,
+        }},
+    ).json()
+    assert body["projects"]
+    for p in body["projects"]:
+        assert p["scene"]["captionPreset"] == "frost"
+        assert p["scene"]["font"] == "manrope"
+        assert p["scene"]["accent"] == "#2f6fed"
+        assert isinstance(p["scene"]["layers"], list)
+        assert p["clip_start"] != 999

@@ -129,6 +129,14 @@ def with_artwork(scene: dict, artwork_media_id: str) -> dict:
     return scene
 
 
+# What a starter look may set on every clip in a batch. Layers and clip
+# ranges are deliberately not on the list.
+LOOK_FIELDS = frozenset({
+    "template", "background", "accent", "captionPreset", "captionColor",
+    "font", "captionFont", "waveStyle", "peakAccent",
+})
+
+
 def make_clips(
     db,
     owner_id: str,
@@ -141,6 +149,7 @@ def make_clips(
     review_state: str = "approved",
     soundbites: list[dict] | None = None,
     artwork_media_id: str | None = None,
+    look: dict | None = None,
 ) -> list[Project]:
     """Create clip projects from an episode's best moments.
 
@@ -197,6 +206,10 @@ def make_clips(
             scene["layers"] = default_layers(aspect_ratio)
         if artwork_media_id:
             scene = with_artwork(scene, artwork_media_id)
+        if look:
+            # A starter look — colours, caption style, font, waveform — the
+            # same fields Quick Create sets when a person picks a tile.
+            scene.update({k: v for k, v in look.items() if k in LOOK_FIELDS and v is not None})
 
         project = Project(
             owner_id=owner_id,

@@ -1056,6 +1056,8 @@ class BatchRequest(BaseModel):
     render: bool = True
     # Optional design to apply to every clip, so a batch comes out on-brand.
     template_id: str | None = None
+    # Or a starter look (the Quick Create tiles) as plain scene fields.
+    look: dict | None = None
 
 
 @router.get("/media/{media_id}/exports.zip")
@@ -1158,6 +1160,7 @@ def batch_clips(
             aspect_ratio=payload.aspect_ratio,
             template_id=payload.template_id,
             render=payload.render,
+            look=payload.look,
         )
     except BatchError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

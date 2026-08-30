@@ -4008,6 +4008,7 @@ function AutoClips({
   onGoToExports: () => void;
 }) {
   const [count, setCount] = useState(6);
+  const [lookId, setLookId] = useState(templates[0].id);
   const [busy, setBusy] = useState(false);
   const [startedAt, setStartedAt] = useState(0);
   const [made, setMade] = useState<number | null>(null);
@@ -4019,7 +4020,24 @@ function AutoClips({
     setNote(null);
     setMade(null);
     try {
-      const result = await api.batchClips(mediaId, { count, aspect_ratio: ratio, render: true, template_id: null });
+      const look = templates.find((t) => t.id === lookId) ?? templates[0];
+      const result = await api.batchClips(mediaId, {
+        count,
+        aspect_ratio: ratio,
+        render: true,
+        template_id: null,
+        look: {
+          template: look.id,
+          background: look.background,
+          accent: look.accent,
+          captionPreset: look.captionPreset,
+          captionColor: look.captionColor,
+          font: look.font,
+          captionFont: look.captionFont,
+          waveStyle: look.waveStyle,
+          peakAccent: look.peakAccent,
+        },
+      });
       setMade(result.projects.length);
       if (result.projects.length === 0) setNote("Every good moment in this episode is already a clip.");
       playSfx("confirm");
@@ -4061,6 +4079,14 @@ function AutoClips({
             <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
               {[3, 6, 10].map((n) => (
                 <option key={n} value={n}>{n} clips</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Look
+            <select value={lookId} onChange={(e) => setLookId(e.target.value)}>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name} — {t.style}</option>
               ))}
             </select>
           </label>
