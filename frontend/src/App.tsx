@@ -712,6 +712,7 @@ export function App() {
         {view === "quick" && (
           <QuickCreate
             onRefresh={() => loadData()}
+            onGoToExports={() => setView("exports")}
             media={media}
             jobs={jobs}
             selectedMedia={selectedMedia}
@@ -1095,6 +1096,7 @@ function Home({
 }
 function QuickCreate({
   onRefresh,
+  onGoToExports,
   media,
   jobs,
   selectedMedia,
@@ -1102,6 +1104,7 @@ function QuickCreate({
   onCreate,
 }: {
   onRefresh: () => Promise<void>;
+  onGoToExports: () => void;
   media: MediaAsset[];
   jobs: Job[];
   selectedMedia: MediaAsset | null;
@@ -1391,6 +1394,9 @@ function QuickCreate({
                     : "Waiting for analysis and transcription"
               }
             />
+          )}
+          {source?.has_transcript && (
+            <AutoClips mediaId={source.id} ratio={ratio} onRefresh={onRefresh} onGoToExports={onGoToExports} />
           )}
           <FlowNext disabled={!source} onClick={() => setStep(2)} />
         </div>
@@ -3981,6 +3987,89 @@ function ProjectBrowser({
  * lanes run at once. Doing it one clip at a time is the part of the job that
  * makes people stop bothering.
  */
+/**
+ * The "just do it for me" path: Kinder picks the best moments and renders
+ * them, right from the source step. The same batch as the Studio panel,
+ * with the choices already made.
+ */
+function AutoClips({
+  mediaId,
+  ratio,
+  onRefresh,
+  onGoToExports,
+}: {
+  mediaId: string;
+  ratio: Ratio;
+  onRefresh: () => Promise<void>;
+  onGoToExports: () => void;
+}) {
+  const [count, setCount] = useState(6);
+  const [busy, setBusy] = useState(false);
+  const [startedAt, setStartedAt] = useState(0);
+  const [made, setMade] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setStartedAt(Date.now());
+    setNote(null);
+    setMade(null);
+    try {
+      const result = await api.batchClips(mediaId, { count, aspect_ratio: ratio, render: true, template_id: null });
+      setMade(result.projects.length);
+      if (result.projects.length === 0) setNote("Every good moment in this episode is already a clip.");
+      playSfx("confirm");
+      await onRefresh();
+    } catch (error) {
+      setNote(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="auto-clips">
+      <div>
+        <strong>Let Kinder pick the clips</strong>
+        <p className="muted">
+          It listens for the best moments — a strong line, a laugh, a story — cuts them, adds
+          captions and your look, and makes the videos. You can still edit any of them after.
+        </p>
+      </div>
+      {busy ? (
+        <WorkingCard
+          title="Finding the best moments"
+          stage="Reading the whole episode and choosing what stands out…"
+          fraction={null}
+          startedAt={startedAt}
+          compact
+        />
+      ) : made !== null && made > 0 ? (
+        <div className="auto-clips-done">
+          <strong>Making {made} clip{made === 1 ? "" : "s"}.</strong>
+          <span className="muted"> They appear under Exports as each one finishes — about 30 seconds each.</span>
+          <button className="primary compact" onClick={onGoToExports}>Go to Exports</button>
+        </div>
+      ) : (
+        <div className="auto-clips-actions">
+          <label>
+            How many
+            <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
+              {[3, 6, 10].map((n) => (
+                <option key={n} value={n}>{n} clips</option>
+              ))}
+            </select>
+          </label>
+          <button className="primary" onClick={() => void run()}>
+            <WandSparkles size={15} /> Make {count} clips for me
+          </button>
+        </div>
+      )}
+      {note && <p className="muted">{note}</p>}
+    </section>
+  );
+}
+
 function BatchClips({
   mediaId,
   templates,

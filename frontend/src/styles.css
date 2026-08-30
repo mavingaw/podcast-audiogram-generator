@@ -2727,3 +2727,17 @@ html.large-text #root { zoom: 1.18; }
 @layer views {
   .mobile-new { display: none; padding: 8px 14px; border-radius: var(--r-md); font-weight: 700; }
 }
+
+@layer views {
+  .auto-clips {
+    display: grid; gap: var(--s-3); margin-top: var(--s-5); padding: var(--s-4) var(--s-5);
+    background: linear-gradient(135deg, color-mix(in oklab, var(--accent-500) 14%, var(--surface)), var(--surface));
+    border: 1px solid color-mix(in oklab, var(--accent-500) 40%, var(--line)); border-radius: var(--r-lg);
+  }
+  .auto-clips strong { font-size: 15px; }
+  .auto-clips p { margin: 4px 0 0; font-size: 13.5px; }
+  .auto-clips-actions { display: flex; gap: var(--s-3); align-items: end; flex-wrap: wrap; }
+  .auto-clips-actions label { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); }
+  .auto-clips-actions select { min-height: 40px; }
+  .auto-clips-done { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+}
