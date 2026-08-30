@@ -3012,3 +3012,14 @@ html.large-text #root { zoom: 1.18; }
   .notes-line.prose span { flex: 1; }
   .show-notes .error { color: #ff8f8f; }
 }
+
+@layer views {
+  .library-card { position: relative; }
+  .card-menu-overlay { position: absolute; top: 10px; right: 10px; z-index: 2; }
+  .card-menu-overlay .menu-button {
+    width: 34px; height: 34px; font-size: 18px; border-radius: 50%;
+    background: rgb(10 14 18 / 0.75); color: #fff; border: 1px solid rgb(255 255 255 / 0.25);
+    backdrop-filter: blur(4px);
+  }
+  .card-menu-overlay .menu-button:hover { background: rgb(10 14 18 / 0.9); }
+}

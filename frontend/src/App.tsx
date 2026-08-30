@@ -5051,19 +5051,25 @@ function ProjectBrowser({
   onRename: (p: Project, title: string) => Promise<void>;
   onRefreshAll: () => Promise<void>;
 }) {
-  // Deleting a project throws away a render, so it asks once. Confirming in
-  // place rather than through a modal keeps the answer next to the question.
-  const [confirming, setConfirming] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const menuFor = (p: Project) =>
     projectMenu(p, {
       open: () => onOpen(p),
       rename: (title) => onRename(p, title),
-      remove: () => {
-        setConfirming(p.id);
-        return Promise.resolve();
-      },
+      remove: onDelete,
     });
+  // The confirmation opens exactly where the click happened — an anchored
+  // menu, not a control that appears somewhere else on the card.
+  const confirmDelete = (e: React.MouseEvent, p: Project) =>
+    openMenu(e, [
+      {
+        label: "Move to trash",
+        hint: "kept 7 days",
+        danger: true,
+        onSelect: () => void onDelete(p),
+      },
+      { label: "Keep it", onSelect: () => undefined },
+    ], p.title);
   return (
     <div className="library-page">
       <div className="page-heading">
@@ -5092,6 +5098,9 @@ function ProjectBrowser({
             className="library-card"
             onContextMenu={(e) => openMenu(e, menuFor(p), p.title)}
           >
+            <span className="card-menu-overlay">
+              <MenuButton items={menuFor(p)} title={p.title} />
+            </span>
             <button onClick={() => onOpen(p)}>
               <Poster projectId={p.id} ratio={p.aspect_ratio} icon={27} rendered={p.rendered} />
               <strong>{p.title}</strong>
@@ -5104,31 +5113,15 @@ function ProjectBrowser({
                 </small>
               )}
             </button>
-            {confirming === p.id ? (
-              <div className="card-confirm" title="Goes to the trash; you can bring it back for 7 days">
-                <button
-                  className="danger-button"
-                  onClick={async () => {
-                    setConfirming(null);
-                    await onDelete(p);
-                  }}
-                >
-                  Delete
-                </button>
-                <button onClick={() => setConfirming(null)}>Keep</button>
-              </div>
-            ) : (
-              <div className="card-actions">
-                <MenuButton items={menuFor(p)} title={p.title} />
-                <button
-                  className="icon-button danger"
-                  title={`Delete ${p.title}`}
-                  onClick={() => setConfirming(p.id)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            )}
+            <div className="card-actions">
+              <button
+                className="icon-button danger"
+                title={`Delete ${p.title} (goes to the trash, kept 7 days)`}
+                onClick={(e) => confirmDelete(e, p)}
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
