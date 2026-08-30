@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image as ImageIcon, Loader2, Palette, Upload, X } from "lucide-react";
 import {
   captionBand,
