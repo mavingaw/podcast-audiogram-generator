@@ -55,10 +55,15 @@ export const MAKE_A_CLIP: CoachStep[] = [
   },
 ];
 
+/** The first visible match, trying the comma-separated selectors in the
+ * order written — so ".source-list, .upload-drop" prefers the list of
+ * episodes when there is one and falls back to the drop zone. */
 function visible(selector: string): HTMLElement | null {
-  for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) return el;
+  for (const part of selector.split(",")) {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(part.trim()))) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return el;
+    }
   }
   return null;
 }
