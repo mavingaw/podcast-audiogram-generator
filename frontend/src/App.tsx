@@ -599,9 +599,16 @@ export function App() {
   }
   async function updateProject(updates: Partial<Project>) {
     if (!selected) return;
+    const id = selected.id;
+    // Optimistic, and functional: the next click must see this change, not
+    // wait a round-trip for it. Clicking a word right after "Restore all"
+    // used to toggle against the pre-restore cuts and silently undo itself.
+    setProjects((current) =>
+      current.map((p) => (p.id === id ? { ...p, ...updates, scene: { ...p.scene, ...(updates.scene ?? {}) } } : p)),
+    );
     const result = await api.updateProject(selected, updates);
-    setProjects(
-      projects.map((p) => (p.id === result.project.id ? result.project : p)),
+    setProjects((current) =>
+      current.map((p) => (p.id === result.project.id ? result.project : p)),
     );
     // The server may or may not have recorded a revision for this change —
     // it coalesces a burst into one — so the panel is told to look again
