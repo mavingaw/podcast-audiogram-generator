@@ -89,7 +89,7 @@ type Layer = {
   name: string;
   type: "title" | "artwork" | "waveform" | "captions" | "background";
   /** How the layer arrives: fade or rise in over `enterSeconds`. */
-  enter?: "none" | "fade" | "rise";
+  enter?: "none" | "fade" | "rise" | "drop" | "slide";
   enterSeconds?: number;
   x: number;
   y: number;
@@ -2873,6 +2873,8 @@ function Studio({
                       <option value="none">Appear</option>
                       <option value="fade">Fade in</option>
                       <option value="rise">Rise in</option>
+                      <option value="drop">Drop in</option>
+                      <option value="slide">Slide in</option>
                     </select>
                   </label>
                   <label>

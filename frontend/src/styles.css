@@ -2412,9 +2412,13 @@
    the render would draw it — mirroring fade= and the overlay y expression. */
 @keyframes enter-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes enter-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes enter-drop { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+@keyframes enter-slide { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
 @layer views {
   .canvas-layer.enter-fade { animation: enter-fade var(--enter-seconds, 0.5s) ease-out both; }
   .canvas-layer.enter-rise { animation: enter-rise var(--enter-seconds, 0.5s) ease-out both; }
+  .canvas-layer.enter-drop { animation: enter-drop var(--enter-seconds, 0.5s) ease-out both; }
+  .canvas-layer.enter-slide { animation: enter-slide var(--enter-seconds, 0.5s) ease-out both; }
   .field-row { display: flex; gap: var(--s-2); }
   .field-row label { flex: 1 1 0; min-width: 0; }
 }
@@ -2479,6 +2483,12 @@
   }
   .layer-caption[data-preset="card"] { background: #ffffff; color: #111111; font-weight: 800; border-radius: 8px; text-shadow: none; }
   .layer-caption[data-preset="outline"] { background: transparent; font-weight: 800; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
+  /* Pill: plain type, and only the spoken word sits in an accent box. */
+  .layer-caption[data-preset="pill"] { background: transparent; font-weight: 800; text-shadow: 0 1px 3px #000; }
+  .layer-caption[data-preset="pill"] em {
+    display: inline-block; padding: 0 0.35em; border-radius: 0.3em;
+    background: var(--accent-500); color: var(--n-950) !important; font-style: normal; text-shadow: none;
+  }
 }
 
 @layer views {

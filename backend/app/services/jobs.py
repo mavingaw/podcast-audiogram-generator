@@ -39,7 +39,7 @@ from app.services.scene import (
     ENVELOPE_STYLES,
     DEFAULT_FONT,
     FONTS_DIR,
-    RISE_PIXELS,
+    enter_offsets,
     PULSE_STYLES,
     WAVE_STYLES,
     font_family_for,
@@ -1403,20 +1403,21 @@ def build_render_command(
         index = first_image_input + offset
         x, y, _, _ = layer.pixels(width, height)
         source = f"[{index}:v]"
+        x_expr: str = str(x)
         y_expr: str = str(y)
         if layer.enter != "none":
-            # The plate fades in over its entrance; "rise" also drifts it up
-            # into place. overlay evaluates x/y per frame, so the drift is
-            # one expression rather than one filter per frame.
+            # The plate fades in over its entrance and, for the moving styles,
+            # drifts into place. overlay evaluates x/y per frame, so the drift
+            # is one expression rather than one filter per frame.
             progress = f"min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))"
             audio_chains.append(
                 f"{source}format=rgba,fade=t=in:st={layer.start:.3f}:"
                 f"d={layer.enter_seconds:.3f}:alpha=1[vimgin{offset}]"
             )
             source = f"[vimgin{offset}]"
-            if layer.enter == "rise":
-                y_expr = f"{y}+(1-{progress})*{RISE_PIXELS}"
-        overlay = f"{video_label}{source}overlay=x={x}:y={y_expr}"
+            dx, dy = enter_offsets(layer.enter, progress)
+            x_expr, y_expr = f"{x}{dx}", f"{y}{dy}"
+        overlay = f"{video_label}{source}overlay=x={x_expr}:y={y_expr}"
         guard = enable_expression(layer.start, layer.end, duration)
         if guard:
             overlay += f":enable='{guard}'"
@@ -1880,19 +1881,20 @@ def _text_filters(
         # title came out with a third, empty line between the two.
         target.write_text(text, encoding="utf-8", newline="\n")
 
+        dx, dy = enter_offsets(
+            layer.enter,
+            f"min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))",
+        )
         options = [
             f"textfile='{escape_drawtext(target.name)}'",
             "expansion=none",
             f"fontcolor={ffmpeg_color(layer.paint('#ffffff'))}",
             f"fontsize={font_size}",
             # Centre the text inside the box the editor drew, matching how the
-            # canvas preview lays the layer out.
-            f"x={x}+({box_width}-text_w)/2",
-            f"y={y}+({box_height}-text_h)/2"
-            + (
-                f"+(1-min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f})))*{RISE_PIXELS}"
-                if layer.enter == "rise" else ""
-            ),
+            # canvas preview lays the layer out; the entrance offset drifts
+            # it in from off that mark.
+            f"x={x}+({box_width}-text_w)/2{dx}",
+            f"y={y}+({box_height}-text_h)/2{dy}",
             # Pull a too-wide line back inside the frame rather than clipping it.
             "fix_bounds=1",
             # A wrapped title is two lines; keep them close.
@@ -2153,17 +2155,25 @@ def _write_ass(
         words = caption.get("words") or []
         # On a plated preset the plate is already the accent colour, so tinting
         # the type as well would put a colour on a colour; the plate carries the
-        # attribution instead and the text stays legible.
+        # attribution instead and the text stays legible. (A pill preset is
+        # mostly plain type, so it keeps the tint.)
         voice = (
             speaker_colour(int(caption["speaker_id"]))
-            if tint and caption.get("speaker_id") and not preset.get("plate")
+            if tint and caption.get("speaker_id") and (not preset.get("plate") or preset.get("pill"))
             else None
         )
         if highlight and len(words) > 1:
-            lines.extend(_karaoke_events(caption, words, highlight, upper, voice, plated=bool(preset.get("plate"))))
+            lines.extend(_karaoke_events(
+                caption, words, highlight, upper, voice,
+                plated=bool(preset.get("plate")), pill=bool(preset.get("pill")),
+            ))
             continue
         text = caption["text"].upper() if upper else caption["text"]
         body = _ass_escape(text)
+        if preset.get("pill"):
+            # No word to box, so the line goes without a plate; boxing the
+            # whole thing would look like a different preset.
+            body = "{\\3a&HFF&\\4a&HFF&}" + body
         if voice:
             body = "{\\c" + ass_color(voice) + "}" + body
         lines.append(
@@ -2182,8 +2192,13 @@ def _karaoke_events(
     upper: bool,
     voice: str | None = None,
     plated: bool = False,
+    pill: bool = False,
 ) -> list[str]:
     r"""One subtitle event per word, with the spoken word recoloured.
+
+    A pill preset turns the run-boxing described below to its advantage: the
+    word events draw no plate except on the spoken word, so the box travels
+    along the line with the speech. There is no carrier event.
 
     On a plated preset the plate is drawn by one extra event whose text is
     fully transparent, and the word events draw no plate of their own. With
@@ -2205,7 +2220,7 @@ def _karaoke_events(
     # Word events must not draw plates when the carrier does: outline and
     # shadow alpha fully transparent, which under BorderStyle 3 is the box.
     no_plate = "{\\3a&HFF&\\4a&HFF&}" if plated else ""
-    if plated:
+    if plated and not pill:
         whole = " ".join(
             _ass_escape(str(w.get("text", "")).upper() if upper else str(w.get("text", "")))
             for w in words
@@ -2236,7 +2251,13 @@ def _karaoke_events(
             token = _ass_escape(token)
             # `\c` with no argument restores the style colour, so only the word
             # being spoken is recoloured.
-            if position == index:
+            if position == index and pill:
+                # Plate back on for this run only, and the pill's own type
+                # colour, which is chosen against the plate.
+                rendered.append(
+                    "{\\3a&H00&\\4a&H00&\\c" + colour + "}" + token + "{\\c\\3a&HFF&\\4a&HFF&}"
+                )
+            elif position == index:
                 rendered.append("{\\c" + colour + "}" + token + "{\\c}")
             elif voice:
                 # The rest of the line keeps the speaker's colour, so the

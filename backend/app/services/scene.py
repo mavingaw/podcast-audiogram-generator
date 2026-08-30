@@ -127,11 +127,36 @@ WAVE_STYLE_LABELS = {
 
 RENDERABLE_TEXT_TYPES = {"title", "text", "captions"}
 
-# Ways a layer can arrive. Kept to two because both are one FFmpeg expression
-# and both read well on a phone; a bounce or a wipe would be neither.
-ENTER_STYLES = ("none", "fade", "rise")
-ENTER_LABELS = {"none": "Appear", "fade": "Fade in", "rise": "Rise in"}
+# Ways a layer can arrive. Each is one FFmpeg expression on the layer's
+# position plus a fade, and each reads well on a phone; a bounce or a wipe
+# would be neither.
+ENTER_STYLES = ("none", "fade", "rise", "drop", "slide")
+ENTER_LABELS = {
+    "none": "Appear",
+    "fade": "Fade in",
+    "rise": "Rise in",
+    "drop": "Drop in",
+    "slide": "Slide in",
+}
 RISE_PIXELS = 40
+SLIDE_PIXELS = 80
+
+
+def enter_offsets(style: str, progress: str) -> tuple[str, str]:
+    """The x and y displacement of an entering layer as FFmpeg expressions.
+
+    `progress` is an expression from 0 (just started) to 1 (in place). The
+    offsets are what to *add* to the resting position, so "rise" starts
+    below and "drop" above.
+    """
+    away = f"(1-{progress})"
+    if style == "rise":
+        return "", f"+{away}*{RISE_PIXELS}"
+    if style == "drop":
+        return "", f"-{away}*{RISE_PIXELS}"
+    if style == "slide":
+        return f"-{away}*{SLIDE_PIXELS}", ""
+    return "", ""
 
 # Fonts that ship inside the application. All four are under the SIL Open
 # Font License, which — unlike the music packs — permits bundling and
@@ -358,6 +383,24 @@ CAPTION_PRESETS = {
         "plate": "#FFFFFF",
         "plate_text": "#111111",
     },
+    "pill": {
+        "label": "Pill — the spoken word in a box",
+        # Only the word being spoken gets a plate, in the accent colour; the
+        # rest of the line is plain bold type. The plate moves along the
+        # line with the speech, which is the most animated a caption gets
+        # without motion graphics.
+        "highlight": BRAND["obsidian"],
+        "size_ratio": 0.068,
+        "outline": 4,
+        "shadow": 0,
+        "bold": True,
+        "back_alpha": "00",
+        "margin_ratio": 0.31,
+        "uppercase": False,
+        "plate": BRAND["blue"],
+        "plate_text": "#F8FAFC",
+        "pill": True,
+    },
     "outline": {
         "label": "Outline — thin, no plate",
         "highlight": BRAND["gold"],
@@ -442,8 +485,9 @@ class RenderLayer:
     media_id: str | None = None
     # Artwork corner rounding, as a fraction of the shorter side.
     radius: float = 0.0
-    # How the layer arrives: "none", "fade", or "rise" (fade while drifting
-    # up into place). Applied over `enter_seconds` from the layer's start.
+    # How the layer arrives: one of ENTER_STYLES — fade, or fade while
+    # drifting up / down / in from the left into place. Applied over
+    # `enter_seconds` from the layer's start.
     enter: str = "none"
     enter_seconds: float = 0.5
 

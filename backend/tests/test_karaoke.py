@@ -204,3 +204,21 @@ def test_a_plated_karaoke_line_draws_its_plate_once(tmp_path):
     words = [e for e in events if "{\\3a&HFF&\\4a&HFF&}" in e]
     assert len(carriers) == 1, events
     assert len(words) == 2, events
+
+
+def test_a_pill_preset_boxes_only_the_spoken_word(tmp_path):
+    """The plate travels with the speech: every word event turns the box on
+    for exactly one run, and there is no carrier drawing a plate under all."""
+    rows = events(write(tmp_path, {"captionPreset": "pill"}))
+    assert len(rows) == 3
+    for row in rows:
+        assert "{\\1a&HFF&}" not in row
+        # The line starts with the box off, and turns it on exactly once.
+        assert row.split(",,")[-1].startswith("{\\3a&HFF&\\4a&HFF&}")
+        assert row.count("\\3a&H00&") == 1
+
+
+def test_a_pill_line_without_words_draws_no_box(tmp_path):
+    plain = {"start": 0.0, "end": 2.0, "text": "no timings here"}
+    rows = events(write(tmp_path, {"captionPreset": "pill"}, [plain]))
+    assert rows[0].split(",,")[-1].startswith("{\\3a&HFF&\\4a&HFF&}")

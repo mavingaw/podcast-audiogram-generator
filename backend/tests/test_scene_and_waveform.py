@@ -936,3 +936,28 @@ def test_two_image_layers_both_render(tmp_path):
     assert graph.count("overlay=x=") >= 2, "only one image layer reached the graph"
     inputs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"]
     assert sum(1 for i in inputs if i.endswith(".png")) == 2
+
+
+def test_every_entrance_style_is_one_expression_each_way():
+    from app.services.scene import ENTER_LABELS, ENTER_STYLES, enter_offsets
+
+    assert set(ENTER_LABELS) == set(ENTER_STYLES)
+    for style in ENTER_STYLES:
+        dx, dy = enter_offsets(style, "P")
+        # Nothing moves on both axes, and the still styles do not move at all.
+        assert not (dx and dy), style
+        if style in ("none", "fade"):
+            assert dx == "" and dy == ""
+    assert enter_offsets("rise", "P")[1].startswith("+")
+    assert enter_offsets("drop", "P")[1].startswith("-")
+    assert enter_offsets("slide", "P")[0].startswith("-")
+
+
+def test_a_sliding_title_starts_left_of_its_mark(tmp_path):
+    from app.services.jobs import _text_filters
+    from app.services.scene import parse as parse_scene
+
+    scene = {"layers": [{"id": "t", "type": "title", "text": "Hi", "enter": "slide",
+                         "x": 10, "y": 10, "w": 80, "h": 20}]}
+    chain = _text_filters(parse_scene(scene, 10.0), 1080, 1920, 10.0, tmp_path / "f.ttf", work_dir=tmp_path)
+    assert "-(1-min(1" in chain and "*80" in chain

@@ -57,6 +57,7 @@ const CAPTION_PRESETS: [string, string][] = [
   ["card", "Card — solid light plate"],
   ["boxed", "Boxed — solid dark plate"],
   ["kinder", "Kinder — baby blue plate"],
+  ["pill", "Pill — the spoken word in a box"],
   ["outline", "Outline — thin, no plate"],
   ["clean", "Clean — understated"],
 ];
