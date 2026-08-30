@@ -2454,3 +2454,13 @@
   .layer-image { display: grid; gap: var(--s-2); }
   .upload-inline { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: max-content; }
 }
+
+@layer views {
+  .first-run { margin: var(--s-4) 0 var(--s-6); padding: var(--s-5); border: 1px solid var(--line);
+    border-radius: var(--r-lg, 12px); background: var(--surface-raised); }
+  .first-run-steps { margin: var(--s-3) 0 0; padding-left: 1.4em; display: grid; gap: var(--s-4); }
+  .first-run-steps li { display: grid; gap: var(--s-1); }
+  .first-run-steps li::marker { color: var(--accent-text); font-weight: 700; }
+  .first-run-steps strong { font-size: 15px; }
+  .first-run-steps span { color: var(--text-muted); max-width: 60ch; }
+}

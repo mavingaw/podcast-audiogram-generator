@@ -631,7 +631,10 @@ export function App() {
           <Home
             onCreate={() => setView("quick")}
             onStudio={() => setView("studio")}
+            onFeeds={() => setView("feeds")}
             projects={projects}
+            mediaCount={media.length}
+            username={user?.username ?? ""}
             onOpen={(p) => {
               setSelectedId(p.id);
               setView("studio");
@@ -841,14 +844,32 @@ function Sidebar({
 function Home({
   onCreate,
   onStudio,
+  onFeeds,
   projects,
+  mediaCount,
+  username,
   onOpen,
 }: {
   onCreate: () => void;
   onStudio: () => void;
+  onFeeds: () => void;
   projects: Project[];
+  mediaCount: number;
+  username: string;
   onOpen: (p: Project) => void;
 }) {
+  // A first sign-in lands on an empty workspace with six tiles and no
+  // indication of which to press. Shown until there is a project or a file,
+  // or until it is dismissed — remembered per account, per browser.
+  const guideKey = `kinder:guide-dismissed:${username}`;
+  const [guideDismissed, setGuideDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(guideKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const showGuide = !guideDismissed && projects.length === 0 && mediaCount === 0;
   const actions = [
     [
       "Create Audiogram",
@@ -879,6 +900,56 @@ function Home({
           your server.
         </p>
       </section>
+      {showGuide && (
+        <section className="first-run">
+          <div className="section-bar">
+            <div>
+              <span className="kicker">Getting started</span>
+              <h2>Three steps to your first clip</h2>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => {
+                try {
+                  localStorage.setItem(guideKey, "1");
+                } catch {
+                  // Nothing to do; the guide just shows again next time.
+                }
+                setGuideDismissed(true);
+              }}
+            >
+              Hide this
+            </button>
+          </div>
+          <ol className="first-run-steps">
+            <li>
+              <strong>Bring in an episode.</strong>
+              <span>
+                Paste your show's RSS link under Feeds and every new episode arrives on its
+                own — or upload one file to try it now.
+              </span>
+              <div className="mini-fields">
+                <button className="ghost compact" onClick={onFeeds}>Add my feed</button>
+                <button className="ghost compact" onClick={onCreate}>Upload an episode</button>
+              </div>
+            </li>
+            <li>
+              <strong>Pick the moment.</strong>
+              <span>
+                Once it is transcribed, search the words or take a suggested clip, then Open in
+                Studio.
+              </span>
+            </li>
+            <li>
+              <strong>Make it yours and export.</strong>
+              <span>
+                Captions, live waveform and your show's artwork are already on it. Add a music
+                bed, a title, an effect — then Export and download the MP4.
+              </span>
+            </li>
+          </ol>
+        </section>
+      )}
       <div className="creation-grid">
         {actions.map(([title, detail, Icon, action]) => (
           <button className="creation-tile" key={title} onClick={action}>
