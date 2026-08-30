@@ -68,6 +68,7 @@ import {
   Transcript,
   User,
 } from "./api";
+import { Coach, MAKE_A_CLIP } from "./Coach";
 import { ContextMenuHost, MenuButton, MenuItem, openMenu } from "./ContextMenu";
 import { DesignPanel } from "./DesignPanel";
 import { HelpButton, applyLargeText, readLargeText } from "./Help";
@@ -436,6 +437,7 @@ export function App() {
   useEffect(() => {
     applyLargeText(readLargeText());
   }, []);
+  const [coaching, setCoaching] = useState(false);
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -612,6 +614,7 @@ export function App() {
   return (
     <div className={`app-shell ${navOpen ? "nav-open" : ""}`}>
       <ContextMenuHost />
+      {coaching && <Coach steps={MAKE_A_CLIP} onDone={() => setCoaching(false)} />}
       <Sidebar
         inboxCount={inboxCount}
         user={user}
@@ -650,7 +653,15 @@ export function App() {
           </div>
           <div className="header-actions">
             <span className="saved-dot">Local workspace</span>
-            <HelpButton view={view} onStart={() => setView("quick")} />
+            <HelpButton
+              view={view}
+              onStart={() => {
+                // Start from Home so the first thing pointed at is the button
+                // everyone starts with.
+                setView("home");
+                setCoaching(true);
+              }}
+            />
             <button
               className="icon-button"
               title={soundOn ? "Mute interface sounds" : "Unmute interface sounds"}
@@ -678,6 +689,7 @@ export function App() {
         {view === "home" && (
           <Home
             onCreate={() => setView("quick")}
+            onShowMe={() => setCoaching(true)}
             onStudio={() => setView("studio")}
             onFeeds={() => setView("feeds")}
             projects={projects}
@@ -913,6 +925,7 @@ function Sidebar({
 }
 function Home({
   onCreate,
+  onShowMe,
   onStudio,
   onFeeds,
   projects,
@@ -921,6 +934,7 @@ function Home({
   onOpen,
 }: {
   onCreate: () => void;
+  onShowMe: () => void;
   onStudio: () => void;
   onFeeds: () => void;
   projects: Project[];
@@ -999,6 +1013,7 @@ function Home({
                 own — or upload one file to try it now.
               </span>
               <div className="mini-fields">
+                <button className="primary compact" onClick={onShowMe}>Show me how</button>
                 <button className="ghost compact" onClick={onFeeds}>Add my feed</button>
                 <button className="ghost compact" onClick={onCreate}>Upload an episode</button>
               </div>
@@ -1434,6 +1449,7 @@ function QuickCreate({
           </p>
           <button
             className="primary large"
+            data-coach="open-studio"
             disabled={!source}
             onClick={() =>
               source && onCreate(ratio, template, source, start, end)

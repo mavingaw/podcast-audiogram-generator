@@ -2598,3 +2598,25 @@
 /* Large text: one switch, everything grows. `zoom` scales px sizes too,
    which a root font-size would not. */
 html.large-text #root { zoom: 1.18; }
+
+@layer views {
+  /* --- Coach ("Show me") ------------------------------------------------ */
+  .coach { position: fixed; inset: 0; z-index: 950; pointer-events: none; }
+  .coach-dim { position: absolute; inset: 0; background: rgb(0 0 0 / 0.5); }
+  .coach-spot {
+    position: absolute; border-radius: 10px;
+    box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.58), 0 0 0 3px var(--accent-400), 0 0 24px var(--accent-400);
+    transition: left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease;
+  }
+  .coach-bubble {
+    position: absolute; width: 360px; max-width: calc(100vw - 24px);
+    padding: 14px 16px; pointer-events: auto;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+    box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
+    display: grid; gap: 8px; font-size: 15.5px; line-height: 1.45;
+  }
+  .coach-bubble p { margin: 0; }
+  .coach-count { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-text); }
+  .coach-actions { display: flex; gap: var(--s-3); justify-content: flex-end; }
+}

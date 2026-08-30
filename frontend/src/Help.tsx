@@ -163,7 +163,7 @@ export function HelpButton({ view, onStart }: { view: string; onStart?: () => vo
                 Large text
               </label>
               <div className="help-actions">
-                {onStart && view !== "quick" && (
+                {onStart && (
                   <button
                     className="primary"
                     onClick={() => {
@@ -171,7 +171,7 @@ export function HelpButton({ view, onStart }: { view: string; onStart?: () => vo
                       onStart();
                     }}
                   >
-                    Make a clip
+                    Show me how
                   </button>
                 )}
                 <button onClick={() => setOpen(false)}>Got it</button>

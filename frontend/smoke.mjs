@@ -222,6 +222,37 @@ await step("help", async () => {
   if (await card.count()) problems.push("help: Escape did not close it");
 });
 
+// "Show me" must point at a real button and follow the person through the
+// first two screens on its own.
+await step("coach", async () => {
+  await page.locator(".help-button").first().click();
+  await page.waitForTimeout(300);
+  const start = page.locator(".help-card button:has-text('Show me')");
+  if ((await start.count()) === 0) {
+    problems.push("coach: the help card has no Show me button");
+    await page.keyboard.press("Escape");
+    return;
+  }
+  await start.click();
+  await page.waitForTimeout(600);
+  const spot = page.locator(".coach-spot");
+  if ((await spot.count()) === 0) {
+    problems.push("coach: nothing was spotlighted");
+    return;
+  }
+  const first = await page.locator(".coach-bubble p").innerText();
+  await page.locator(".new-project").first().click();
+  await page.waitForTimeout(900);
+  const second = await page.locator(".coach-bubble p").innerText().catch(() => "");
+  if (!second || second === first) problems.push("coach: did not move on after the button was pressed");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  if (await page.locator(".coach").count()) problems.push("coach: Escape did not stop it");
+  // The tour moved us to Quick Create; the steps below expect Projects.
+  await page.locator('.main-nav button:has-text("Projects")').first().click();
+  await page.waitForTimeout(600);
+});
+
 // Right-click is how most people expect to find "delete"; the menu has to
 // appear, offer it, and go away again without doing anything by itself.
 await step("context-menu", async () => {
