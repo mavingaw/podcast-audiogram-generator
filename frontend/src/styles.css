@@ -2851,3 +2851,16 @@ html.large-text #root { zoom: 1.18; }
   .project-thumb.has-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .export-poster { width: 38px; height: 38px; flex: 0 0 38px; border-radius: var(--r-md); object-fit: cover; }
 }
+
+@layer views {
+  .trash-section { margin-top: var(--s-10); }
+  .trash-head { display: inline-flex; gap: 8px; align-items: center; color: var(--text-muted); font-size: 13px; font-weight: 600; }
+  .trash-head small { color: var(--text-subtle); }
+  .trash-list { display: grid; gap: var(--s-1); margin-top: var(--s-3); max-width: 640px; }
+  .trash-row {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--s-3);
+    padding: 8px 12px; border: 1px dashed var(--line); border-radius: var(--r-md); color: var(--text-muted); font-size: 13.5px;
+  }
+  .trash-actions { display: flex; gap: var(--s-2); }
+  .ghost.danger { color: #ff8f8f; }
+}

@@ -131,7 +131,8 @@ try {
 } catch (error) {
   problems.push("flow aborted: " + (error instanceof Error ? error.message : String(error)));
 } finally {
-  if (projectId) await api(`/api/projects/${projectId}`, { method: "DELETE" }).catch(() => undefined);
+  // forever=1: the check run's project should not pile up in the trash.
+  if (projectId) await api(`/api/projects/${projectId}?forever=1`, { method: "DELETE" }).catch(() => undefined);
   await browser.close();
 }
 

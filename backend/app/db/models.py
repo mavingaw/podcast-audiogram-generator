@@ -115,6 +115,9 @@ class Project(Base):
     source: Mapped[str] = mapped_column(String(16), default="manual")
     review_state: Mapped[str] = mapped_column(String(16), default="approved")
 
+    # Set instead of deleting the row: Delete puts a project in the trash,
+    # where it can be restored for a week before the sweep empties it.
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(default=now_utc, onupdate=now_utc)
 
@@ -174,6 +177,14 @@ class SoundAsset(Base):
     seamless_loop: Mapped[bool] = mapped_column(Boolean, default=True)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
+
+
+# (Project.deleted_at lives on the Project model below; the trash is a
+# flag, not a table.)
+
+
+# (Project.deleted_at lives on the Project model below; the trash is a
+# flag, not a table.)
 
 
 class ShareLink(Base):

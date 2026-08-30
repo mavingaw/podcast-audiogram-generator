@@ -376,8 +376,10 @@ def test_a_project_can_be_deleted(monkeypatch, tmp_path):
     client.post("/api/bootstrap", json={"username": "mujin", "password": "long-password"})
     project = client.post("/api/projects", json={"title": "Throwaway"}).json()["project"]
 
-    assert client.delete(f"/api/projects/{project['id']}").status_code == 200
+    # Delete is two-step now: the first goes to the trash, the second is real.
+    assert client.delete(f"/api/projects/{project['id']}").json()["trashed"] is True
     assert client.get("/api/projects").json()["projects"] == []
+    assert client.delete(f"/api/projects/{project['id']}").json()["trashed"] is False
     # And it stays gone.
     assert client.delete(f"/api/projects/{project['id']}").status_code == 404
 
@@ -390,7 +392,7 @@ def test_deleting_a_project_takes_its_jobs_with_it(monkeypatch, tmp_path):
     project = client.post("/api/projects", json={"title": "Throwaway"}).json()["project"]
     client.post(f"/api/projects/{project['id']}/render")
 
-    client.delete(f"/api/projects/{project['id']}")
+    client.delete(f"/api/projects/{project['id']}", params={"forever": "1"})
     remaining = [
         job for job in client.get("/api/jobs").json()["jobs"]
         if job["subject_id"] == project["id"]
@@ -411,7 +413,7 @@ def test_deleting_a_project_removes_its_outputs(monkeypatch, tmp_path):
     outputs.mkdir(parents=True, exist_ok=True)
     (outputs / "audiogram.mp4").write_bytes(b"not really a video")
 
-    client.delete(f"/api/projects/{project['id']}")
+    client.delete(f"/api/projects/{project['id']}", params={"forever": "1"})
     assert not outputs.exists()
 
 

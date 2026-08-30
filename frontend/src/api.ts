@@ -829,6 +829,9 @@ export const api = {
       `/api/projects/${projectId}/revisions/${revisionId}/restore`,
       { method: "POST" },
     ),
+  trashedProjects: () => request<{ projects: Project[] }>("/api/projects?trash=1"),
+  restoreFromTrash: (projectId: string) =>
+    request<{ project: Project }>(`/api/projects/${projectId}/restore-from-trash`, { method: "POST" }),
   deleteProject: (projectId: string) =>
     request<{ ok: boolean }>(`/api/projects/${projectId}`, { method: "DELETE" }),
   renderProject: (project: Project, force = false) =>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import datetime, timedelta, timezone
 import uuid
 import secrets
 import shutil
@@ -1357,9 +1358,34 @@ def create_project(
     return {"project": serialize_project(project)}
 
 
+TRASH_DAYS = 7
+
+
+def _empty_old_trash(db: Session, user: User) -> None:
+    """Hard-delete anything that has sat in the trash past its week."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRASH_DAYS)
+    for project in db.scalars(
+        select(Project).where(Project.owner_id == user.id, Project.deleted_at.is_not(None))
+    ).all():
+        stamp = project.deleted_at
+        if stamp is not None and stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        if stamp is not None and stamp < cutoff:
+            _destroy_project(db, project)
+    db.commit()
+
+
 @router.get("/projects")
-def list_projects(db: Annotated[Session, Depends(get_db)], user: Annotated[User, Depends(current_user)]) -> dict:
-    projects = db.scalars(select(Project).where(Project.owner_id == user.id).order_by(Project.updated_at.desc())).all()
+def list_projects(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+    trash: bool = False,
+) -> dict:
+    _empty_old_trash(db, user)
+    condition = Project.deleted_at.is_not(None) if trash else Project.deleted_at.is_(None)
+    projects = db.scalars(
+        select(Project).where(Project.owner_id == user.id, condition).order_by(Project.updated_at.desc())
+    ).all()
     return {"projects": [serialize_project(project) for project in projects]}
 
 
@@ -1464,6 +1490,7 @@ def delete_project(
     project_id: str,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user)],
+    forever: bool = False,
 ) -> dict:
     """Remove a project, its queued work, and its rendered output.
 
@@ -1486,16 +1513,45 @@ def delete_project(
         job.status = JobStatus.canceled
         job.message = "Project deleted"
 
-    db.execute(delete(Job).where(Job.subject_id == project.id))
-    db.delete(project)
-    db.commit()
+    if forever or project.deleted_at is not None:
+        # The second delete — from the trash — is the real one.
+        _destroy_project(db, project)
+        db.commit()
+        return {"ok": True, "trashed": False}
 
+    # The first delete only flags it: renders and share links stay on disk
+    # so Restore brings everything back exactly as it was.
+    project.deleted_at = datetime.now(timezone.utc)
+    for link in db.scalars(select(ShareLink).where(ShareLink.project_id == project.id, ShareLink.revoked.is_(False))).all():
+        link.revoked = True
+    db.commit()
+    return {"ok": True, "trashed": True, "days": TRASH_DAYS}
+
+
+def _destroy_project(db: Session, project: Project) -> None:
+    db.execute(delete(Job).where(Job.subject_id == project.id))
+    db.execute(delete(ShareLink).where(ShareLink.project_id == project.id))
+    project_id = project.id
+    db.delete(project)
     # Best effort: a leftover directory is clutter, not a failure worth
     # refusing the delete over.
     outputs = settings.outputs_dir / project_id
     if outputs.is_dir():
         shutil.rmtree(outputs, ignore_errors=True)
-    return {"ok": True}
+
+
+@router.post("/projects/{project_id}/restore-from-trash")
+def restore_from_trash(
+    project_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project.deleted_at = None
+    db.commit()
+    return {"project": serialize_project(project)}
 
 
 @router.post("/projects/{project_id}/render")

@@ -794,6 +794,7 @@ export function App() {
               await api.updateProject(p, { title });
               await loadData();
             }}
+            onRefreshAll={() => loadData()}
           />
         )}
         {view === "templates" && (
@@ -4029,7 +4030,7 @@ function projectMenu(
       label: "Delete…",
       danger: true,
       onSelect: () => {
-        if (window.confirm(`Delete "${p.title}"? Its render is thrown away too.`)) void remove(p);
+        if (window.confirm(`Move "${p.title}" to the trash? You can bring it back for 7 days.`)) void remove(p);
       },
     });
   }
@@ -4390,11 +4391,13 @@ function ProjectBrowser({
   onOpen,
   onDelete,
   onRename,
+  onRefreshAll,
 }: {
   projects: Project[];
   onOpen: (p: Project) => void;
   onDelete: (p: Project) => Promise<void>;
   onRename: (p: Project, title: string) => Promise<void>;
+  onRefreshAll: () => Promise<void>;
 }) {
   // Deleting a project throws away a render, so it asks once. Confirming in
   // place rather than through a modal keeps the answer next to the question.
@@ -4435,7 +4438,7 @@ function ProjectBrowser({
               )}
             </button>
             {confirming === p.id ? (
-              <div className="card-confirm">
+              <div className="card-confirm" title="Goes to the trash; you can bring it back for 7 days">
                 <button
                   className="danger-button"
                   onClick={async () => {
@@ -4462,7 +4465,65 @@ function ProjectBrowser({
           </div>
         ))}
       </div>
+      <TrashSection onChanged={onRefreshAll} />
     </div>
+  );
+}
+
+/** What was deleted in the last week, and the way back. */
+function TrashSection({ onChanged }: { onChanged: () => Promise<void> }) {
+  const [items, setItems] = useState<Project[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = () => api.trashedProjects().then((r) => setItems(r.projects)).catch(() => undefined);
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!items.length) return null;
+  return (
+    <section className="trash-section">
+      <button className="trash-head" onClick={() => setOpen((v) => !v)}>
+        <Trash2 size={14} /> Trash · {items.length} — kept for 7 days
+        <small>{open ? "Hide" : "Show"}</small>
+      </button>
+      {open && (
+        <div className="trash-list">
+          {items.map((p) => (
+            <div key={p.id} className="trash-row">
+              <span>{p.title}</span>
+              <div className="trash-actions">
+                <button
+                  className="ghost compact"
+                  disabled={busy === p.id}
+                  onClick={async () => {
+                    setBusy(p.id);
+                    await api.restoreFromTrash(p.id).catch(() => undefined);
+                    setBusy(null);
+                    await load();
+                    await onChanged();
+                  }}
+                >
+                  Put back
+                </button>
+                <button
+                  className="ghost compact danger"
+                  disabled={busy === p.id}
+                  onClick={async () => {
+                    if (!window.confirm(`Delete "${p.title}" forever? This one cannot be undone.`)) return;
+                    setBusy(p.id);
+                    await api.deleteProject(p.id).catch(() => undefined);
+                    setBusy(null);
+                    await load();
+                  }}
+                >
+                  Delete forever
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 /** Save this look for later episodes, or drop a saved one onto this clip.
