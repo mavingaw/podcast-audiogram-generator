@@ -3418,11 +3418,19 @@ function Studio({
             title="Your logo, faint, in a corner of every frame"
             onClick={() => {
               // A watermark is just a small, half-transparent artwork layer
-              // parked in a corner. Everything about it stays editable.
+              // parked in a corner — but it must name an actual image: the
+              // renderer only draws artwork layers that do.
+              const logo = media?.artwork_media_id
+                ?? allMedia.find((m) => m.content_type.startsWith("image/"))?.id;
+              if (!logo) {
+                window.alert("Add a cover picture first (the source step has a box for it), then the watermark has something to show.");
+                return;
+              }
               const next = [...layersRef.current, {
                 id: `artwork-${Date.now()}`,
                 name: "Watermark",
                 type: "artwork" as const,
+                mediaId: logo,
                 x: 72, y: 3, width: 24, height: 8,
                 visible: true, locked: false,
                 opacity: 0.55, radius: 0.1,
