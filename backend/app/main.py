@@ -75,6 +75,13 @@ def create_app() -> FastAPI:
         elif not path.startswith("/api/"):
             # The HTML shell and anything unhashed next to it: always revalidate.
             response.headers["Cache-Control"] = "no-cache"
+        elif "cache-control" not in response.headers:
+            # API responses that say nothing get cached anyway by CDN default
+            # extension rules: Cloudflare served a 98-minute-old audiogram.mp4
+            # after a re-export, because /outputs/audiogram.mp4 never changes
+            # its URL. Anything under /api that has not chosen its own policy
+            # must not be cached by anyone but the browser.
+            response.headers["Cache-Control"] = "private, no-store"
         return response
     app.include_router(router)
     app.include_router(public_router)
