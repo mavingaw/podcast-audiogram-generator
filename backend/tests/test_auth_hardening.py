@@ -235,3 +235,50 @@ def test_no_code_configured_means_no_link(monkeypatch, tmp_path):
 
     monkeypatch.setattr(routes, "settings", dataclasses.replace(routes.settings, signup_code=""))
     assert client.get("/api/settings/invite").json() == {"code": None, "link": None}
+
+
+
+def test_an_administrator_can_remove_an_account_and_its_files(monkeypatch, tmp_path):
+    from tests.test_api import create_test_client, register_second_user
+
+    client = create_test_client(monkeypatch, tmp_path)
+    client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"})
+    register_second_user(client, "friend")
+    media = client.post("/api/media/upload", files={"file": ("f.mp3", b"bytes", "audio/mpeg")}).json()["media"]
+    project = client.post("/api/projects", json={"title": "theirs", "media_id": media["id"]}).json()["project"]
+
+    from app.core.config import settings
+    from app.db.models import MediaAsset, User
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        friend = db.query(User).filter(User.username == "friend").first()
+        friend_id = friend.id
+        stored = db.get(MediaAsset, media["id"]).stored_name
+    assert (settings.uploads_dir / stored).exists()
+
+    # Back as the owner.
+    client.post("/api/auth/logout")
+    client.post("/api/auth/login", json={"username": "owner", "password": "Passw0rd!enough"})
+    response = client.delete(f"/api/users/{friend_id}")
+    assert response.status_code == 200, response.text
+    assert response.json()["removed_projects"] == 1
+    assert not (settings.uploads_dir / stored).exists(), "their upload is still on disk"
+    assert client.post("/api/auth/login", json={"username": "friend", "password": "another-password"}).status_code == 401
+
+
+def test_an_administrator_cannot_remove_themselves(monkeypatch, tmp_path):
+    from tests.test_api import create_test_client
+
+    client = create_test_client(monkeypatch, tmp_path)
+    me = client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"}).json()["user"]
+    assert client.delete(f"/api/users/{me['id']}").status_code == 400
+
+
+def test_ordinary_users_cannot_remove_accounts(monkeypatch, tmp_path):
+    from tests.test_api import create_test_client, register_second_user
+
+    client = create_test_client(monkeypatch, tmp_path)
+    me = client.post("/api/bootstrap", json={"username": "owner", "password": "Passw0rd!enough"}).json()["user"]
+    register_second_user(client, "friend")
+    assert client.delete(f"/api/users/{me['id']}").status_code == 403

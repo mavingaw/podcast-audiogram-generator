@@ -533,6 +533,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password, code: code || undefined }),
     }),
+  /** Remove an account and everything it owns; administrators only. */
+  deleteUser: (userId: string) =>
+    request<{ ok: boolean; removed_projects: number }>(`/api/users/${userId}`, { method: "DELETE" }),
   /** The sign-up code and a link carrying it; administrators only. */
   inviteLink: () => request<{ code: string | null; link: string | null }>("/api/settings/invite"),
   setSignups: (open: boolean) =>

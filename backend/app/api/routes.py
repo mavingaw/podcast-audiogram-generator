@@ -418,6 +418,52 @@ def list_users(db: Annotated[Session, Depends(get_db)], _: Annotated[User, Depen
     return {"users": [serialize_user(user) for user in users]}
 
 
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Remove an account and everything it owns.
+
+    The way access is revoked. Files are removed with the rows: their
+    uploads, their renders, their recordings. Not the library — that is the
+    instance's, not theirs. An administrator cannot remove themselves, which
+    is the only way an instance ends up with nobody who can administer it.
+    """
+    import shutil
+
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrators only")
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == user.id:
+        raise HTTPException(status_code=400, detail="You cannot remove your own account")
+
+    from app.db.models import Feed, FeedEpisode, ProjectRevision, Template
+
+    projects = db.scalars(select(Project).where(Project.owner_id == target.id)).all()
+    for project in projects:
+        shutil.rmtree(settings.outputs_dir / project.id, ignore_errors=True)
+        db.query(ProjectRevision).filter(ProjectRevision.project_id == project.id).delete()
+        db.delete(project)
+    for media in db.scalars(select(MediaAsset).where(MediaAsset.owner_id == target.id)).all():
+        try:
+            contained_path(settings.uploads_dir, settings.uploads_dir / media.stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            pass
+        db.delete(media)
+    for feed in db.scalars(select(Feed).where(Feed.owner_id == target.id)).all():
+        db.query(FeedEpisode).filter(FeedEpisode.feed_id == feed.id).delete()
+        db.delete(feed)
+    db.query(Template).filter(Template.owner_id == target.id).delete()
+    db.query(Job).filter(Job.owner_id == target.id).delete()
+    db.delete(target)
+    db.commit()
+    return {"ok": True, "removed_projects": len(projects)}
+
+
 @router.post("/users")
 def create_user(
     payload: UserCreate,

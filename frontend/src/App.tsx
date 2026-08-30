@@ -330,6 +330,26 @@ export function App() {
   const [saved, setSaved] = useState<SavedTemplate[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // The inbox badge only helps somebody already looking at the app. The tab
+  // title carries the count so a background tab shows it, and when the count
+  // rises and notifications are allowed, the browser says so out loud.
+  const lastInboxRef = useRef<number | null>(null);
+  useEffect(() => {
+    document.title = inboxCount > 0 ? `(${inboxCount}) Kinder` : "Kinder";
+    const previous = lastInboxRef.current;
+    lastInboxRef.current = inboxCount;
+    if (previous === null || inboxCount <= previous) return;
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const fresh = inboxCount - previous;
+      try {
+        new Notification("Kinder", {
+          body: `${fresh} new clip${fresh === 1 ? "" : "s"} waiting for your approval.`,
+        });
+      } catch {
+        // Some browsers refuse constructor notifications; the title still shows it.
+      }
+    }
+  }, [inboxCount]);
   const [soundOn, setSoundOn] = useState(sfxEnabled());
   const selected =
     projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
@@ -4144,6 +4164,49 @@ function AdminStrip({
           />
           Anyone can create an account
         </label>
+        <div className="admin-users">
+          <span className="sidebar-label">Accounts</span>
+          <ul className="account-list">
+            {users.map((account) => (
+              <li key={account.id}>
+                <span>
+                  {account.username}
+                  {account.is_admin ? <small> admin</small> : null}
+                </span>
+                {!account.is_admin && (
+                  <button
+                    className="layer-action"
+                    title={`Remove ${account.username} and everything they made`}
+                    onClick={async () => {
+                      if (
+                        !window.confirm(
+                          `Remove ${account.username}? Their uploads, clips and renders are deleted with the account.`,
+                        )
+                      )
+                        return;
+                      try {
+                        await api.deleteUser(account.id);
+                        await onReload();
+                      } catch (cause) {
+                        setAdminError((cause as Error).message);
+                      }
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {typeof Notification !== "undefined" && Notification.permission === "default" && (
+          <button
+            className="ghost compact"
+            onClick={() => void Notification.requestPermission()}
+          >
+            Notify me when a feed cuts new clips
+          </button>
+        )}
         {invite?.link && (
           <div className="invite-link">
             <span className="sidebar-label">Invite link</span>
