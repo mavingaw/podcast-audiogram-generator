@@ -250,6 +250,30 @@ await step("studio-canvas", async () => {
   if ((await inspector.count()) === 0) problems.push("studio-canvas: no design panel");
 });
 
+// Making a thing bigger or smaller is the most basic edit there is; a
+// selected layer must show handles, and dragging one must change its size.
+await step("resize-layer", async () => {
+  const title = page.locator(".canvas-layer.layer-title").first();
+  if ((await title.count()) === 0) return;
+  await title.click({ force: true });
+  await page.waitForTimeout(300);
+  const handle = page.locator(".layer-handles .resize-handle.se");
+  if ((await handle.count()) === 0) {
+    problems.push("resize-layer: a selected layer shows no resize handles");
+    return;
+  }
+  const before = (await title.boundingBox())?.width ?? 0;
+  const box = await handle.boundingBox();
+  if (!box) return;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 40, box.y + 20, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const after = (await title.boundingBox())?.width ?? 0;
+  if (after <= before + 5) problems.push(`resize-layer: dragging the corner did not grow the layer (${before} -> ${after})`);
+});
+
 // Cutting words out of the clip is the one feature where the browser and the
 // renderer have to agree about time, and a wrong answer is silent: the export
 // is simply a few seconds off with captions that drift. The click is driven

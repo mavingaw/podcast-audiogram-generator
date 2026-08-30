@@ -1041,7 +1041,27 @@
   .canvas-layer.selected {
     outline: 1.5px dashed var(--accent-400);
     outline-offset: 2px;
+    /* Above its siblings, or a later layer covers the handles. */
+    z-index: 5;
   }
+  /* Resize handles: corners scale both ways, edges one way. Text and
+     artwork size themselves from the box, so this is how a title gets
+     bigger or the cover art smaller. */
+  .layer-handles { position: absolute; z-index: 7; pointer-events: none; }
+  .layer-handles .resize-handle { pointer-events: auto; }
+  .resize-handle {
+    position: absolute; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent-400); border: 2px solid var(--n-950);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35); z-index: 3; touch-action: none;
+  }
+  .resize-handle.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+  .resize-handle.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+  .resize-handle.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+  .resize-handle.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+  .resize-handle.n { left: calc(50% - 6px); top: -6px; cursor: ns-resize; }
+  .resize-handle.s { left: calc(50% - 6px); bottom: -6px; cursor: ns-resize; }
+  .resize-handle.w { left: -6px; top: calc(50% - 6px); cursor: ew-resize; }
+  .resize-handle.e { right: -6px; top: calc(50% - 6px); cursor: ew-resize; }
   .layer-artwork { color: var(--n-200); }
   .artwork-placeholder {
     display: grid;

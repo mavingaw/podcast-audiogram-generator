@@ -2502,6 +2502,51 @@ function Studio({
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
+  /**
+   * Drag a corner or edge handle. The box is stored as percentages of the
+   * canvas, so the maths is the same at every zoom; a minimum size keeps a
+   * layer from being shrunk to nothing and lost.
+   */
+  function resize(e: React.PointerEvent, layer: Layer, handle: string) {
+    if (layer.locked || !canvasRef.current) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = canvasRef.current.getBoundingClientRect();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const o = { x: layer.x, y: layer.y, w: layer.width, h: layer.height };
+    const MIN = 4;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const move = (event: PointerEvent) => {
+      const dx = ((event.clientX - sx) / rect.width) * 100;
+      const dy = ((event.clientY - sy) / rect.height) * 100;
+      let { x, y, w, h } = o;
+      if (handle.includes("e")) w = Math.max(MIN, Math.min(100 - o.x, o.w + dx));
+      if (handle.includes("s")) h = Math.max(MIN, Math.min(100 - o.y, o.h + dy));
+      if (handle.includes("w")) {
+        const nx = Math.max(0, Math.min(o.x + o.w - MIN, o.x + dx));
+        w = o.w + (o.x - nx);
+        x = nx;
+      }
+      if (handle.includes("n")) {
+        const ny = Math.max(0, Math.min(o.y + o.h - MIN, o.y + dy));
+        h = o.h + (o.y - ny);
+        y = ny;
+      }
+      setLayers((current) => {
+        const next = current.map((l) => (l.id === layer.id ? { ...l, x, y, width: w, height: h } : l));
+        layersRef.current = next;
+        return next;
+      });
+    };
+    const up = async () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      await save(layersRef.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
   return (
     <div className="studio-editor">
       <div className="studio-toolbar">
@@ -2681,6 +2726,29 @@ function Studio({
                     />
                   </div>
                 ))}
+              {(() => {
+                // Handles live in their own box above every layer: inside
+                // the layer they were clipped by its overflow and covered by
+                // whatever was drawn later, so the corners could not be
+                // grabbed.
+                const layer = layers.find((l) => l.id === selectedLayer);
+                if (!layer || layer.type === "captions" || layer.type === "background" || layer.locked || !layer.visible) return null;
+                return (
+                  <div
+                    className="layer-handles"
+                    style={{ left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%` }}
+                  >
+                    {["nw", "n", "ne", "e", "se", "s", "sw", "w"].map((handle) => (
+                      <span
+                        key={handle}
+                        className={`resize-handle ${handle}`}
+                        title="Drag to resize"
+                        onPointerDown={(e) => resize(e, layer, handle)}
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div className="canvas-status">
@@ -3058,6 +3126,30 @@ function Studio({
                   />
                 </label>
               </div>
+              {active.type !== "captions" && (
+                <div className="mini-fields">
+                  <label>
+                    Width %
+                    <input
+                      type="number"
+                      min="4"
+                      max="100"
+                      value={active.width.toFixed(1)}
+                      onChange={(e) => updateLayer(active.id, { width: Math.max(4, Math.min(100, Number(e.target.value))) })}
+                    />
+                  </label>
+                  <label>
+                    Height %
+                    <input
+                      type="number"
+                      min="4"
+                      max="100"
+                      value={active.height.toFixed(1)}
+                      onChange={(e) => updateLayer(active.id, { height: Math.max(4, Math.min(100, Number(e.target.value))) })}
+                    />
+                  </label>
+                </div>
+              )}
               <div className="mini-fields">
                 <label>
                   In
