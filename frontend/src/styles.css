@@ -2672,3 +2672,31 @@ html.large-text #root { zoom: 1.18; }
     color: var(--text); font-size: 13.5px; line-height: 1.45;
   }
 }
+
+@layer views {
+  /* --- "Your video is ready" ------------------------------------------- */
+  .ready-overlay {
+    position: fixed; inset: 0; z-index: 920;
+    background: rgb(0 0 0 / 0.6); backdrop-filter: blur(4px);
+    display: grid; place-items: center; padding: var(--s-4);
+  }
+  .ready-card {
+    width: min(520px, 100%); padding: var(--s-6);
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg); box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+    display: grid; gap: var(--s-4);
+    animation: ready-pop 260ms cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes ready-pop { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: none; } }
+  .ready-head h2 { margin: 2px 0 4px; font-size: 24px; }
+  .ready-head p { margin: 0; }
+  .ready-video { width: 100%; max-height: 46vh; background: #000; border-radius: var(--r-md); }
+  .ready-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+  .ready-actions .button-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 14px; border-radius: var(--r-md);
+    background: var(--accent-500); color: var(--n-950); font-weight: 600; font-size: 13.5px; text-decoration: none;
+  }
+  .ready-actions .button-link.quiet { background: var(--surface-sunken); color: var(--text); border: 1px solid var(--line); }
+  .ready-card .small { font-size: 12.5px; margin: 0; }
+}

@@ -724,6 +724,7 @@ export function App() {
         )}
         {view === "studio" && (
           <Studio
+            onNewClip={() => setView("quick")}
             project={selected}
             media={selectedMedia}
             allMedia={media}
@@ -2087,6 +2088,59 @@ function ClipSelector({
   );
 }
 
+/** "Your video is ready" — shown once, the moment a render finishes. */
+function ReadyCard({
+  job,
+  title,
+  onClose,
+  onAnother,
+}: {
+  job: Job;
+  title: string;
+  onClose: () => void;
+  onAnother: () => void;
+}) {
+  const downloads = job.result?.downloads ?? {};
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  return (
+    <div className="ready-overlay" role="dialog" aria-modal="true" aria-label="Your video is ready" onClick={onClose}>
+      <div className="ready-card" onClick={(e) => e.stopPropagation()}>
+        <div className="ready-head">
+          <span className="kicker">Done</span>
+          <h2>Your video is ready</h2>
+          <p className="muted">{title}</p>
+        </div>
+        {downloads.mp4 && (
+          <video className="ready-video" src={downloads.mp4} controls playsInline preload="metadata" />
+        )}
+        <div className="ready-actions">
+          {downloads.mp4 && (
+            <a className="button-link" href={downloads.mp4} download>
+              <Download size={15} /> Download video
+            </a>
+          )}
+          {downloads.srt && (
+            <a className="button-link quiet" href={downloads.srt} download>
+              Captions file
+            </a>
+          )}
+          <button className="ghost" onClick={onAnother}>Make another clip</button>
+          <button className="ghost" onClick={onClose}>Keep editing</button>
+        </div>
+        <p className="muted small">
+          It is also saved under <strong>Exports</strong> in the menu, so you can come back for it any time.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ExportNote({
   note,
   onForce,
@@ -2104,6 +2158,7 @@ function ExportNote({
 }
 
 function Studio({
+  onNewClip,
   project,
   media,
   allMedia,
@@ -2118,6 +2173,7 @@ function Studio({
   onSaveTemplate,
   onApplyTemplate,
 }: {
+  onNewClip?: () => void;
   project: Project | null;
   media: MediaAsset | null;
   allMedia: MediaAsset[];
@@ -2348,6 +2404,26 @@ function Studio({
       job.subject_id === project?.id &&
       ["queued", "running"].includes(job.status),
   );
+  // The moment the render you are waiting for finishes, say so — with the
+  // video right there — rather than leaving a spinner to quietly vanish.
+  const watchedRender = useRef<string | null>(null);
+  const [readyRender, setReadyRender] = useState<Job | null>(null);
+  useEffect(() => {
+    if (activeRender) {
+      watchedRender.current = activeRender.id;
+      return;
+    }
+    const id = watchedRender.current;
+    if (!id) return;
+    const finished = jobs.find((job) => job.id === id);
+    if (finished?.status === "complete") {
+      watchedRender.current = null;
+      setReadyRender(finished);
+      playSfx("confirm");
+    } else if (finished?.status === "failed" || finished?.status === "canceled") {
+      watchedRender.current = null;
+    }
+  }, [jobs, activeRender]);
   async function save(next: Layer[]) {
     layersRef.current = next;
     setLayers(next);
@@ -2624,15 +2700,28 @@ function Studio({
         )}
         <ExportNote note={exportNote} onForce={() => void handleExport(true)} />
         <button
-          className="ghost"
+          className="primary"
+          disabled={Boolean(activeRender)}
+          title={activeRender ? "Your video is being made" : "Make the video file"}
           onClick={() => {
             playSfx("confirm");
             void handleExport();
           }}
         >
-          <Download size={16} /> Export
+          <Download size={16} /> {activeRender ? "Making your video…" : "Export"}
         </button>
       </div>
+      {readyRender && (
+        <ReadyCard
+          job={readyRender}
+          title={project?.title ?? "Your clip"}
+          onClose={() => setReadyRender(null)}
+          onAnother={() => {
+            setReadyRender(null);
+            onNewClip?.();
+          }}
+        />
+      )}
       <div className="studio-grid">
         <aside className="studio-tools">
           <span className="sidebar-label">Add to canvas</span>

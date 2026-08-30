@@ -100,6 +100,10 @@ try {
   }
   if (job?.status !== "complete") problems.push(`render ${job?.status ?? "never appeared"}: ${job?.error ?? ""}`);
   else {
+    // The person must be told, on the screen they are looking at.
+    await page.waitForTimeout(3500);
+    if ((await page.locator(".ready-card").count()) === 0) problems.push("no 'Your video is ready' card after the render");
+    else log("ready card shown");
     const size = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}/outputs/audiogram.mp4`, { credentials: "include" })).arrayBuffer()).byteLength, projectId);
     log(`mp4 ${size} bytes`);
     if (size < 100_000) problems.push(`mp4 suspiciously small: ${size} bytes`);
