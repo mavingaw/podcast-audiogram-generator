@@ -908,3 +908,31 @@ def test_a_fading_title_is_dimmer_early_than_late(tmp_path):
 
     early, late = luma_at(0.15), luma_at(1.8)
     assert late > early + 5, f"title did not fade in: {early:.1f} -> {late:.1f}"
+
+
+def test_two_image_layers_both_render(tmp_path):
+    """The parity row said arbitrary logo layers beyond the artwork slot were
+    unsupported; the renderer composites every visible image layer in order."""
+    import subprocess
+
+    from app.services.jobs import build_render_command
+    from app.services.plates import bake as bake_plates
+
+    logo = tmp_path / "logo.png"
+    badge = tmp_path / "badge.png"
+    for path, colour in ((logo, "red"), (badge, "blue")):
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+                        "-i", f"color=c={colour}:s=200x200:d=1", "-frames:v", "1", str(path)],
+                       check=True, capture_output=True)
+    scene = {"layers": [
+        {"id": "art", "type": "artwork", "x": 20, "y": 10, "width": 60, "height": 30, "mediaId": "m1"},
+        {"id": "sponsor", "type": "image", "x": 70, "y": 80, "width": 20, "height": 10, "mediaId": "m2"},
+    ]}
+    parsed = parse_scene(scene, 10.0)
+    plates = bake_plates(parsed, {"m1": logo, "m2": badge}, 1080, 1920, tmp_path)
+    cmd = build_render_command(Path("a.wav"), tmp_path / "o.mp4", "9:16", 0.0, 10.0,
+                               scene=scene, image_paths={"m1": logo, "m2": badge}, plates=plates)
+    graph = cmd[cmd.index("-filter_complex") + 1]
+    assert graph.count("overlay=x=") >= 2, "only one image layer reached the graph"
+    inputs = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-i"]
+    assert sum(1 for i in inputs if i.endswith(".png")) == 2

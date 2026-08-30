@@ -2663,6 +2663,46 @@ function Studio({
                   onChange={(e) => updateLayer(active.id, { color: e.target.value })}
                 />
               </label>
+              {active.type === "artwork" && (
+                <div className="layer-image">
+                  <label>
+                    Image
+                    <select
+                      value={active.mediaId ?? ""}
+                      onChange={(e) => updateLayer(active.id, { mediaId: e.target.value || undefined })}
+                    >
+                      <option value="">None</option>
+                      {allMedia
+                        .filter((item) => item.content_type.startsWith("image/"))
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>{item.original_name}</option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="ghost compact upload-inline">
+                    <Upload size={13} /> Upload image
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      hidden
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        e.target.value = "";
+                        try {
+                          // A logo or a sponsor badge for this layer alone;
+                          // the background and the other layers keep theirs.
+                          const result = await api.uploadMedia(file);
+                          onMediaAdded(result.media);
+                          updateLayer(active.id, { mediaId: result.media.id });
+                        } catch (error) {
+                          setExportNote(error instanceof Error ? error.message : "Upload failed");
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
               {["title", "artwork"].includes(active.type) && (
                 <div className="field-row">
                   <label>

@@ -2449,3 +2449,8 @@
     padding: 4px var(--s-2); border: 1px solid var(--line); border-radius: var(--r-sm, 6px); }
   .account-list small { color: var(--text-muted); margin-left: 6px; }
 }
+
+@layer views {
+  .layer-image { display: grid; gap: var(--s-2); }
+  .upload-inline { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; width: max-content; }
+}
