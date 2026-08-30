@@ -1404,6 +1404,7 @@ function QuickCreate({
             </div>
           )}
           <ShowArtwork media={media} onUpload={onUpload} onRefresh={onRefresh} />
+          <BrandingClips media={media} onUpload={onUpload} onRefresh={onRefresh} />
           {source && activeSourceJobs.length > 0 && (
             // While something is running on the chosen file the card sits
             // right under the drop zone, where the eye already is, rather
@@ -4870,6 +4871,113 @@ function ShowArtwork({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The show's intro and outro: short videos joined onto the front and back
+ * of every export. Chosen once, per person, like the cover picture.
+ */
+function BrandingClips({
+  media,
+  onUpload,
+  onRefresh,
+}: {
+  media: MediaAsset[];
+  onUpload: (f: File, onProgress?: (fraction: number) => void) => Promise<MediaAsset>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [ids, setIds] = useState<{ intro: string | null; outro: string | null } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    api.branding().then(setIds).catch(() => setIds(null));
+  }, []);
+  if (!ids) return null;
+  const videos = media.filter((m) => m.content_type.startsWith("video/"));
+  const nameOf = (id: string | null) => media.find((m) => m.id === id)?.original_name ?? null;
+
+  async function choose(role: "intro" | "outro", mediaId: string | null) {
+    setBusy(role);
+    setNote(null);
+    try {
+      setIds(await api.setBranding(role, mediaId));
+      playSfx("confirm");
+    } catch (error) {
+      setNote(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function pick(role: "intro" | "outro", file: File) {
+    setBusy(role);
+    setNote(null);
+    try {
+      const asset = await onUpload(file);
+      await onRefresh();
+      setIds(await api.setBranding(role, asset.id));
+      playSfx("confirm");
+    } catch (error) {
+      setNote(errorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="branding-clips">
+      <div className="show-artwork-text">
+        <strong>Intro &amp; outro</strong>
+        <span className="muted">
+          Short videos (up to 15 s) joined onto the start and end of every clip you export — a
+          logo sting, a “follow the show” card.
+        </span>
+        {note && <span className="muted error">{note}</span>}
+      </div>
+      {(["intro", "outro"] as const).map((role) => (
+        <div key={role} className="branding-slot">
+          <span className="branding-role">{role === "intro" ? "Intro" : "Outro"}</span>
+          {ids[role] ? (
+            <>
+              <span className="muted branding-name">{nameOf(ids[role]) ?? "chosen"}</span>
+              <button className="ghost compact" disabled={busy === role} onClick={() => void choose(role, null)}>
+                Remove
+              </button>
+            </>
+          ) : (
+            <>
+              <label className={`ghost compact${busy === role ? " disabled" : ""}`}>
+                Upload video
+                <input
+                  type="file"
+                  accept="video/mp4,video/quicktime"
+                  hidden
+                  disabled={busy === role}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void pick(role, f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {videos.length > 0 && (
+                <select
+                  disabled={busy === role}
+                  defaultValue=""
+                  onChange={(e) => e.target.value && void choose(role, e.target.value)}
+                >
+                  <option value="">Use one I uploaded…</option>
+                  {videos.map((m) => (
+                    <option key={m.id} value={m.id}>{m.original_name}</option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

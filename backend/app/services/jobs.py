@@ -1028,6 +1028,16 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
             transcript=transcript, clip_start=clip_start, duration=duration,
         ),
     )
+    # The person's intro and outro, when they have set them. After the
+    # render so a failure here can never cost the clip itself.
+    from app.services import branding
+
+    _step(db, job, 92, "Adding your intro and outro")
+    width, height = _dimensions(project.aspect_ratio)
+    branded = branding.stitch(db, project.owner_id, mp4_path, width, height, work_dir)
+    if branded:
+        log.info("intro/outro joined for %s", project.id)
+
     _publish_render(work_dir, output_dir)
     _write_poster(output_dir)
 

@@ -592,6 +592,12 @@ export const api = {
     request<{ token: string; url: string }>(`/api/projects/${projectId}/share`, { method: "POST" }),
   unshare: (projectId: string) =>
     request<{ revoked: number }>(`/api/projects/${projectId}/share`, { method: "DELETE" }),
+  branding: () => request<{ intro: string | null; outro: string | null }>("/api/settings/branding"),
+  setBranding: (role: "intro" | "outro", mediaId: string | null) =>
+    request<{ intro: string | null; outro: string | null }>("/api/settings/branding", {
+      method: "PUT",
+      body: JSON.stringify({ role, media_id: mediaId }),
+    }),
   showArtwork: () => request<{ media_id: string | null }>("/api/settings/artwork"),
   setShowArtwork: (mediaId: string | null) =>
     request<{ media_id: string | null; applied_to: number }>("/api/settings/artwork", {

@@ -29,6 +29,7 @@ from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
 from app.services import cancellation
 from app.services import facts as fact_service
+from app.services import branding as branding_service
 from app.services import social as social_service
 from app.services import youtube as youtube_service
 from app.services.encoders import describe as describe_encoder
@@ -630,6 +631,34 @@ def show_artwork_id(db: Session, user: User) -> str | None:
     if not image or image.owner_id != user.id or not is_image(image.original_name):
         return None
     return image.id
+
+
+@router.get("/settings/branding")
+def get_branding(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    return branding_service.get_ids(db, user.id)
+
+
+class BrandingChoice(BaseModel):
+    role: str
+    media_id: str | None = None
+
+
+@router.put("/settings/branding")
+def set_branding(
+    payload: BrandingChoice,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Choose (or clear) the intro or outro video. Applies to every export
+    this person makes from now on."""
+    try:
+        branding_service.set_id(db, user.id, payload.role, payload.media_id)
+    except branding_service.BrandingError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return branding_service.get_ids(db, user.id)
 
 
 @router.get("/settings/artwork")
