@@ -216,6 +216,9 @@ def serialize_project(project: Project) -> dict:
         "scene": json.loads(project.scene_json or "{}"),
         "source": project.source,
         "review_state": project.review_state,
+        # Whether a finished video (and so a poster frame) exists on disk.
+        # A stat per row; the list is tens of projects, not thousands.
+        "rendered": (settings.outputs_dir / project.id / "audiogram.mp4").exists(),
         "created_at": project.created_at.isoformat(),
         "updated_at": project.updated_at.isoformat(),
     }

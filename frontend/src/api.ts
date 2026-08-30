@@ -218,6 +218,7 @@ export type Project = {
   scene: Record<string, unknown>;
   source?: string;
   review_state?: string;
+  rendered: boolean;
   created_at: string;
   updated_at: string;
 };

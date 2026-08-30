@@ -1089,7 +1089,7 @@ function Home({
           <div className="project-cards">
             {projects.slice(0, 3).map((p) => (
               <button key={p.id} onClick={() => onOpen(p)}>
-                <Poster projectId={p.id} ratio={p.aspect_ratio} icon={26} />
+                <Poster projectId={p.id} ratio={p.aspect_ratio} icon={26} rendered={p.rendered} />
                 <strong>{p.title}</strong>
                 <small>{p.aspect_ratio} · Updated recently</small>
               </button>
@@ -2402,24 +2402,19 @@ function Poster({
   projectId,
   ratio,
   icon,
+  rendered,
   compact = false,
 }: {
   projectId: string;
   ratio: string;
   icon: number;
+  rendered: boolean;
   compact?: boolean;
 }) {
-  // Probed with fetch, not by letting an <img> 404: a failed image load is
-  // a console error on every never-rendered project, which drowns the
-  // console the smoke test watches.
-  const [ok, setOk] = useState(false);
-  useEffect(() => {
-    let stale = false;
-    fetch(api.posterUrl(projectId), { method: "HEAD", credentials: "include" })
-      .then((r) => { if (!stale && r.ok) setOk(true); })
-      .catch(() => undefined);
-    return () => { stale = true; };
-  }, [projectId]);
+  // The server says whether a render exists (`rendered`); nothing here ever
+  // requests an image that is not there, because Chrome logs every 404 to
+  // the console — even from fetch — and the smoke test watches the console.
+  const [ok, setOk] = useState(rendered);
   if (compact) {
     return ok ? (
       <img className="export-poster" src={api.posterUrl(projectId)} alt="" onError={() => setOk(false)} />
@@ -4428,7 +4423,7 @@ function ProjectBrowser({
             onContextMenu={(e) => openMenu(e, menuFor(p), p.title)}
           >
             <button onClick={() => onOpen(p)}>
-              <Poster projectId={p.id} ratio={p.aspect_ratio} icon={27} />
+              <Poster projectId={p.id} ratio={p.aspect_ratio} icon={27} rendered={p.rendered} />
               <strong>{p.title}</strong>
               <small>
                 {p.aspect_ratio} · {clockText(p.clip_end - p.clip_start)} · <em>Open in Studio</em>
@@ -5563,7 +5558,7 @@ function Exports({
             return (
             <div key={j.id} onContextMenu={(e) => openMenu(e, exportMenu, project?.title)}>
               {project ? (
-                <Poster projectId={project.id} ratio={project.aspect_ratio} icon={18} compact />
+                <Poster projectId={project.id} ratio={project.aspect_ratio} icon={18} rendered={project.rendered} compact />
               ) : (
                 <div className="export-icon">
                   <Film size={18} />
