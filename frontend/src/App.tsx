@@ -2015,8 +2015,7 @@ function ClipSelector({
           yellow handles in.
         </p>
       )}
-      <div className="clip-fields" hidden>
-      </div>
+
       {snapUndo && (
         <div className="snap-note">
           <span>Trimmed to whole words.</span>

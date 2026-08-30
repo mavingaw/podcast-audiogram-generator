@@ -2671,5 +2671,4 @@ html.large-text #root { zoom: 1.18; }
     background: rgb(255 180 84 / 0.12); border: 1px solid rgb(255 180 84 / 0.4);
     color: var(--text); font-size: 13.5px; line-height: 1.45;
   }
-  .clip-fields[hidden] { display: none; }
 }
