@@ -916,6 +916,11 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         duration = remaining
         clip_end = remaining
 
+    # Uploaded fonts must be resolvable BEFORE the scene is parsed: the
+    # parser only keeps font ids it recognises.
+    from app.services import fonts as font_service
+
+    font_service.register_scene_fonts(db, project.owner_id, scene)
     parsed_scene = parse_scene(scene, duration, project.aspect_ratio)
     bed, music_file, bed_credits = _resolve_music_bed(db, scene)
     # Dropping the bed keeps the clip renderable, but silently producing a
@@ -926,10 +931,6 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     if sfx_missing:
         warnings.append(f"{sfx_missing} sound effect(s) skipped: missing from the library")
     bed_credits = bed_credits + [c for c in sfx_credits if c not in bed_credits]
-    # Uploaded fonts the scene names become resolvable for this render.
-    from app.services import fonts as font_service
-
-    font_service.register_scene_fonts(db, project.owner_id, scene)
     image_paths = _resolve_scene_images(db, parsed_scene, project.owner_id)
     # Still layers are baked once here rather than filtered on every frame.
     plates = bake_plates(

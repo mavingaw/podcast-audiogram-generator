@@ -180,6 +180,11 @@ FONT_LABELS = {
 }
 DEFAULT_FONT = "inter"
 
+def _known_font(font_id) -> bool:
+    """Bundled, or an uploaded font registered for this render."""
+    return font_id in FONTS or font_id in CUSTOM_FONTS
+
+
 # Uploaded fonts, registered per render by services.fonts: id -> (family,
 # absolute file path). Ids are unique per upload, so parallel renders can
 # share this safely.
@@ -671,9 +676,9 @@ def parse(
         # Bounded to a second either way: beyond that the captions belong to a
         # different sentence, which is not a timing problem any more.
         caption_offset=_clamp(_number(scene.get("captionOffset"), 0.0), -1.0, 1.0),
-        font=str(scene.get("font")) if scene.get("font") in FONTS else DEFAULT_FONT,
+        font=str(scene.get("font")) if _known_font(scene.get("font")) else DEFAULT_FONT,
         caption_font=(
-            str(scene.get("captionFont")) if scene.get("captionFont") in FONTS
+            str(scene.get("captionFont")) if _known_font(scene.get("captionFont"))
             else DEFAULT_FONT
         ),
         # Bounded rather than trusted: a gain of +40dB or a fade longer than the
