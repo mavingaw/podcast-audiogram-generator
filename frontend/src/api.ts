@@ -554,6 +554,17 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  writeNotes: (mediaId: string) =>
+    request<{ status: string }>(`/api/media/${mediaId}/notes`, { method: "POST" }),
+  notesStatus: (mediaId: string) =>
+    request<{
+      status: string;
+      error?: string;
+      result?: {
+        titles: string[]; description: string; highlights: string[];
+        keywords: string[]; hashtags: string[]; generated_at?: string;
+      };
+    }>(`/api/media/${mediaId}/notes`),
   analytics: () =>
     request<{
       clips: { project_id: string; title: string; views: number; plays: number; last: string | null; rendered: boolean; link_live: boolean }[];

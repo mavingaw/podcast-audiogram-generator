@@ -30,6 +30,7 @@ from app.services.auth import create_session, delete_session, hash_password, ver
 from app.services import cancellation
 from app.services import facts as fact_service
 from app.services import branding as branding_service
+from app.services import notes as notes_service
 from app.services import fonts as font_service
 from app.services import social as social_service
 from app.services import youtube as youtube_service
@@ -993,6 +994,32 @@ def transcribe_media_again(
         db.commit()
         start_worker_once()
     return {"job": serialize_job(pending)}
+
+
+@router.post("/media/{media_id}/notes")
+def write_show_notes(
+    media_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Ask the local model to write show notes from this episode's transcript."""
+    media = _owned_media(db, media_id, user)
+    if not media.transcript_json:
+        raise HTTPException(status_code=409, detail="Transcribe the episode first")
+    try:
+        return notes_service.start(db, media.id, user.id)
+    except notes_service.NotesError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get("/media/{media_id}/notes")
+def show_notes_status(
+    media_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    media = _owned_media(db, media_id, user)
+    return notes_service.status(db, media.id)
 
 
 @router.get("/media/{media_id}/file")

@@ -48,6 +48,7 @@ import {
   ExternalLink,
   Droplets,
   ChartColumn,
+  Copy,
 } from "lucide-react";
 import {
   api,
@@ -1541,6 +1542,7 @@ function QuickCreate({
           {source?.has_transcript && (
             <AutoClips mediaId={source.id} ratio={ratio} onRefresh={onRefresh} onGoToExports={onGoToExports} />
           )}
+          {source?.has_transcript && <ShowNotes mediaId={source.id} />}
           <FlowNext disabled={!source} onClick={() => setStep(2)} />
         </div>
       )}
@@ -5565,6 +5567,119 @@ function BrandingClips({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Show notes, titles and keywords, written by the model on this box from
+ * the episode's own transcript. Everything is a click away from the
+ * clipboard, because the whole point is pasting it somewhere else.
+ */
+function ShowNotes({ mediaId }: { mediaId: string }) {
+  const [state, setState] = useState<Awaited<ReturnType<typeof api.notesStatus>> | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    let stale = false;
+    api.notesStatus(mediaId).then((s) => { if (!stale) setState(s); }).catch(() => undefined);
+    return () => { stale = true; };
+  }, [mediaId]);
+  useEffect(() => {
+    if (state?.status !== "working") return;
+    const t = window.setInterval(() => {
+      api.notesStatus(mediaId).then(setState).catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(t);
+  }, [state?.status, mediaId]);
+  if (state === null) return null;
+
+  async function copy(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      window.setTimeout(() => setCopied(null), 2500);
+    } catch {
+      // The text is on screen; selecting it by hand still works.
+    }
+  }
+
+  async function run() {
+    setStartedAt(Date.now());
+    try {
+      await api.writeNotes(mediaId);
+      setState(await api.notesStatus(mediaId));
+    } catch (e) {
+      setState({ status: "failed", error: errorMessage(e) });
+    }
+  }
+
+  const result = state.status === "done" ? state.result : undefined;
+  return (
+    <section className="auto-clips show-notes">
+      <div>
+        <strong>Show notes &amp; keywords</strong>
+        <p className="muted">
+          Kinder reads the whole episode and writes title ideas, a description for your feed,
+          the highlights, and keywords and hashtags for the socials.
+        </p>
+      </div>
+      {state.status === "working" ? (
+        <WorkingCard
+          title="Writing your show notes"
+          stage="Reading the whole episode and taking notes…"
+          fraction={null}
+          startedAt={startedAt || Date.now()}
+          compact
+        />
+      ) : result ? (
+        <div className="notes-result">
+          <div className="notes-block">
+            <span className="notes-label">Title ideas</span>
+            {result.titles.map((t) => (
+              <button key={t} className="notes-line" title="Copy" onClick={() => void copy(t, t)}>
+                {t} {copied === t ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+            ))}
+          </div>
+          <div className="notes-block">
+            <span className="notes-label">Description</span>
+            <button className="notes-line prose" title="Copy" onClick={() => void copy("desc", result.description)}>
+              {result.description} {copied === "desc" ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </div>
+          <div className="notes-block">
+            <span className="notes-label">Highlights</span>
+            <button
+              className="notes-line prose"
+              title="Copy all"
+              onClick={() => void copy("high", result.highlights.map((h) => `• ${h}`).join("\n"))}
+            >
+              <span>{result.highlights.map((h) => `• ${h}`).join(" ")}</span>{" "}
+              {copied === "high" ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </div>
+          <div className="notes-block">
+            <span className="notes-label">Keywords &amp; hashtags</span>
+            <button
+              className="notes-line prose"
+              title="Copy all"
+              onClick={() => void copy("tags", [...result.keywords, ...result.hashtags].join(" "))}
+            >
+              <span>{[...result.keywords, ...result.hashtags].join(" · ")}</span>{" "}
+              {copied === "tags" ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          </div>
+          <button className="ghost compact" onClick={() => void run()}>Write them again</button>
+        </div>
+      ) : (
+        <div className="auto-clips-actions">
+          <button className="primary" onClick={() => void run()}>
+            <Sparkles size={15} /> Write my show notes
+          </button>
+          {state.status === "failed" && <small className="error">{state.error}</small>}
+        </div>
+      )}
+    </section>
   );
 }
 

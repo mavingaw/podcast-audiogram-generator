@@ -347,6 +347,30 @@ def _parse(reply: str, lines: list[str]) -> dict | None:
     return rating
 
 
+# One generation at a time: llama.cpp contexts are not safe to share, and
+# the clip scorer and the show-notes writer can otherwise collide.
+_generate_lock = threading.Lock()
+
+
+def complete(prompt: str, max_tokens: int = 400, temperature: float = 0.4) -> str | None:
+    """One free-form completion, or None when the model is unusable."""
+    model = load()
+    if model is None:
+        return None
+    try:
+        with _generate_lock:
+            response = model.create_chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=0.9,
+            )
+        return (response["choices"][0]["message"]["content"] or "").strip()
+    except Exception:
+        log.warning("completion failed", exc_info=True)
+        return None
+
+
 def rate(text: str) -> dict | None:
     """Rate one excerpt, or None if the model is unusable."""
     model = load()
