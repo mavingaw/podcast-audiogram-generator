@@ -43,6 +43,7 @@ import {
   X,
   WandSparkles,
   ZoomIn,
+  Image as ImageIcon,
 } from "lucide-react";
 import {
   api,
@@ -1289,6 +1290,7 @@ function QuickCreate({
               )}
             </div>
           )}
+          <ShowArtwork media={media} onUpload={onUpload} onRefresh={onRefresh} />
           {source && activeSourceJobs.length > 0 && (
             // While something is running on the chosen file the card sits
             // right under the drop zone, where the eye already is, rather
@@ -4001,6 +4003,110 @@ function ProjectBrowser({
  * lanes run at once. Doing it one clip at a time is the part of the job that
  * makes people stop bothering.
  */
+/**
+ * The show's cover picture. Feed episodes bring their own; an uploaded file
+ * has nothing, so every clip from it came out on a flat colour. Choose one
+ * picture here and every upload — past and future — gets it as a background.
+ */
+function ShowArtwork({
+  media,
+  onUpload,
+  onRefresh,
+}: {
+  media: MediaAsset[];
+  onUpload: (f: File, onProgress?: (fraction: number) => void) => Promise<MediaAsset>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [artworkId, setArtworkId] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    api.showArtwork().then((r) => setArtworkId(r.media_id)).catch(() => setArtworkId(null));
+  }, []);
+  const images = media.filter((m) => m.content_type.startsWith("image/"));
+  const current = images.find((m) => m.id === artworkId) ?? null;
+
+  async function choose(id: string | null) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.setShowArtwork(id);
+      setArtworkId(r.media_id);
+      if (id) setNote(r.applied_to ? `Added to ${r.applied_to} episode${r.applied_to === 1 ? "" : "s"} you had already uploaded.` : "Every new upload will use it.");
+      playSfx("confirm");
+      await onRefresh();
+    } catch (error) {
+      setNote(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pick(file: File) {
+    setBusy(true);
+    try {
+      const asset = await onUpload(file);
+      await choose(asset.id);
+    } catch (error) {
+      setNote(errorMessage(error));
+      setBusy(false);
+    }
+  }
+
+  if (artworkId === undefined) return null;
+  return (
+    <div className="show-artwork">
+      {current ? (
+        <img src={api.mediaFileUrl(current.id)} alt="" />
+      ) : (
+        <span className="show-artwork-empty"><ImageIcon size={18} /></span>
+      )}
+      <div className="show-artwork-text">
+        <strong>{current ? "Your show's cover picture" : "Add your show's cover picture"}</strong>
+        <span className="muted">
+          {current
+            ? "Every uploaded episode uses it as the blurred background."
+            : "Uploaded episodes have no picture of their own — add one and every clip gets it as a background."}
+        </span>
+        {note && <span className="muted">{note}</span>}
+      </div>
+      <div className="show-artwork-actions">
+        <label className={`ghost compact${busy ? " disabled" : ""}`}>
+          {current ? "Change" : "Choose picture"}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void pick(f);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {!current && images.length > 0 && (
+          <select
+            disabled={busy}
+            defaultValue=""
+            onChange={(e) => e.target.value && void choose(e.target.value)}
+          >
+            <option value="">Use one I uploaded…</option>
+            {images.map((m) => (
+              <option key={m.id} value={m.id}>{m.original_name}</option>
+            ))}
+          </select>
+        )}
+        {current && (
+          <button className="ghost compact" disabled={busy} onClick={() => void choose(null)}>
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The "just do it for me" path: Kinder picks the best moments and renders
  * them, right from the source step. The same batch as the Studio panel,

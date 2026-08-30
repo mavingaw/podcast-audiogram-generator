@@ -587,6 +587,10 @@ def _register_upload(db, user, *, original_name: str, stored_name: str,
         content_type=content_type,
         size_bytes=size,
     )
+    if not is_image(original_name):
+        # The show's artwork, if one has been chosen: an uploaded episode
+        # then gets the same cover-art background a feed episode does.
+        media.artwork_media_id = show_artwork_id(db, user)
     db.add(media)
     db.commit()
     # Images are artwork, not a source track: probing, waveform extraction and
@@ -603,6 +607,62 @@ def _register_upload(db, user, *, original_name: str, stored_name: str,
     db.commit()
     start_worker_once()
     return {"media": serialize_media(media), "jobs": [serialize_job(job) for job in queued]}
+
+
+def _artwork_key(user: User) -> str:
+    return f"artwork:{user.id}"
+
+
+def show_artwork_id(db: Session, user: User) -> str | None:
+    """The image chosen as this person's show artwork, if it still exists."""
+    setting = db.get(AppSetting, _artwork_key(user))
+    if not setting or not setting.value:
+        return None
+    image = db.get(MediaAsset, setting.value)
+    if not image or image.owner_id != user.id or not is_image(image.original_name):
+        return None
+    return image.id
+
+
+@router.get("/settings/artwork")
+def get_show_artwork(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    return {"media_id": show_artwork_id(db, user)}
+
+
+class ShowArtwork(BaseModel):
+    media_id: str | None = None
+
+
+@router.put("/settings/artwork")
+def set_show_artwork(
+    payload: ShowArtwork,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Choose the show's artwork. Applied to every episode already uploaded
+    that has none of its own, and to every upload after."""
+    if payload.media_id:
+        image = db.get(MediaAsset, payload.media_id)
+        if not image or image.owner_id != user.id:
+            raise HTTPException(status_code=404, detail="Image not found")
+        if not is_image(image.original_name):
+            raise HTTPException(status_code=400, detail="That file is not an image")
+    key = _artwork_key(user)
+    setting = db.get(AppSetting, key) or AppSetting(key=key, value="")
+    setting.value = payload.media_id or ""
+    db.merge(setting)
+    backfilled = 0
+    if payload.media_id:
+        for media in db.scalars(select(MediaAsset).where(MediaAsset.owner_id == user.id)).all():
+            if is_image(media.original_name) or media.artwork_media_id:
+                continue
+            media.artwork_media_id = payload.media_id
+            backfilled += 1
+    db.commit()
+    return {"media_id": payload.media_id, "applied_to": backfilled}
 
 
 @router.post("/media/upload/begin")

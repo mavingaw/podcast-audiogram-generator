@@ -547,6 +547,12 @@ export const api = {
     }),
   me: () => request<{ user: User }>("/api/me"),
   session: () => request<{ user: User | null }>("/api/session"),
+  showArtwork: () => request<{ media_id: string | null }>("/api/settings/artwork"),
+  setShowArtwork: (mediaId: string | null) =>
+    request<{ media_id: string | null; applied_to: number }>("/api/settings/artwork", {
+      method: "PUT",
+      body: JSON.stringify({ media_id: mediaId }),
+    }),
   facts: (n = 8) => request<{ facts: string[] }>(`/api/facts?n=${n}`),
   login: (username: string, password: string) =>
     request<{ user: User }>("/api/auth/login", {
