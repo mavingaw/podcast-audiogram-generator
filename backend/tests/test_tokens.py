@@ -89,7 +89,10 @@ def test_the_duration_is_rounded_to_something_readable():
 
 def test_an_upload_has_no_feed_and_says_so_with_silence():
     values = tokens.context_for(project=Project(), media=Media())
-    assert values["episode"] == "" and values["show"] == ""
+    # No show to name — but the episode is still called something: the
+    # project's name stands in, so the title layer is never left blank.
+    assert values["show"] == ""
+    assert values["episode"] == "The bit about winter"
     assert values["title"] == "The bit about winter"
 
 
@@ -320,3 +323,25 @@ def test_a_title_with_an_apostrophe_renders(tmp_path):
         },
     )
     assert output.exists() and output.stat().st_size > 1000
+
+
+def test_an_uploaded_episode_still_has_a_title():
+    """No feed, no episode record: {{episode}} falls back to the project's
+    name, then the file's. It used to be empty, and an empty title layer is
+    skipped — so every clip cut from an upload rendered without a title."""
+    from types import SimpleNamespace
+
+    from app.services.tokens import context_for, resolve
+
+    project = SimpleNamespace(title="Season 4, Ep. 69")
+    media = SimpleNamespace(original_name="ep69.mp3")
+    ctx = context_for(project=project, media=media, episode=None, feed=None,
+                      transcript=None, clip_start=0.0, duration=30.0)
+    assert resolve("{{episode}}", ctx) == "Season 4, Ep. 69"
+    ctx = context_for(project=SimpleNamespace(title=""), media=media, episode=None, feed=None,
+                      transcript=None, clip_start=0.0, duration=30.0)
+    assert resolve("{{episode}}", ctx) == "ep69"
+    feed_ep = SimpleNamespace(title="From the feed", published=None)
+    ctx = context_for(project=project, media=media, episode=feed_ep, feed=None,
+                      transcript=None, clip_start=0.0, duration=30.0)
+    assert resolve("{{episode}}", ctx) == "From the feed"

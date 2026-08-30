@@ -85,7 +85,14 @@ def context_for(
                 continue
 
     return {
-        "episode": str(getattr(episode, "title", "") or ""),
+        # A feed gives the episode its title. An uploaded file has only its
+        # name, and the project is usually named after it; either beats an
+        # empty title layer on every clip cut from an upload.
+        "episode": (
+            str(getattr(episode, "title", "") or "")
+            or str(getattr(project, "title", "") or "")
+            or _basename(getattr(media, "original_name", "") or "")
+        ),
         "show": str(getattr(feed, "title", "") or ""),
         "date": _date(getattr(episode, "published", None)),
         "speaker": speaker,
@@ -94,6 +101,14 @@ def context_for(
         "timecode": _timecode(clip_start),
         "duration": f"{round(duration)}",
     }
+
+
+def _basename(name: str) -> str:
+    """"episode 12.mp3" -> "episode 12"."""
+    stem = name.rsplit("/", 1)[-1]
+    if "." in stem and len(stem.rsplit(".", 1)[1]) <= 4:
+        stem = stem.rsplit(".", 1)[0]
+    return stem.strip()
 
 
 def resolve(text: str, context: dict[str, str]) -> str:
