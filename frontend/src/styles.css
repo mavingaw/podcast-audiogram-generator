@@ -2845,3 +2845,9 @@ html.large-text #root { zoom: 1.18; }
   .posted-badges { flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap; }
   .posted-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: var(--r-full); font-size: 12px; font-weight: 600; color: #9be7a3; border: 1px solid rgb(123 216 143 / 0.4); text-decoration: none; }
 }
+
+@layer views {
+  .project-thumb.has-poster { overflow: hidden; padding: 0; }
+  .project-thumb.has-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .export-poster { width: 38px; height: 38px; flex: 0 0 38px; border-radius: var(--r-md); object-fit: cover; }
+}

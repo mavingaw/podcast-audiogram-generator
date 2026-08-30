@@ -71,3 +71,11 @@ def test_somebody_elses_project_cannot_be_shared(client):
 
 def test_a_made_up_token_is_a_404(client):
     assert client.get("/s/not-a-real-token").status_code == 404
+
+
+def test_the_poster_is_a_recognised_output(client):
+    login(client)
+    project = rendered_project(client)
+    # The fake mp4 cannot yield a frame; the route must answer 404, not 500.
+    r = client.get(f"/api/projects/{project['id']}/outputs/poster.jpg")
+    assert r.status_code == 404

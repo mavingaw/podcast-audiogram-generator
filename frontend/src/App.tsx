@@ -1089,11 +1089,7 @@ function Home({
           <div className="project-cards">
             {projects.slice(0, 3).map((p) => (
               <button key={p.id} onClick={() => onOpen(p)}>
-                <div
-                  className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}
-                >
-                  <AudioLines size={26} />
-                </div>
+                <Poster projectId={p.id} ratio={p.aspect_ratio} icon={26} />
                 <strong>{p.title}</strong>
                 <small>{p.aspect_ratio} · Updated recently</small>
               </button>
@@ -2401,6 +2397,39 @@ function YouTubeAdmin() {
   );
 }
 
+/** The rendered clip's own frame as the card image, when there is one. */
+function Poster({
+  projectId,
+  ratio,
+  icon,
+  compact = false,
+}: {
+  projectId: string;
+  ratio: string;
+  icon: number;
+  compact?: boolean;
+}) {
+  const [ok, setOk] = useState(true);
+  if (compact) {
+    return ok ? (
+      <img className="export-poster" src={api.posterUrl(projectId)} alt="" onError={() => setOk(false)} />
+    ) : (
+      <div className="export-icon">
+        <Film size={icon} />
+      </div>
+    );
+  }
+  return (
+    <div className={`project-thumb ratio-${ratio.replace(":", "-")}${ok ? " has-poster" : ""}`}>
+      {ok ? (
+        <img src={api.posterUrl(projectId)} alt="" loading="lazy" onError={() => setOk(false)} />
+      ) : (
+        <AudioLines size={icon} />
+      )}
+    </div>
+  );
+}
+
 /** Where this clip has already been posted from Kinder. */
 function PostedBadges({ project }: { project: Project }) {
   const posted = Array.isArray(project.scene?.posted) ? (project.scene.posted as { platform: string; url: string; privacy?: string }[]) : [];
@@ -2537,7 +2566,7 @@ function ReadyCard({
           <p className="muted">{title}</p>
         </div>
         {downloads.mp4 && (
-          <video className="ready-video" src={downloads.mp4} controls playsInline preload="metadata" />
+          <video className="ready-video" src={downloads.mp4} poster={job.subject_id ? api.posterUrl(job.subject_id) : undefined} controls playsInline preload="metadata" />
         )}
         {job.subject_id && <ReadyDestinations projectId={job.subject_id} />}
         {job.subject_id && <YouTubePost projectId={job.subject_id} defaultTitle={title} />}
@@ -4389,11 +4418,7 @@ function ProjectBrowser({
             onContextMenu={(e) => openMenu(e, menuFor(p), p.title)}
           >
             <button onClick={() => onOpen(p)}>
-              <div
-                className={`project-thumb ratio-${p.aspect_ratio.replace(":", "-")}`}
-              >
-                <AudioLines size={27} />
-              </div>
+              <Poster projectId={p.id} ratio={p.aspect_ratio} icon={27} />
               <strong>{p.title}</strong>
               <small>
                 {p.aspect_ratio} · {clockText(p.clip_end - p.clip_start)} · <em>Open in Studio</em>
@@ -5527,9 +5552,13 @@ function Exports({
             ];
             return (
             <div key={j.id} onContextMenu={(e) => openMenu(e, exportMenu, project?.title)}>
-              <div className="export-icon">
-                <Film size={18} />
-              </div>
+              {project ? (
+                <Poster projectId={project.id} ratio={project.aspect_ratio} icon={18} compact />
+              ) : (
+                <div className="export-icon">
+                  <Film size={18} />
+                </div>
+              )}
               <div>
                 <strong>{project?.title ?? "Deleted project"}</strong>
                 <small>

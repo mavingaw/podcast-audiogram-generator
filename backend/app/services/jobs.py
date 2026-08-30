@@ -1029,6 +1029,7 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         ),
     )
     _publish_render(work_dir, output_dir)
+    _write_poster(output_dir)
 
     downloads = {
         "mp4": f"/api/projects/{project.id}/outputs/audiogram.mp4",
@@ -1096,6 +1097,27 @@ _project_locks_guard = threading.Lock()
 def _project_lock(project_id: str) -> threading.Lock:
     with _project_locks_guard:
         return _project_locks.setdefault(project_id, threading.Lock())
+
+
+def _write_poster(output_dir: Path) -> None:
+    """A frame from the finished video, for cards and link previews.
+
+    Never a reason for a render to fail: a missing poster falls back to the
+    generic tile everywhere it is used.
+    """
+    mp4 = output_dir / "audiogram.mp4"
+    poster = output_dir / "poster.jpg"
+    if not mp4.exists():
+        return
+    try:
+        subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+             "-ss", "1", "-i", str(mp4), "-frames:v", "1",
+             "-vf", "scale=540:-2", "-q:v", "4", str(poster)],
+            capture_output=True, timeout=60, check=True,
+        )
+    except Exception:
+        log.warning("could not write a poster for %s", output_dir.name, exc_info=True)
 
 
 def _publish_render(work_dir: Path, output_dir: Path) -> None:

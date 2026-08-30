@@ -1573,16 +1573,22 @@ def download_project_output(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user)],
 ):
-    allowed = {"audiogram.mp4", "captions.srt", "captions.vtt", "render-manifest.json", "CREDITS.txt"}
+    allowed = {"audiogram.mp4", "captions.srt", "captions.vtt", "render-manifest.json", "CREDITS.txt", "poster.jpg"}
     if filename not in allowed:
         raise HTTPException(status_code=404, detail="Output not found")
     project = db.get(Project, project_id)
     if not project or project.owner_id != user.id:
         raise HTTPException(status_code=404, detail="Project not found")
     output_path = contained_path(settings.outputs_dir, settings.outputs_dir / project.id / filename)
+    if filename == "poster.jpg" and not output_path.exists():
+        # Renders made before posters existed: cut the frame now, once.
+        from app.services.jobs import _write_poster
+
+        _write_poster(settings.outputs_dir / project.id)
     if not output_path.exists():
         raise HTTPException(status_code=404, detail="Output not found")
     media_type = {
+        ".jpg": "image/jpeg",
         ".mp4": "video/mp4",
         ".srt": "application/x-subrip",
         ".vtt": "text/vtt",
@@ -1663,6 +1669,19 @@ def _share_filename(project: Project) -> str:
     return (safe or "clip") + ".mp4"
 
 
+@public_router.get("/s/{token}/poster.jpg")
+def shared_poster(token: str, db: Annotated[Session, Depends(get_db)]):
+    project = _shared_project(db, token)
+    from app.services.jobs import _write_poster
+
+    poster = settings.outputs_dir / project.id / "poster.jpg"
+    if not poster.exists():
+        _write_poster(settings.outputs_dir / project.id)
+    if not poster.exists():
+        raise HTTPException(status_code=404, detail="No preview image")
+    return FileResponse(poster, media_type="image/jpeg")
+
+
 @public_router.get("/s/{token}", response_class=HTMLResponse)
 def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
     """A plain page: the video, a download button, nothing to sign in to."""
@@ -1676,6 +1695,7 @@ def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
 <title>{title}</title>
 <meta property="og:title" content="{title}"><meta property="og:type" content="video.other">
 <meta property="og:video" content="/s/{token}/video.mp4"><meta property="og:video:type" content="video/mp4">
+<meta property="og:image" content="/s/{token}/poster.jpg">
 <style>
   body{{margin:0;background:#0B0D11;color:#F8FAFC;font:15px/1.5 -apple-system,Segoe UI,Inter,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}}
   main{{display:grid;gap:16px;width:min(480px,100%);text-align:center}}
@@ -1687,7 +1707,7 @@ def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
   small{{color:#94A3B8}}
 </style></head><body><main>
 <h1>{title}</h1>
-<video src="/s/{token}/video.mp4" controls playsinline preload="metadata"></video>
+<video src="/s/{token}/video.mp4" poster="/s/{token}/poster.jpg" controls playsinline preload="metadata"></video>
 <div class="row"><a class="button" href="/s/{token}/video.mp4" download="{html.escape(_share_filename(project))}">Download video</a>
 <button class="button quiet" id="post" hidden>Post to…</button></div>
 <small id="hint">Made with Kinder</small>

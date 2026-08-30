@@ -623,6 +623,7 @@ export const api = {
     }),
   media: () => request<{ media: MediaAsset[] }>("/api/media"),
   mediaFileUrl: (mediaId: string) => `/api/media/${mediaId}/file`,
+  posterUrl: (projectId: string) => `/api/projects/${projectId}/outputs/poster.jpg`,
   inbox: () => request<{ count: number; clips: InboxClip[] }>("/api/inbox"),
   approveClip: (projectId: string) =>
     request<{ project: Project; job: Job | null }>(
