@@ -395,6 +395,15 @@ await step("transcript-cuts", async () => {
     return;
   }
 
+  // A previous run that died mid-step can leave a cut behind, and clicking
+  // a cut word restores it instead of cutting — the whole step inverts.
+  // Start from a clean slate.
+  const leftover = page.locator('.cuts-summary button:has-text("Restore all")');
+  if (await leftover.count()) {
+    await leftover.click();
+    await page.waitForTimeout(900);
+  }
+
   const summary = page.locator(".cuts-summary span").first();
   const before = await summary.innerText();
   if (!/Nothing cut|cut/i.test(before)) {
