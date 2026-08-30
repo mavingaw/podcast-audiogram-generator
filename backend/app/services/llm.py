@@ -252,8 +252,10 @@ Rate this excerpt from 0 to 10 on each of:
 - standalone: does it make sense with no other context?
 - interest: is the idea surprising, useful, funny, or emotionally real?
 
-Also say whether this excerpt is a sponsor message, advertisement, promo code
-or product plug read by the host (ad: 1) or normal conversation (ad: 0).
+Also say whether this excerpt is advertising (ad: 1) or normal conversation
+(ad: 0). Advertising includes sponsor messages, promo codes, and any product,
+brand or company being described or praised by the host — even without a
+code or a link, and even if it sounds like a story.
 
 Also choose which numbered line below is the strongest opening line, and give
 one short reason for the rating (under 12 words).
@@ -272,7 +274,7 @@ Lines:
 # excerpt is an ad read; one alone can be conversation ("I got a discount").
 AD_PENALTY = 0.15
 # How close to a detected read a clip can be before it is treated as part of it.
-AD_BLOCK_SECONDS = 45.0
+AD_BLOCK_SECONDS = 60.0
 _AD_PHRASES = (
     "promo code", "use code", "use the code", "discount code", "coupon",
     "brought to you by", "sponsored by", "this episode is sponsored",
@@ -398,11 +400,15 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
     the model never sees the whole episode. Anything it cannot rate keeps its
     heuristic position.
     """
-    if not clips or not available():
+    if not clips:
         return clips
 
     limit = shortlist or DEFAULT_SHORTLIST
     scored = list(clips)
+    if not available():
+        # No model: the sponsor-read words still count, and the heuristic
+        # order otherwise stands.
+        limit = 0
     for clip in scored[:limit]:
         rating = rate(clip.get("text", ""))
         if not rating:

@@ -81,7 +81,9 @@ def suggestions_for(
         # A wider net when a model can read them: the heuristics decide what is
         # shaped like a clip, the model decides which are worth watching, and it
         # needs choices to choose between.
-        limit=wanted * 2 if llm.available() else wanted,
+        # Wider still now that sponsor reads are dropped: an episode with
+        # three ad breaks can lose half its shortlist to them.
+        limit=max(wanted * 3, 12) if llm.available() else wanted * 2,
     )
     ranked = llm.rerank(found)
 
@@ -91,6 +93,11 @@ def suggestions_for(
     # candidates are normal — two good clips often share a sentence.
     marked = list(picked)
     for suggestion in ranked:
+        if suggestion.get("ad"):
+            # Nobody's best moment is the sponsor's. Left out rather than
+            # ranked last: a short list of real moments beats a full list
+            # padded with promo codes.
+            continue
         if any(
             suggestion["start"] < bite["end"] and suggestion["end"] > bite["start"]
             for bite in marked

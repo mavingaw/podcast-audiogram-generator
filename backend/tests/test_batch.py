@@ -306,3 +306,21 @@ def test_each_auto_clip_says_why_it_was_picked(monkeypatch, tmp_path):
     for p in body["projects"]:
         reason = p["scene"].get("pickReason")
         assert reason is None or (isinstance(reason, str) and 0 < len(reason) <= 160)
+
+
+def test_sponsor_reads_are_left_out_of_suggestions(monkeypatch):
+    """Dropped, not ranked last: a list padded with promo codes is worse
+    than a shorter list of real moments."""
+    from types import SimpleNamespace
+
+    from app.services import batching, llm
+
+    found = [
+        {"start": 0, "end": 30, "title": "Use code TRIBE", "text": "use code TRIBE for 20% off at brami .com", "score": 0.9},
+        {"start": 600, "end": 630, "title": "real", "text": "my father was a person who worked in", "score": 0.5},
+    ]
+    monkeypatch.setattr(batching, "find_clips", lambda *a, **k: list(found))
+    monkeypatch.setattr(llm, "available", lambda: False)
+    media = SimpleNamespace(peaks_json=None, duration_seconds=1000.0)
+    picked = batching.suggestions_for(media, {"segments": [], "duration": 1000.0}, count=2)
+    assert [p["title"] for p in picked] == ["real"]
