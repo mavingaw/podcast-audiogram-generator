@@ -45,6 +45,7 @@ import {
   ZoomIn,
   Image as ImageIcon,
   Link2,
+  ExternalLink,
 } from "lucide-react";
 import {
   api,
@@ -2246,18 +2247,79 @@ function ReadyDestinations({ projectId }: { projectId: string }) {
         {ok.length === rows.length ? "Ready to post anywhere:" : `Ready for ${ok.length} of ${rows.length} places:`}
       </span>
       <div className="ready-destinations-list">
-        {rows.map((row) => (
-          <span
-            key={row.platform}
-            className={`destination-chip ${row.ok ? "ok" : "blocked"}`}
-            title={row.ok ? row.warnings[0] ?? "Fits this platform's limits" : row.blocking[0]}
-          >
-            {row.ok ? <Check size={12} /> : <X size={12} />} {row.label}
-            {!row.ok && row.blocking[0] && <small> — {row.blocking[0]}</small>}
-          </span>
-        ))}
+        {rows.map((row) =>
+          row.ok && row.web_upload && row.upload_url ? (
+            <a
+              key={row.platform}
+              className="destination-chip ok link"
+              href={row.upload_url}
+              target="_blank"
+              rel="noreferrer"
+              title={`Opens ${row.label}'s upload page in a new tab — download the video first, then choose it there`}
+            >
+              <Check size={12} /> {row.label} <ExternalLink size={11} />
+            </a>
+          ) : (
+            <span
+              key={row.platform}
+              className={`destination-chip ${row.ok ? "ok" : "blocked"}`}
+              title={
+                row.ok
+                  ? `${row.label} only takes uploads from its phone app — open this clip on your phone and press Post to…`
+                  : row.blocking[0]
+              }
+            >
+              {row.ok ? <Check size={12} /> : <X size={12} />} {row.label}
+              {row.ok && !row.web_upload && <small> — phone app</small>}
+              {!row.ok && row.blocking[0] && <small> — {row.blocking[0]}</small>}
+            </span>
+          ),
+        )}
       </div>
+      <PostButton projectId={projectId} />
     </div>
+  );
+}
+
+/**
+ * "Post to…" — the phone's share sheet with the video in it, which lands the
+ * clip straight in Instagram, TikTok, YouTube or wherever. Desktop browsers
+ * cannot share files, so there the button explains and points at Download.
+ */
+function PostButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "done" | "nope">("idle");
+  const canShareFiles = typeof navigator !== "undefined" && "share" in navigator && "canShare" in navigator;
+  if (!canShareFiles) {
+    return (
+      <p className="muted small post-hint">
+        On a phone, this card has a <strong>Post to…</strong> button that sends the video straight into
+        Instagram, TikTok or YouTube. Here, download the video and choose it on the platform's upload page.
+      </p>
+    );
+  }
+  return (
+    <button
+      className="primary post-button"
+      disabled={state === "busy"}
+      onClick={async () => {
+        setState("busy");
+        try {
+          const blob = await (await fetch(`/api/projects/${projectId}/outputs/audiogram.mp4`, { credentials: "include" })).blob();
+          const file = new File([blob], "kinder-clip.mp4", { type: "video/mp4" });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: "Clip from Kinder" });
+            setState("done");
+          } else {
+            setState("nope");
+          }
+        } catch {
+          setState("idle");
+        }
+      }}
+    >
+      <Share2 size={15} />{" "}
+      {state === "busy" ? "Getting the video…" : state === "done" ? "Sent" : state === "nope" ? "This browser cannot share videos" : "Post to…"}
+    </button>
   );
 }
 

@@ -1680,13 +1680,36 @@ def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
   main{{display:grid;gap:16px;width:min(480px,100%);text-align:center}}
   video{{width:100%;aspect-ratio:{ratio};background:#000;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}}
   h1{{font-size:18px;margin:0;font-weight:700}}
-  a.button{{display:inline-block;padding:12px 20px;border-radius:10px;background:#89CFF0;color:#0B0D11;font-weight:700;text-decoration:none}}
+  .button{{display:inline-block;padding:12px 20px;border-radius:10px;background:#89CFF0;color:#0B0D11;font-weight:700;text-decoration:none;border:0;font:inherit;font-weight:700;cursor:pointer}}
+  .button.quiet{{background:#1f2937;color:#F8FAFC}}
+  .row{{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}}
   small{{color:#94A3B8}}
 </style></head><body><main>
 <h1>{title}</h1>
 <video src="/s/{token}/video.mp4" controls playsinline preload="metadata"></video>
-<div><a class="button" href="/s/{token}/video.mp4" download="{html.escape(_share_filename(project))}">Download video</a></div>
-<small>Made with Kinder</small>
+<div class="row"><a class="button" href="/s/{token}/video.mp4" download="{html.escape(_share_filename(project))}">Download video</a>
+<button class="button quiet" id="post" hidden>Post to…</button></div>
+<small id="hint">Made with Kinder</small>
+<script>
+(function() {{
+  // On a phone the share sheet lists Instagram, TikTok, YouTube and the
+  // rest; the video goes straight into the app. Desktop browsers cannot
+  // share files, so the button stays hidden and Download is the way.
+  var btn = document.getElementById('post');
+  if (!navigator.share || !navigator.canShare) return;
+  btn.hidden = false;
+  btn.onclick = async function() {{
+    btn.disabled = true; btn.textContent = 'Getting the video…';
+    try {{
+      var blob = await (await fetch('/s/{token}/video.mp4')).blob();
+      var file = new File([blob], {html.escape(json.dumps(_share_filename(project)))}, {{type: 'video/mp4'}});
+      if (navigator.canShare({{files: [file]}})) await navigator.share({{files: [file], title: {html.escape(json.dumps(project.title))}}});
+      else await navigator.share({{title: {html.escape(json.dumps(project.title))}, url: location.href}});
+    }} catch (e) {{ /* cancelled */ }}
+    btn.disabled = false; btn.textContent = 'Post to…';
+  }};
+}})();
+</script>
 </main></body></html>"""
 
 

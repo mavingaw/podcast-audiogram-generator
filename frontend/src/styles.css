@@ -2815,3 +2815,10 @@ html.large-text #root { zoom: 1.18; }
   .destination-chip.blocked { color: #ff9b9b; border-color: rgb(255 120 120 / 0.4); }
   .destination-chip small { font-weight: 500; color: var(--text-muted); }
 }
+
+@layer views {
+  .destination-chip.link { text-decoration: none; cursor: pointer; }
+  .destination-chip.link:hover { background: var(--hover); }
+  .post-hint { margin: 2px 0 0; font-size: 12.5px; }
+  .post-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+}

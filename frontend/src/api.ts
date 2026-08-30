@@ -259,6 +259,8 @@ export type Destination = {
   ok: boolean;
   blocking: string[];
   warnings: string[];
+  upload_url: string;
+  web_upload: boolean;
 };
 
 export type PlatformSpec = {

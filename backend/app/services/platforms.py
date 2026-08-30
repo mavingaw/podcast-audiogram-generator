@@ -48,12 +48,20 @@ class Platform:
     checked: str
     notes: str = ""
     aliases: tuple[str, ...] = field(default_factory=tuple)
+    # Where a person goes to post by hand. Instagram, Threads and Snapchat
+    # only take uploads from their phone apps, so those point at the site
+    # and the phone's share sheet does the rest.
+    upload_url: str = ""
+    # Whether the platform accepts video uploads from a web browser at all.
+    web_upload: bool = True
 
 
 # Ordered roughly by how much podcast clips are posted to them.
 PLATFORMS: tuple[Platform, ...] = (
     Platform(
         key="tiktok",
+        upload_url="https://www.tiktok.com/upload",
+        web_upload=True,
         label="TikTok",
         ratios=("9:16", "1:1", "16:9"),
         preferred_ratio="9:16",
@@ -73,6 +81,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="reels",
+        upload_url="https://www.instagram.com/",
+        web_upload=False,
         label="Instagram Reels",
         ratios=("9:16",),
         preferred_ratio="9:16",
@@ -90,6 +100,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="instagram_feed",
+        upload_url="https://www.instagram.com/",
+        web_upload=False,
         label="Instagram Feed",
         ratios=("4:5", "1:1", "16:9"),
         preferred_ratio="4:5",
@@ -107,6 +119,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="stories",
+        upload_url="https://www.instagram.com/",
+        web_upload=False,
         label="Instagram / Facebook Stories",
         ratios=("9:16",),
         preferred_ratio="9:16",
@@ -125,6 +139,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="shorts",
+        upload_url="https://studio.youtube.com/channel/UC/videos/upload",
+        web_upload=True,
         label="YouTube Shorts",
         ratios=("9:16",),
         preferred_ratio="9:16",
@@ -142,6 +158,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="youtube",
+        upload_url="https://studio.youtube.com/channel/UC/videos/upload",
+        web_upload=True,
         label="YouTube",
         ratios=("16:9", "9:16", "1:1", "4:5"),
         preferred_ratio="16:9",
@@ -159,6 +177,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="facebook_reels",
+        upload_url="https://www.facebook.com/reels/create",
+        web_upload=True,
         label="Facebook Reels",
         ratios=("9:16",),
         preferred_ratio="9:16",
@@ -175,6 +195,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="facebook_feed",
+        upload_url="https://www.facebook.com/",
+        web_upload=True,
         label="Facebook Feed",
         ratios=("16:9", "1:1", "4:5", "9:16"),
         preferred_ratio="1:1",
@@ -191,6 +213,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="linkedin",
+        upload_url="https://www.linkedin.com/feed/?shareActive=true",
+        web_upload=True,
         label="LinkedIn",
         ratios=("16:9", "1:1", "4:5", "9:16"),
         preferred_ratio="1:1",
@@ -209,6 +233,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="x",
+        upload_url="https://x.com/compose/post",
+        web_upload=True,
         label="X / Twitter",
         ratios=("16:9", "1:1", "9:16"),
         preferred_ratio="16:9",
@@ -229,6 +255,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="threads",
+        upload_url="https://www.threads.net/",
+        web_upload=False,
         label="Threads",
         ratios=("9:16", "1:1", "4:5", "16:9"),
         preferred_ratio="9:16",
@@ -245,6 +273,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="pinterest",
+        upload_url="https://www.pinterest.com/pin-creation-tool/",
+        web_upload=True,
         label="Pinterest",
         ratios=("9:16", "1:1", "4:5"),
         preferred_ratio="9:16",
@@ -261,6 +291,8 @@ PLATFORMS: tuple[Platform, ...] = (
     ),
     Platform(
         key="snapchat",
+        upload_url="https://my.snapchat.com/",
+        web_upload=False,
         label="Snapchat Spotlight",
         ratios=("9:16",),
         preferred_ratio="9:16",
@@ -306,12 +338,15 @@ class Verdict:
     warnings: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
+        spec = get(self.platform)
         return {
             "platform": self.platform,
             "label": self.label,
             "ok": self.ok,
             "blocking": self.blocking,
             "warnings": self.warnings,
+            "upload_url": spec.upload_url if spec else "",
+            "web_upload": spec.web_upload if spec else True,
         }
 
 

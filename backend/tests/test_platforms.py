@@ -257,3 +257,16 @@ def test_someone_elses_project_is_not_found(monkeypatch, tmp_path):
     client.post("/api/auth/logout")
     register_second_user(client, "guest", "another-password")
     assert client.get(f"/api/projects/{project['id']}/destinations").status_code == 404
+
+
+def test_every_platform_says_where_to_post():
+    from app.services.platforms import PLATFORMS, check_all
+
+    for spec in PLATFORMS:
+        assert spec.upload_url.startswith("https://"), spec.key
+    rows = check_all("9:16", 30.0, 5 * 1024 * 1024)
+    assert rows and all(r["upload_url"] for r in rows)
+    # Instagram only takes uploads from its phone app; the row says so.
+    by_key = {r["platform"]: r for r in rows}
+    assert by_key["reels"]["web_upload"] is False
+    assert by_key["tiktok"]["web_upload"] is True
