@@ -176,6 +176,23 @@ class SoundAsset(Base):
     created_at: Mapped[datetime] = mapped_column(default=now_utc)
 
 
+class ShareLink(Base):
+    """A public, unguessable link to one finished video.
+
+    Sending a clip to a friend used to mean downloading it and attaching it.
+    The link needs no account: the token is the whole secret, so it is long
+    and random, and it can be turned off again.
+    """
+
+    __tablename__ = "share_links"
+
+    token: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(default=now_utc)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Template(Base):
     """A saved design, reusable across episodes.
 

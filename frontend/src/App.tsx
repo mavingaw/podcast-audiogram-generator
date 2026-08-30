@@ -44,6 +44,7 @@ import {
   WandSparkles,
   ZoomIn,
   Image as ImageIcon,
+  Link2,
 } from "lucide-react";
 import {
   api,
@@ -2184,6 +2185,51 @@ function ClipSelector({
   );
 }
 
+/** Put a public link to this clip on the clipboard. */
+async function copyShareLink(projectId: string): Promise<string> {
+  const { url } = await api.share(projectId);
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    // Clipboard blocked (http, or a permissions policy): the link is still
+    // shown by the button so it can be copied by hand.
+  }
+  return url;
+}
+
+/** "Copy link": one press, and the link is on the clipboard. */
+function ShareButton({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "copied" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <span className="share-button">
+      <button
+        className="button-link quiet"
+        disabled={state === "busy"}
+        title="Make a link anyone can open to watch and download this clip"
+        onClick={async () => {
+          setState("busy");
+          try {
+            const link = await copyShareLink(projectId);
+            setUrl(link);
+            setState("copied");
+            playSfx("confirm");
+            window.setTimeout(() => setState("idle"), 4000);
+          } catch (e) {
+            setError(errorMessage(e));
+            setState("error");
+          }
+        }}
+      >
+        <Link2 size={14} /> {state === "copied" ? "Link copied" : state === "busy" ? "Making link…" : "Copy link"}
+      </button>
+      {state === "copied" && url && <input className="share-url" readOnly value={url} onFocus={(e) => e.currentTarget.select()} aria-label="Share link" />}
+      {state === "error" && error && <small className="error">{error}</small>}
+    </span>
+  );
+}
+
 /** "Your video is ready" — shown once, the moment a render finishes. */
 function ReadyCard({
   job,
@@ -2226,6 +2272,7 @@ function ReadyCard({
               Captions file
             </a>
           )}
+          {job.subject_id && <ShareButton projectId={job.subject_id} />}
           <button className="ghost" onClick={onAnother}>Make another clip</button>
           <button className="ghost" onClick={onClose}>Keep editing</button>
         </div>
@@ -5193,6 +5240,9 @@ function Exports({
               { label: "Download captions (SRT)", disabled: !downloads.srt, onSelect: () => go(downloads.srt) },
               { label: "Download captions (VTT)", disabled: !downloads.vtt, onSelect: () => go(downloads.vtt) },
               "separator",
+              { label: "Copy link to send to someone", disabled: !project, onSelect: () => project && void copyShareLink(project.id) },
+              { label: "Turn the link off", disabled: !project, onSelect: () => project && void api.unshare(project.id) },
+              "separator",
               { label: "Open project in Studio", disabled: !project, onSelect: () => project && onOpen(project) },
             ];
             return (
@@ -5217,6 +5267,7 @@ function Exports({
                   Captions
                 </a>
               )}
+              {project && <ShareButton projectId={project.id} />}
               <MenuButton items={exportMenu} title={project?.title} />
             </div>
             );

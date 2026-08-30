@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import router
+from app.api.routes import router, public_router
 from app.core.config import ensure_directories, settings
 from app.db.init_db import init_db
 from app.services import retention, vitals
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
             response.headers["Cache-Control"] = "no-cache"
         return response
     app.include_router(router)
+    app.include_router(public_router)
 
     static_dir = Path(settings.frontend_dist)
     if static_dir.exists():

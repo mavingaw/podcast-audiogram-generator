@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import (
     APIRouter, Cookie, Depends, HTTPException, Request, Response, UploadFile,
 )
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_admin, current_user, optional_user
 from app.core.config import settings
 from app.db.models import (
-    AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project,
+    AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project, ShareLink,
     SoundAsset, Template, User,
 )
 from app.db.session import SessionLocal, get_db
@@ -61,6 +61,8 @@ from app.services import chunked_upload, preview, revisions
 from app.services.storage import UploadValidationError, contained_path, is_image, save_upload
 
 router = APIRouter(prefix="/api")
+# Public pages that live outside /api: the shared-clip page and its video.
+public_router = APIRouter()
 
 
 # Letters, digits, and the three separators people actually use. Kept
@@ -1587,6 +1589,105 @@ def download_project_output(
         ".txt": "text/plain; charset=utf-8",
     }.get(output_path.suffix, "application/octet-stream")
     return FileResponse(output_path, media_type=media_type, filename=filename)
+
+
+@router.post("/projects/{project_id}/share")
+def share_project(
+    project_id: str,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """A link anyone can open to watch and download this project's video.
+
+    One live link per project: asking again returns the same one, so a link
+    already sent keeps working. Revoking makes a fresh token next time.
+    """
+    import secrets
+
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    video = settings.outputs_dir / project.id / "audiogram.mp4"
+    if not video.exists():
+        raise HTTPException(status_code=409, detail="Export the clip first, then share it.")
+    link = db.scalar(
+        select(ShareLink).where(ShareLink.project_id == project.id, ShareLink.revoked.is_(False))
+    )
+    if link is None:
+        link = ShareLink(token=secrets.token_urlsafe(24), project_id=project.id, owner_id=user.id)
+        db.add(link)
+        db.commit()
+    return {"token": link.token, "url": str(request.base_url).rstrip("/") + f"/s/{link.token}"}
+
+
+@router.delete("/projects/{project_id}/share")
+def unshare_project(
+    project_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    count = 0
+    for link in db.scalars(select(ShareLink).where(ShareLink.project_id == project.id, ShareLink.revoked.is_(False))).all():
+        link.revoked = True
+        count += 1
+    db.commit()
+    return {"revoked": count}
+
+
+def _shared_project(db: Session, token: str) -> Project:
+    link = db.get(ShareLink, token)
+    if not link or link.revoked:
+        raise HTTPException(status_code=404, detail="This link is no longer available")
+    project = db.get(Project, link.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="This link is no longer available")
+    return project
+
+
+@public_router.get("/s/{token}/video.mp4")
+def shared_video(token: str, db: Annotated[Session, Depends(get_db)]):
+    project = _shared_project(db, token)
+    video = settings.outputs_dir / project.id / "audiogram.mp4"
+    if not video.exists():
+        raise HTTPException(status_code=404, detail="This link is no longer available")
+    return FileResponse(video, media_type="video/mp4", filename=_share_filename(project))
+
+
+def _share_filename(project: Project) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in " -_" else "" for ch in project.title).strip()[:60]
+    return (safe or "clip") + ".mp4"
+
+
+@public_router.get("/s/{token}", response_class=HTMLResponse)
+def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
+    """A plain page: the video, a download button, nothing to sign in to."""
+    import html
+
+    project = _shared_project(db, token)
+    title = html.escape(project.title)
+    ratio = project.aspect_ratio.replace(":", " / ")
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta property="og:title" content="{title}"><meta property="og:type" content="video.other">
+<meta property="og:video" content="/s/{token}/video.mp4"><meta property="og:video:type" content="video/mp4">
+<style>
+  body{{margin:0;background:#0B0D11;color:#F8FAFC;font:15px/1.5 -apple-system,Segoe UI,Inter,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}}
+  main{{display:grid;gap:16px;width:min(480px,100%);text-align:center}}
+  video{{width:100%;aspect-ratio:{ratio};background:#000;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}}
+  h1{{font-size:18px;margin:0;font-weight:700}}
+  a.button{{display:inline-block;padding:12px 20px;border-radius:10px;background:#89CFF0;color:#0B0D11;font-weight:700;text-decoration:none}}
+  small{{color:#94A3B8}}
+</style></head><body><main>
+<h1>{title}</h1>
+<video src="/s/{token}/video.mp4" controls playsinline preload="metadata"></video>
+<div><a class="button" href="/s/{token}/video.mp4" download="{html.escape(_share_filename(project))}">Download video</a></div>
+<small>Made with Kinder</small>
+</main></body></html>"""
 
 
 @router.get("/jobs")

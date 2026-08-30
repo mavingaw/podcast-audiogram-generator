@@ -2795,3 +2795,10 @@ html.large-text #root { zoom: 1.18; }
   .inbox-group-actions { display: flex; gap: var(--s-2); }
   .inbox-top .pick-reason { margin-top: 2px; }
 }
+
+@layer views {
+  .share-button { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .share-button .button-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-md); font-weight: 600; font-size: 13px; background: var(--surface-sunken); color: var(--text); border: 1px solid var(--line); }
+  .share-url { width: 240px; max-width: 100%; font-size: 12px; padding: 6px 8px; border-radius: var(--r-md); }
+  .share-button .error { color: #ff8f8f; font-size: 12px; }
+}
