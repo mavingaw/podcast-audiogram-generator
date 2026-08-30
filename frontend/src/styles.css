@@ -2922,3 +2922,11 @@ html.large-text #root { zoom: 1.18; }
   }
   .home-template-more { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-weight: 600; justify-self: start; align-self: center; }
 }
+
+@layer views {
+  /* Home renders the look tiles smaller than the picker does; the type
+     scales down with them or it clips mid-word. */
+  .home-template-tile .look-title { font-size: clamp(10px, 1.1vw, 14px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 92%; }
+  .home-template-tile .look-caption { font-size: clamp(9px, 0.95vw, 12px); white-space: nowrap; overflow: hidden; max-width: 92%; }
+  .home-template-tile .template-thumb { overflow: hidden; border: 1px solid var(--line); }
+}
