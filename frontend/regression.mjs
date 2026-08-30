@@ -106,7 +106,24 @@ try {
     // The person must be told, on the screen they are looking at.
     await page.waitForTimeout(3500);
     if ((await page.locator(".ready-card").count()) === 0) problems.push("no 'Your video is ready' card after the render");
-    else log("ready card shown");
+    else {
+      log("ready card shown");
+      // Copy link must produce a public page that opens with no session.
+      await page.locator(".ready-card .share-button button").first().click();
+      await page.waitForTimeout(1500);
+      const url = await page.locator(".ready-card .share-url").inputValue().catch(() => "");
+      if (!url.includes("/s/")) problems.push("copy link did not produce a share link");
+      else {
+        const anon = await browser.newContext();
+        const p2 = await anon.newPage();
+        const res = await p2.goto(url);
+        if (!res || res.status() !== 200) problems.push(`share page returned ${res?.status()}`);
+        else log("share page opens without a session");
+        await anon.close();
+      }
+      const chips = await page.locator(".ready-card .destination-chip").count();
+      if (chips < 5) problems.push(`ready card lists only ${chips} platforms`);
+    }
     const size = await page.evaluate(async (id) => (await (await fetch(`/api/projects/${id}/outputs/audiogram.mp4`, { credentials: "include" })).arrayBuffer()).byteLength, projectId);
     log(`mp4 ${size} bytes`);
     if (size < 100_000) problems.push(`mp4 suspiciously small: ${size} bytes`);

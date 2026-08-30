@@ -2401,6 +2401,21 @@ function YouTubeAdmin() {
   );
 }
 
+/** Where this clip has already been posted from Kinder. */
+function PostedBadges({ project }: { project: Project }) {
+  const posted = Array.isArray(project.scene?.posted) ? (project.scene.posted as { platform: string; url: string; privacy?: string }[]) : [];
+  if (!posted.length) return null;
+  return (
+    <div className="posted-badges">
+      {posted.map((p, i) => (
+        <a key={i} className="posted-badge" href={p.url} target="_blank" rel="noreferrer" title={`Posted to ${p.platform}${p.privacy ? ` (${p.privacy})` : ""}`}>
+          <Check size={11} /> Posted to {p.platform === "youtube" ? "YouTube" : p.platform}{p.privacy && p.privacy !== "public" ? ` · ${p.privacy}` : ""}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /** Where the finished file can be posted, as a row of ticks and crosses. */
 function ReadyDestinations({ projectId }: { projectId: string }) {
   const [rows, setRows] = useState<Destination[] | null>(null);
@@ -5534,6 +5549,12 @@ function Exports({
               )}
               {project && <ShareButton projectId={project.id} />}
               <MenuButton items={exportMenu} title={project?.title} />
+              {project && <PostedBadges project={project} />}
+              {project && (
+                <div className="export-post">
+                  <YouTubePost projectId={project.id} defaultTitle={project.title} />
+                </div>
+              )}
             </div>
             );
           })}

@@ -2837,3 +2837,11 @@ html.large-text #root { zoom: 1.18; }
   .yt-admin-form { display: grid; gap: 8px; max-width: 520px; margin-top: var(--s-2); }
   .yt-admin-form label { display: grid; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
 }
+
+@layer views {
+  .export-list > div { flex-wrap: wrap; }
+  .export-post { flex-basis: 100%; }
+  .export-post .yt-post:empty { display: none; }
+  .posted-badges { flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+  .posted-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: var(--r-full); font-size: 12px; font-weight: 600; color: #9be7a3; border: 1px solid rgb(123 216 143 / 0.4); text-decoration: none; }
+}
