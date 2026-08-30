@@ -1137,12 +1137,16 @@ function QuickCreate({
   // from the Design panel instead. Listing them here as sources that were
   // forever "analyzing" was the most-asked question in the first week.
   const sources = media.filter((m) => !m.content_type.startsWith("image/"));
+  // Newest job of each kind only: a file transcribed twice used to show
+  // two identical "complete" rows, which reads like something went wrong.
   const sourceJobs = source
-    ? jobs.filter(
-        (job) =>
-          job.subject_id === source.id &&
-          ["analyze_media", "transcribe"].includes(job.kind),
-      )
+    ? jobs
+        .filter(
+          (job) =>
+            job.subject_id === source.id &&
+            ["analyze_media", "transcribe"].includes(job.kind),
+        )
+        .filter((job, index, all) => all.findIndex((other) => other.kind === job.kind) === index)
     : [];
   const activeSourceJobs = sourceJobs.filter((job) =>
     ["queued", "running"].includes(job.status),
