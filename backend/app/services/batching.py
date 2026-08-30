@@ -83,7 +83,7 @@ def suggestions_for(
         # needs choices to choose between.
         # Wider still now that sponsor reads are dropped: an episode with
         # three ad breaks can lose half its shortlist to them.
-        limit=max(wanted * 3, 12) if llm.available() else wanted * 2,
+        limit=max(wanted * 5, 30) if llm.available() else wanted * 3,
     )
     ranked = llm.rerank(found)
 

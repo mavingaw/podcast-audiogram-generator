@@ -405,11 +405,18 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
 
     limit = shortlist or DEFAULT_SHORTLIST
     scored = list(clips)
+    # The words first, so the model's ratings — the slow part — go to
+    # candidates that could actually be clips rather than to promo codes.
+    for clip in scored:
+        if looks_like_ad(clip.get("text", "")):
+            clip["score"] = round(clip.get("score", 0.0) * AD_PENALTY, 3)
+            clip["ad"] = True
+            clip.setdefault("reasons", []).insert(0, "Sounds like a sponsor read")
+    candidates = [c for c in scored if not c.get("ad")]
     if not available():
-        # No model: the sponsor-read words still count, and the heuristic
-        # order otherwise stands.
-        limit = 0
-    for clip in scored[:limit]:
+        # No model: the heuristic order otherwise stands.
+        candidates = []
+    for clip in candidates[:limit]:
         rating = rate(clip.get("text", ""))
         if not rating:
             continue
@@ -437,12 +444,6 @@ def rerank(clips: list[dict], shortlist: int | None = None) -> list[dict]:
         if headline and headline in clip.get("text", ""):
             clip["title"] = _trim_title(headline)
 
-    # Ads without a model rating still get caught by the words alone.
-    for clip in scored[limit:]:
-        if looks_like_ad(clip.get("text", "")):
-            clip["score"] = round(clip.get("score", 0.0) * AD_PENALTY, 3)
-            clip["ad"] = True
-            clip.setdefault("reasons", []).insert(0, "Sounds like a sponsor read")
     # Sponsor reads come in blocks: the line before the promo code is the
     # product's origin story, and it carries none of the give-away words.
     # A clip that sits next to a detected read is part of the same block.
