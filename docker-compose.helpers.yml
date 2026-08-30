@@ -1,0 +1,97 @@
+# The helper stack around Kinder. The app itself is template-managed on the
+# Unraid box; these run alongside it (started there with plain `docker run`,
+# recorded here so the whole stack is reproducible anywhere).
+#
+#   kinder-db         Postgres 16      host port 5433  (app data)
+#   kinder-db-backup  nightly pg_dump  keeps 14 daily + 8 weekly dumps
+#   dozzle            live log viewer  http://HOST:8092
+#   uptime-kuma       uptime alerts    http://HOST:8093
+#   kinder-adminer    database web UI  http://HOST:8094
+#
+# Secrets come from the environment (.env), never from this file.
+
+services:
+  kinder-db:
+    image: postgres:16-alpine
+    container_name: kinder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kinder
+      POSTGRES_USER: kinder
+      POSTGRES_PASSWORD: ${KINDER_DB_PASSWORD:?set KINDER_DB_PASSWORD}
+    ports:
+      - "${KINDER_DB_PORT:-5433}:5432"
+    volumes:
+      - ${KINDER_DB_DIR:-./pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinder -d kinder"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [kinder-net]
+
+  kinder-db-backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: kinder-db-backup
+    restart: unless-stopped
+    depends_on:
+      kinder-db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: kinder-db
+      POSTGRES_DB: kinder
+      POSTGRES_USER: kinder
+      POSTGRES_PASSWORD: ${KINDER_DB_PASSWORD:?set KINDER_DB_PASSWORD}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: "14"
+      BACKUP_KEEP_WEEKS: "8"
+    volumes:
+      - ${KINDER_DB_BACKUP_DIR:-./pgbackups}:/backups
+    networks: [kinder-net]
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      - "8092:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # uptime-kuma already ran on the box before this stack existed (port
+  # 3011); it is monitored config, not recreated here.
+
+  # Daily copy of the database file, uploads, and finished videos to a
+  # second location on the array. The database dumps are separate (above).
+  kinder-file-backup:
+    image: alpine:3.20
+    container_name: kinder-file-backup
+    restart: unless-stopped
+    command: sh -c "apk add --no-cache rsync >/dev/null && while true; do rsync -a --delete /source/config /source/data/uploads /source/data/outputs /dest/ && date > /dest/last-backup.txt; sleep 86400; done"
+    volumes:
+      - ${KINDER_APPDATA:-/mnt/storage/appdata/podcast-audiogram-studio}:/source:ro
+      - ${KINDER_FILE_BACKUP_DIR:-/mnt/storage/backups/kinder-files}:/dest
+
+  # Restarts any container whose healthcheck goes unhealthy.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  kinder-adminer:
+    image: adminer:latest
+    container_name: kinder-adminer
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: kinder-db
+    ports:
+      - "8094:8080"
+    networks: [kinder-net]
+
+networks:
+  kinder-net:
+    name: kinder-net

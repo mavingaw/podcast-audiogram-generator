@@ -6,6 +6,27 @@
 # still runs — the app probes for a usable device and falls back to the CPU —
 # but transcription is roughly 15x slower and encoding stays on libx264.
 services:
+  # Postgres for installs that outgrow the built-in SQLite file. The app
+  # follows DATABASE_URL: leave it unset and SQLite keeps working; point it
+  # here and run scripts/migrate_to_postgres.py once to carry the data over.
+  kinder-db:
+    image: postgres:16-alpine
+    container_name: kinder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kinder
+      POSTGRES_USER: kinder
+      POSTGRES_PASSWORD: ${KINDER_DB_PASSWORD:?set KINDER_DB_PASSWORD}
+    ports:
+      - "${KINDER_DB_PORT:-5433}:5432"
+    volumes:
+      - ${KINDER_DB_DIR:-./pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinder -d kinder"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   podcast-audiogram-studio:
     build:
       context: .
