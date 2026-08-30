@@ -283,7 +283,9 @@ await step("context-menu", async () => {
 });
 
 await step("studio", async () => {
-  const card = page.locator(".library-grid button, .project-cards button").first();
+  // The card's first button is now the wee menu overlay; the opener is the
+  // direct child button.
+  const card = page.locator(".library-card > button, .project-cards button").first();
   if (await card.count()) {
     await card.click();
     // Through the tunnel the Studio takes a few seconds to arrive; wait for
