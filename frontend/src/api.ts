@@ -218,6 +218,8 @@ export type Project = {
   scene: Record<string, unknown>;
   source?: string;
   review_state?: string;
+  created_at: string;
+  updated_at: string;
 };
 
 /** A saved design, reusable across episodes. Carries no episode media. */

@@ -4744,14 +4744,48 @@ function ReviewInbox({
         </p>
       ) : (
         <div className="inbox-list">
-          {clips.map((clip) => (
+          {groupInbox(clips).map((group) => (
+            <div key={group.episode} className="inbox-group">
+              <div className="inbox-group-head">
+                <div>
+                  <strong>{group.episode}</strong>
+                  <small className="muted">
+                    {" "}· {group.clips.length} clip{group.clips.length === 1 ? "" : "s"} arrived {group.when}
+                  </small>
+                </div>
+                <div className="inbox-group-actions">
+                  <button
+                    className="ghost compact"
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      for (const clip of group.clips) await act(clip.id, true);
+                    }}
+                  >
+                    Keep all
+                  </button>
+                  <button
+                    className="ghost compact"
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      if (!window.confirm(`Discard all ${group.clips.length} clips from “${group.episode}”?`)) return;
+                      for (const clip of group.clips) await act(clip.id, false);
+                    }}
+                  >
+                    Discard all
+                  </button>
+                </div>
+              </div>
+          {group.clips.map((clip) => (
             <div key={clip.id} className="inbox-card">
               <div className="inbox-top">
                 <strong>{clip.title}</strong>
                 <small>
-                  {clip.episode} · {(clip.clip_end - clip.clip_start).toFixed(0)}s ·{" "}
-                  {clip.aspect_ratio}
+                  {clockText(clip.clip_start).replace(/\.\d$/, "")} into the episode ·{" "}
+                  {(clip.clip_end - clip.clip_start).toFixed(0)}s · {clip.aspect_ratio}
                 </small>
+                {typeof clip.scene?.pickReason === "string" && clip.scene.pickReason && (
+                  <small className="pick-reason"><Sparkles size={11} /> {clip.scene.pickReason}</small>
+                )}
               </div>
               <div className="inbox-actions">
                 <button
@@ -4771,10 +4805,39 @@ function ReviewInbox({
               </div>
             </div>
           ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+/** Inbox clips by episode, newest episode first, with a friendly arrival date. */
+function groupInbox(clips: InboxClip[]): { episode: string; when: string; clips: InboxClip[] }[] {
+  const groups = new Map<string, InboxClip[]>();
+  for (const clip of clips) {
+    const list = groups.get(clip.episode) ?? [];
+    list.push(clip);
+    groups.set(clip.episode, list);
+  }
+  const when = (iso: string) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days} days ago`;
+    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  };
+  return Array.from(groups.entries())
+    .map(([episode, list]) => ({
+      episode,
+      when: when(list.map((c) => c.created_at).sort().at(-1) ?? ""),
+      latest: list.map((c) => c.created_at).sort().at(-1) ?? "",
+      clips: list.slice().sort((a, b) => a.clip_start - b.clip_start),
+    }))
+    .sort((a, b) => (a.latest < b.latest ? 1 : -1));
 }
 
 function Feeds({

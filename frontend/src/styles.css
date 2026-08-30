@@ -2784,3 +2784,14 @@ html.large-text #root { zoom: 1.18; }
   .feed-nudge-form input { flex: 1; min-width: 0; min-height: 40px; }
   @media (max-width: 780px) { .feed-nudge { grid-template-columns: auto 1fr; } .feed-nudge-form { grid-column: 1 / -1; } }
 }
+
+@layer views {
+  .inbox-group { display: grid; gap: var(--s-2); margin-bottom: var(--s-6); }
+  .inbox-group-head {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); flex-wrap: wrap;
+    padding: 6px 2px; border-bottom: 1px solid var(--line);
+  }
+  .inbox-group-head strong { font-size: 15px; }
+  .inbox-group-actions { display: flex; gap: var(--s-2); }
+  .inbox-top .pick-reason { margin-top: 2px; }
+}
