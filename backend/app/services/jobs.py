@@ -1031,14 +1031,18 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
     _publish_render(work_dir, output_dir)
     _write_poster(output_dir)
 
+    # ?v= is the render's own id: the path never changes between renders, and
+    # a CDN that cached the old file would otherwise serve it after a
+    # re-export. A new render is a new URL.
+    v = f"?v={job.id[:8]}"
     downloads = {
-        "mp4": f"/api/projects/{project.id}/outputs/audiogram.mp4",
-        "srt": f"/api/projects/{project.id}/outputs/captions.srt",
-        "vtt": f"/api/projects/{project.id}/outputs/captions.vtt",
-        "manifest": f"/api/projects/{project.id}/outputs/render-manifest.json",
+        "mp4": f"/api/projects/{project.id}/outputs/audiogram.mp4{v}",
+        "srt": f"/api/projects/{project.id}/outputs/captions.srt{v}",
+        "vtt": f"/api/projects/{project.id}/outputs/captions.vtt{v}",
+        "manifest": f"/api/projects/{project.id}/outputs/render-manifest.json{v}",
     }
     if bed_credits:
-        downloads["credits"] = f"/api/projects/{project.id}/outputs/CREDITS.txt"
+        downloads["credits"] = f"/api/projects/{project.id}/outputs/CREDITS.txt{v}"
     _finish(
         db,
         job,
