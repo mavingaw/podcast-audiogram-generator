@@ -3036,3 +3036,15 @@ html.large-text #root { zoom: 1.18; }
 @layer views {
   .canvas-backdrop.video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 }
+
+@layer views {
+  /* The layer's own content must never eat the pointer: an <img> starts a
+     native ghost-image drag that hijacks repositioning entirely. */
+  .studio-layer img, .studio-layer canvas, .studio-layer video, .mini-wave { pointer-events: none; -webkit-user-drag: none; }
+  .studio-layer { cursor: grab; }
+  .studio-layer:active { cursor: grabbing; }
+  /* Bigger, friendlier picture chips. */
+  .image-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+  .image-picker .image-chip { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; }
+  .image-picker .image-chip img { width: 100%; height: 100%; object-fit: cover; }
+}

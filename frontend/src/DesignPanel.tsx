@@ -352,7 +352,18 @@ export function DesignPanel({
                 <img src={api.mediaFileUrl(asset.id)} alt="" loading="lazy" />
               </button>
             ))}
+            <button
+              className="image-chip upload"
+              title="Upload a picture"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="spin" size={14} /> : <Upload size={14} />}
+            </button>
           </div>
+          {images.length === 0 && (
+            <p className="muted">No pictures yet — tap the arrow to add your show's cover.</p>
+          )}
         </div>
       )}
 

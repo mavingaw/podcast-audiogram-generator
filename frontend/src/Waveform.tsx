@@ -83,7 +83,10 @@ function liveHeights(live: LiveBars): number[] {
     // than crawling like a scrolling waveform.
     const seed = Math.sin(index * 12.9898 + live.tick * 78.233) * 43758.5453;
     const noise = seed - Math.floor(seed);
-    const falloff = Math.pow(1 - index / bins, 1.4);
+    // Mirrored like the export: a mountain rising to the middle, not a
+    // wedge leaning on the left edge.
+    const centre = (bins - 1) / 2;
+    const falloff = Math.pow(1 - Math.abs(index - centre) / (centre || 1), 1.4);
     heights.push(Math.max(0.04, live.level * (0.35 + 0.65 * noise) * (0.3 + 0.7 * falloff)));
   }
   return heights;

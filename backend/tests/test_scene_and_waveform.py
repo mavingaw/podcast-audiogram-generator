@@ -736,8 +736,8 @@ def test_live_bars_take_the_layer_colour(tmp_path):
 def test_each_live_style_has_its_own_density(tmp_path):
     fine = render_graph(pulse_scene("pulseFine"), out_dir=tmp_path)
     chunky = render_graph(pulse_scene("pulseChunky"), out_dir=tmp_path)
-    assert "showfreqs=s=52x" in fine
-    assert "showfreqs=s=22x" in chunky
+    assert "showfreqs=s=26x" in fine
+    assert "showfreqs=s=11x" in chunky
 
 
 ffmpeg_required = pytest.mark.skipif(

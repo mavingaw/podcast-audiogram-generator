@@ -566,6 +566,9 @@ class Scene:
     wave_scale: str = DEFAULT_WAVE_SCALE
     caption_preset: str = DEFAULT_CAPTION_PRESET
     caption_color: str = DEFAULT_CAPTION_COLOR
+    # Where the captions sit: percent from the top of the frame to the top
+    # of the caption band. None keeps the preset's own bottom margin.
+    caption_y: float | None = None
     # For video sources: use the footage itself as the background. On by
     # default because that is why somebody uploads a video.
     video_background: bool = True
@@ -688,6 +691,11 @@ def parse(
         wave_scale=scale,
         caption_preset=preset,
         caption_color=_color(scene.get("captionColor"), DEFAULT_CAPTION_COLOR),
+        caption_y=(
+            max(2.0, min(88.0, float(scene["captionY"])))
+            if isinstance(scene.get("captionY"), (int, float))
+            else None
+        ),
         video_background=scene.get("videoBackground") is not False,
         word_highlight=scene.get("wordHighlight") is not False,
         # Bounded to a second either way: beyond that the captions belong to a

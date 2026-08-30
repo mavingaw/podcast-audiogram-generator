@@ -1664,7 +1664,8 @@ def _pulse_wave(
     showfreqs draws a live spectrum, one column per frequency bin. It is
     rendered a few dozen pixels wide so each bin is one column, scaled up with
     nearest-neighbour so each column becomes a solid bar, mirrored about the
-    centre line, and turned into a mask: anything the analyser lit becomes the
+    centre line vertically and about the box's middle horizontally, and
+    turned into a mask: anything the analyser lit becomes the
     accent colour, everything else transparent, with a column grid cut in for
     the gaps. The mask route is what keeps the colour honest — showfreqs shades
     by magnitude and would otherwise draw white-hot peaks over a blue base.
@@ -1681,7 +1682,13 @@ def _pulse_wave(
     # The bars fill the box the editor drew: pitch from the box, not fixed.
     pitch = max(4, box_width // bins)
     gap = max(1, int(round(pitch * gap_ratio)))
-    draw_width = bins * pitch
+    # Half the bins are rendered and mirrored about the box's centre. A raw
+    # spectrum of speech is a wedge — tall at the left, trailing off to the
+    # right — and on screen that read as a broken meter, the same lopsided
+    # ramp whatever the style. Mirrored, it is a mountain rising to the
+    # middle: what people expect dancing bars to look like.
+    half_bins = max(8, bins // 2)
+    draw_width = half_bins * pitch * 2
     half = max(8, box_height // 2)
     colour = ffmpeg_color(layer.paint(parsed.accent))
 
@@ -1696,10 +1703,13 @@ def _pulse_wave(
         # bar near full height, cbrt with +8 dB above 1.5 kHz reads as a meter
         # in both loud and quiet passages.
         f"highpass=f=100,treble=g=8:f=1500,"
-        f"showfreqs=s={bins}x{half}:mode=bar:ascale=cbrt:fscale=log:"
+        f"showfreqs=s={half_bins}x{half}:mode=bar:ascale=cbrt:fscale=log:"
         f"win_size=512:averaging=2:colors=white,"
-        f"scale={draw_width}:{half}:flags=neighbor,split[pulseup][pulsedn]"
+        f"scale={half_bins * pitch}:{half}:flags=neighbor,split[sfl][sfr]"
     )
+    # Low frequencies (the tall bars) meet in the middle.
+    chains.append("[sfl]hflip[sflf]")
+    chains.append("[sflf][sfr]hstack,split[pulseup][pulsedn]")
     chains.append("[pulsedn]vflip[pulsednf]")
     chains.append(
         "[pulseup][pulsednf]vstack,format=gray,"
@@ -2174,6 +2184,13 @@ def _write_ass(
     # Width, not height — see CAPTION_PRESETS for why.
     font_size = max(18, int(width * preset["size_ratio"]))
     margin_v = int(height * preset["margin_ratio"])
+    if parsed is not None and parsed.caption_y is not None:
+        # The user dragged the captions somewhere. caption_y is the band's
+        # top in percent; MarginV measures from the bottom of the frame to
+        # the bottom of the text, so convert through the band's own height
+        # (two lines at the preset's size, scaled by the frame's shape).
+        block = 2 * preset["size_ratio"] * (width / height)
+        margin_v = int(height * min(0.92, max(0.01, 1 - parsed.caption_y / 100 - block)))
     margin_h = int(width * 0.08)
     bold = -1 if preset["bold"] else 0
 

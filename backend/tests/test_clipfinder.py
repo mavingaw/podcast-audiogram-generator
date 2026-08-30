@@ -252,7 +252,9 @@ def test_the_endpoint_says_so_when_there_is_no_transcript(monkeypatch, tmp_path)
     client = signed_in(monkeypatch, tmp_path)
     media_id = seed_media(client, words=[])
     body = client.get(f"/api/media/{media_id}/clips").json()
-    assert body["ready"] is False
+    # An empty transcript is an answer, not a wait: the endpoint says so
+    # instead of promising progress that will never come.
+    assert body["ready"] is True
     assert body["clips"] == []
     assert body["reason"]
 

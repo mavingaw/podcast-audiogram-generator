@@ -154,7 +154,15 @@ const destinations = [
  * editable in Studio. Kept to looks that read at thumbnail size: a feed is
  * where these are seen.
  */
+/** Rearrangements of the default stack, so templates differ in shape, not
+ * just colour. "classic" is the stack as-is; "bigArt" makes the artwork the
+ * hero; "banner" drops the artwork for a big title; "minimal" is captions
+ * and a whisper of waveform; "artBackdrop" throws the cover art across the
+ * whole background, sharp, and hides the tile. */
+type TemplateLayout = "classic" | "bigArt" | "banner" | "minimal" | "artBackdrop";
+
 type StarterTemplate = {
+  layout?: TemplateLayout;
   id: string;
   name: string;
   style: string;
@@ -192,6 +200,30 @@ const templates: StarterTemplate[] = [
     captionPreset: "frost", captionColor: "#2a1f14", font: "sora", waveStyle: "envelopeFine", peakAccent: "#c2743a" },
   { id: "mono", name: "Mono", style: "Black and white", background: "#000000", accent: "#ffffff",
     captionPreset: "outline", font: "inter", waveStyle: "pulse", peakAccent: false },
+  // Different shapes, not just different colours.
+  { id: "poster", name: "Poster", style: "Big cover, gallery light", background: "#efe7da", accent: "#403428",
+    captionPreset: "card", captionColor: "#221a12", font: "sora", waveStyle: "envelope",
+    peakAccent: "#403428", layout: "bigArt" },
+  { id: "billboard", name: "Billboard", style: "Huge title, no art", background: "#0c0c0c", accent: "#ffd400",
+    captionPreset: "shout", font: "bebas", captionFont: "bebas", waveStyle: "solid",
+    peakAccent: "#ffd400", layout: "banner" },
+  { id: "zen", name: "Zen", style: "Just the words", background: "#101812", accent: "#cfe3d4",
+    captionPreset: "outline", font: "manrope", waveStyle: "envelopeFine", peakAccent: false,
+    layout: "minimal" },
+  { id: "vinyl", name: "Vinyl", style: "Cover art everywhere", background: "#0b0d11", accent: "#f5f1e8",
+    captionPreset: "smoke", font: "sora", waveStyle: "pulse", peakAccent: "#f5f1e8",
+    layout: "artBackdrop" },
+  { id: "bubblegum", name: "Bubblegum", style: "Sweet and bright", background: "#ffd6e7", accent: "#c2185b",
+    captionPreset: "pill", captionColor: "#3a0a1f", font: "manrope", waveStyle: "pulseFine",
+    peakAccent: "#c2185b" },
+  { id: "terminal", name: "Terminal", style: "Green on black", background: "#050805", accent: "#39ff8a",
+    captionPreset: "boxed", font: "inter", waveStyle: "envelopeChunky", peakAccent: "#39ff8a" },
+  { id: "headline", name: "Headline", style: "Newspaper morning", background: "#f6f2ea", accent: "#b3261e",
+    captionPreset: "card", captionColor: "#171310", font: "inter", waveStyle: "envelope",
+    peakAccent: "#b3261e", layout: "banner" },
+  { id: "spotlight", name: "Spotlight", style: "Hero art, deep night", background: "#07070d", accent: "#8ab4ff",
+    captionPreset: "social", font: "inter", waveStyle: "pulseChunky", peakAccent: "#8ab4ff",
+    layout: "bigArt" },
 ];
 /** The default stack, per shape.
  *
@@ -329,6 +361,44 @@ function defaultLayers(ratio: Ratio = "9:16"): Layer[] {
       endTime: 45,
     },
   ];
+}
+function layoutLayers(ratio: Ratio, layout: TemplateLayout | undefined): Layer[] {
+  const layers = defaultLayers(ratio);
+  const find = (type: string) => layers.find((l) => l.type === type);
+  const artwork = find("artwork");
+  const title = find("title");
+  const wave = find("waveform");
+  switch (layout) {
+    case "bigArt": {
+      // The cover is the show: nearly half the frame, title tucked under it.
+      if (artwork) {
+        const h = ratio === "16:9" ? 52 : 40;
+        const w = Math.min(76, h * (ratio === "9:16" ? 16 / 9 : ratio === "4:5" ? 5 / 4 : ratio === "16:9" ? 9 / 16 : 1));
+        Object.assign(artwork, { y: 6, height: h, width: w, x: (100 - w) / 2 });
+      }
+      if (title && artwork) Object.assign(title, { y: artwork.y + artwork.height + 2 });
+      break;
+    }
+    case "banner": {
+      if (artwork) artwork.visible = false;
+      if (title) Object.assign(title, { y: 10, height: 14, x: 8, width: 84 });
+      if (wave) Object.assign(wave, { y: 30, height: 10 });
+      break;
+    }
+    case "minimal": {
+      if (artwork) artwork.visible = false;
+      if (title) title.visible = false;
+      if (wave) Object.assign(wave, { y: 88, height: 5, x: 20, width: 60 });
+      break;
+    }
+    case "artBackdrop": {
+      // The art becomes the whole background (createProject wires that up);
+      // the tile would double it.
+      if (artwork) artwork.visible = false;
+      break;
+    }
+  }
+  return layers;
 }
 function getLayers(project: Project | null): Layer[] {
   const layers = project?.scene?.layers;
@@ -589,11 +659,16 @@ export function App() {
       ...(template.captionFont ? { captionFont: template.captionFont } : {}),
       ...(template.waveStyle ? { waveStyle: template.waveStyle } : {}),
       ...(template.peakAccent !== undefined ? { peakAccent: template.peakAccent } : {}),
-      layers: defaultLayers(ratio).map((layer) =>
+      layers: layoutLayers(ratio, template.layout).map((layer) =>
         layer.type === "artwork" && artwork ? { ...layer, mediaId: artwork } : layer,
       ),
       ...(artwork
-        ? { backgroundImage: { mediaId: artwork, blur: 22, dim: 0.45 } }
+        ? {
+            backgroundImage:
+              template.layout === "artBackdrop"
+                ? { mediaId: artwork, blur: 3, dim: 0.35 }
+                : { mediaId: artwork, blur: 22, dim: 0.45 },
+          }
         : {}),
     };
     const saved = await api.updateProject(result.project, {
@@ -3091,13 +3166,30 @@ function Studio({
         void togglePreview();
         return;
       }
-      const layer = layers.find((l) => l.id === selectedLayer);
+      const layer = layersRef.current.find((l) => l.id === selectedLayer);
       if (!layer) return;
       if (e.key === "Escape") {
         setSelectedLayer("background");
         return;
       }
       if (layer.type === "background" || layer.locked) return;
+      if (layer.type === "captions" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        const band = captionBand(
+          String(project?.scene?.captionPreset ?? "social"),
+          project?.aspect_ratio ?? "9:16",
+        );
+        const step = e.shiftKey ? 5 : 1;
+        const from = capDragY ?? (project?.scene?.captionY as number | undefined) ?? band.top;
+        const next = Math.max(2, Math.min(88, from + (e.key === "ArrowUp" ? -step : step)));
+        setCapDragY(next);
+        if (nudgeSaveTimer.current) window.clearTimeout(nudgeSaveTimer.current);
+        nudgeSaveTimer.current = window.setTimeout(() => {
+          nudgeSaveTimer.current = null;
+          void saveScene({ captionY: next });
+        }, 350);
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         deleteLayer(layer.id);
@@ -3210,8 +3302,20 @@ function Studio({
     setSelectedLayer(next.at(-1)?.id ?? "");
     void save(next);
   }
+  const nudgeSaveTimer = useRef<number | null>(null);
+  const [capDragY, setCapDragY] = useState<number | null>(null);
   function updateLayer(id: string, updates: Partial<Layer>) {
-    void save(layers.map((l) => (l.id === id ? { ...l, ...updates } : l)));
+    // Apply on screen immediately; persist once the burst of changes stops
+    // (holding an arrow key fires dozens of repeats a second — one PATCH
+    // per repeat made nudging feel broken).
+    const next = layersRef.current.map((l) => (l.id === id ? { ...l, ...updates } : l));
+    layersRef.current = next;
+    setLayers(next);
+    if (nudgeSaveTimer.current) window.clearTimeout(nudgeSaveTimer.current);
+    nudgeSaveTimer.current = window.setTimeout(() => {
+      nudgeSaveTimer.current = null;
+      void save(layersRef.current);
+    }, 350);
   }
   function moveLayer(id: string, direction: -1 | 1) {
     const index = layers.findIndex((layer) => layer.id === id);
@@ -3304,6 +3408,9 @@ function Studio({
   }
   function drag(e: React.PointerEvent, layer: Layer) {
     if (layer.locked || !canvasRef.current) return;
+    // Text selection and native image dragging both start from the same
+    // pointer gesture; either one ends the reposition after a few pixels.
+    e.preventDefault();
     const rect = canvasRef.current.getBoundingClientRect();
     const sx = e.clientX;
     const sy = e.clientY;
@@ -3340,6 +3447,36 @@ function Studio({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       await save(layersRef.current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+  /**
+   * Captions are positioned by the renderer from a single number — the top
+   * of their band in percent — not by their layer box, so they get their own
+   * vertical drag that ends in scene.captionY. Before this they could be
+   * "dragged" but silently snapped back, which read as broken.
+   */
+  function dragCaptions(e: React.PointerEvent) {
+    if (!canvasRef.current) return;
+    e.preventDefault();
+    const rect = canvasRef.current.getBoundingClientRect();
+    const band = captionBand(
+      String(project?.scene?.captionPreset ?? "social"),
+      project?.aspect_ratio ?? "9:16",
+    );
+    const from = capDragY ?? (project?.scene?.captionY as number | undefined) ?? band.top;
+    const sy = e.clientY;
+    let latest = from;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const move = (event: PointerEvent) => {
+      latest = Math.max(2, Math.min(88, from + ((event.clientY - sy) / rect.height) * 100));
+      setCapDragY(latest);
+    };
+    const up = async () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      await saveScene({ captionY: Math.round(latest * 10) / 10 });
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -3572,7 +3709,8 @@ function Studio({
                               captionPreset,
                               project?.aspect_ratio ?? "9:16",
                             );
-                            return { top: `${band.top}%`, height: `${band.height}%` };
+                            const top = capDragY ?? (project?.scene?.captionY as number | undefined) ?? band.top;
+                            return { top: `${top}%`, height: `${band.height}%` };
                           })()
                         : { top: `${layer.y}%`, height: `${layer.height}%` }),
                       width: `${layer.width}%`,
@@ -3581,7 +3719,8 @@ function Studio({
                     }}
                     onPointerDown={(e) => {
                       setSelectedLayer(layer.id);
-                      drag(e, layer);
+                      if (layer.type === "captions") dragCaptions(e);
+                      else drag(e, layer);
                     }}
                   >
                     <LayerContent
@@ -4805,6 +4944,7 @@ function LayerContent({
   if (layer.type === "artwork")
     return layer.mediaId ? (
       <img
+        draggable={false}
         className="artwork-image"
         style={{ borderRadius: `${(layer.radius ?? 0) * 100}%` }}
         src={api.mediaFileUrl(layer.mediaId)}
