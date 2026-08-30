@@ -211,6 +211,13 @@ def make_clips(
             # same fields Quick Create sets when a person picks a tile.
             scene.update({k: v for k, v in look.items() if k in LOOK_FIELDS and v is not None})
 
+        # Why this moment, in a sentence, so an auto-picked clip is never a
+        # mystery on the project card. The language model's reason comes
+        # first when there is one; the finder's own notes otherwise.
+        reasons = [str(r).strip() for r in (suggestion.get("reasons") or []) if str(r).strip()]
+        if reasons:
+            scene["pickReason"] = reasons[0][:160]
+
         project = Project(
             owner_id=owner_id,
             media_id=media.id,

@@ -2936,6 +2936,11 @@ function Studio({
                 Clip audio only: {formatTime(clipStart)}–{formatTime(clipEnd)}
                 of the episode, {formatTime(clipEnd - clipStart)} long.
               </small>
+              {typeof project?.scene?.pickReason === "string" && project.scene.pickReason && (
+                <small className="pick-reason">
+                  <Sparkles size={11} /> Kinder picked this moment: {project.scene.pickReason}
+                </small>
+              )}
               {media.content_type.startsWith("video/") ? (
                 <video
                   controls
@@ -3940,6 +3945,11 @@ function ProjectBrowser({
               <small>
                 {p.aspect_ratio} · {clockText(p.clip_end - p.clip_start)} · <em>Open in Studio</em>
               </small>
+              {typeof p.scene?.pickReason === "string" && p.scene.pickReason && (
+                <small className="pick-reason" title="Why Kinder chose this moment">
+                  <Sparkles size={11} /> {p.scene.pickReason}
+                </small>
+              )}
             </button>
             {confirming === p.id ? (
               <div className="card-confirm">

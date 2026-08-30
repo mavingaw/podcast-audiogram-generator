@@ -2741,3 +2741,11 @@ html.large-text #root { zoom: 1.18; }
   .auto-clips-actions select { min-height: 40px; }
   .auto-clips-done { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
 }
+
+@layer views {
+  .pick-reason {
+    display: flex; gap: 6px; align-items: flex-start; margin-top: 4px;
+    color: var(--accent-text) !important; font-size: 12px !important; line-height: 1.35;
+  }
+  .pick-reason svg { flex: 0 0 auto; margin-top: 2px; }
+}

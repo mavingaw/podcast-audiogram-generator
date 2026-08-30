@@ -297,3 +297,12 @@ def test_a_starter_look_applies_to_the_whole_batch(monkeypatch, tmp_path):
         assert p["scene"]["accent"] == "#2f6fed"
         assert isinstance(p["scene"]["layers"], list)
         assert p["clip_start"] != 999
+
+
+def test_each_auto_clip_says_why_it_was_picked(monkeypatch, tmp_path):
+    client, media_id = seeded(monkeypatch, tmp_path)
+    body = client.post(f"/api/media/{media_id}/batch", json={"count": 2, "render": False}).json()
+    assert body["projects"]
+    for p in body["projects"]:
+        reason = p["scene"].get("pickReason")
+        assert reason is None or (isinstance(reason, str) and 0 < len(reason) <= 160)
