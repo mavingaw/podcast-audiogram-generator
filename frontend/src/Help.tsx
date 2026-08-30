@@ -82,6 +82,15 @@ export const GUIDES: Record<string, Guide> = {
       "Approved clips become projects you can open and finish.",
     ],
   },
+  settings: {
+    title: "Settings",
+    what: "Everything about you and your show, in one place.",
+    steps: [
+      "Your show: the cover picture on every clip, and the intro and outro videos.",
+      "Posting accounts: connect YouTube and the rest once; finished clips then get a Post button.",
+      "Admin (if that's you): transcription model, computer settings, accounts, and platform app keys.",
+    ],
+  },
   exports: {
     title: "Finished videos",
     what: "Every video you have made, ready to download and post.",

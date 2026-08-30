@@ -575,6 +575,15 @@ await step("inbox", async () => {
   }
 });
 
+await step("settings", async () => {
+  await page.locator('.main-nav button:has-text("Settings")').first().click();
+  await page.waitForTimeout(800);
+  const text = await page.locator(".settings-page").innerText().catch(() => "");
+  if (!text.includes("Your show")) problems.push("settings: no Your show section");
+  if (!text.includes("Posting accounts")) problems.push("settings: no posting accounts");
+  if ((await page.locator(".connection-row").count()) < 3) problems.push("settings: platform list missing");
+});
+
 await step("exports", async () => {
   await page.locator('.main-nav button:has-text("Exports")').first().click();
 });

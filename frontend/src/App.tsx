@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -87,7 +87,7 @@ import { TranscriptionPanel } from "./TranscriptionSettings";
 import { LiveBars, usePeaks, WaveformCanvas } from "./Waveform";
 import { loadSfx, play as playSfx, setSfxEnabled, sfxEnabled } from "./sfx";
 
-type View = "home" | "quick" | "studio" | "projects" | "templates" | "feeds" | "inbox" | "exports";
+type View = "home" | "quick" | "studio" | "projects" | "templates" | "feeds" | "inbox" | "exports" | "trash" | "settings";
 type AuthView = "loading" | "bootstrap" | "login" | "app";
 type Ratio = "9:16" | "1:1" | "4:5" | "16:9";
 type Layer = {
@@ -755,6 +755,7 @@ export function App() {
           <QuickCreate
             onRefresh={() => loadData()}
             onGoToExports={() => setView("exports")}
+            onGoToSettings={() => setView("settings")}
             media={media}
             jobs={jobs}
             selectedMedia={selectedMedia}
@@ -869,17 +870,32 @@ export function App() {
             }}
           />
         )}
-        {user?.is_admin && (
-          <AdminStrip
-            isAdmin={Boolean(user?.is_admin)}
-            users={users}
-            gpus={gpus}
-            values={gpuSettings}
-            onSave={async (v) => {
-              await api.saveGpuSettings(v);
-              setGpuSettings(v);
+        {view === "trash" && <TrashPage onChanged={() => loadData()} />}
+        {view === "settings" && (
+          <SettingsPage
+            user={user}
+            media={media}
+            onUpload={async (file, onProgress) => {
+              const result = await api.uploadMedia(file, onProgress);
+              await loadData();
+              return result.media;
             }}
-            onReload={async () => setUsers((await api.users()).users)}
+            onRefresh={() => loadData()}
+            admin={
+              user?.is_admin ? (
+                <AdminStrip
+                  isAdmin={Boolean(user?.is_admin)}
+                  users={users}
+                  gpus={gpus}
+                  values={gpuSettings}
+                  onSave={async (v) => {
+                    await api.saveGpuSettings(v);
+                    setGpuSettings(v);
+                  }}
+                  onReload={async () => setUsers((await api.users()).users)}
+                />
+              ) : null
+            }
           />
         )}
       </main>
@@ -920,7 +936,9 @@ function Sidebar({
           width={180}
           height={40}
         />
-        <small>{user?.username}</small>
+        <button className="brand-user" title="Your settings" onClick={() => { setView("settings"); onClose(); }}>
+          {user?.username}
+        </button>
       </div>
       <button className="new-project" onClick={() => { onNew(); onClose(); }}>
         <Plus size={17} /> New creation
@@ -934,6 +952,8 @@ function Sidebar({
             ["feeds", "Feeds", Rss],
             ["inbox", "Inbox", InboxIcon],
             ["exports", "Exports", Download],
+            ["trash", "Trash", Trash2],
+            ["settings", "Settings", Settings2],
           ] as const
         ).map(([id, label, Icon]) => (
           <button
@@ -1201,6 +1221,7 @@ function FeedNudge({ onFeeds }: { onFeeds: () => void }) {
 function QuickCreate({
   onRefresh,
   onGoToExports,
+  onGoToSettings,
   media,
   jobs,
   selectedMedia,
@@ -1209,6 +1230,7 @@ function QuickCreate({
 }: {
   onRefresh: () => Promise<void>;
   onGoToExports: () => void;
+  onGoToSettings: () => void;
   media: MediaAsset[];
   jobs: Job[];
   selectedMedia: MediaAsset | null;
@@ -1393,8 +1415,10 @@ function QuickCreate({
               )}
             </div>
           )}
-          <ShowArtwork media={media} onUpload={onUpload} onRefresh={onRefresh} />
-          <BrandingClips media={media} onUpload={onUpload} onRefresh={onRefresh} />
+          <p className="muted small settings-pointer">
+            Cover picture, intro &amp; outro and posting accounts live in{" "}
+            <button className="text-button inline" onClick={onGoToSettings}>your Settings</button>.
+          </p>
           {source && activeSourceJobs.length > 0 && (
             // While something is running on the chosen file the card sits
             // right under the drop zone, where the eye already is, rather
@@ -4225,6 +4249,109 @@ function projectMenu(
   return items;
 }
 
+/**
+ * Everything about you and your show, in one place: the cover picture, the
+ * intro and outro, the accounts you post to — and, for the admin, the
+ * machine-room controls that used to sit at the bottom of every page.
+ */
+function SettingsPage({
+  user,
+  media,
+  onUpload,
+  onRefresh,
+  admin,
+}: {
+  user: User | null;
+  media: MediaAsset[];
+  onUpload: (f: File, onProgress?: (fraction: number) => void) => Promise<MediaAsset>;
+  onRefresh: () => Promise<void>;
+  admin: ReactNode;
+}) {
+  return (
+    <div className="library-page settings-page">
+      <div className="page-heading">
+        <div>
+          <span className="kicker">Account</span>
+          <h2>Settings</h2>
+          <p>Signed in as <strong>{user?.username}</strong>{user?.is_admin ? " · admin" : ""}.</p>
+        </div>
+      </div>
+      <section className="settings-section">
+        <h3>Your show</h3>
+        <p className="muted">These apply to every clip you make.</p>
+        <ShowArtwork media={media} onUpload={onUpload} onRefresh={onRefresh} />
+        <BrandingClips media={media} onUpload={onUpload} onRefresh={onRefresh} />
+      </section>
+      <section className="settings-section">
+        <h3>Posting accounts</h3>
+        <p className="muted">
+          Connect your own accounts once and every finished clip gets a Post button for them.
+        </p>
+        <SocialConnections />
+      </section>
+      {admin && (
+        <section className="settings-section">
+          <h3>Admin</h3>
+          <p className="muted">Models, computer settings, accounts, and the platform app keys.</p>
+          {admin}
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** Every platform: its state for this person, and Connect / Disconnect. */
+function SocialConnections() {
+  const [rows, setRows] = useState<
+    { key: string; label: string; posts: string; configured: boolean; connected: boolean; name: string }[]
+  >([]);
+  const [note, setNote] = useState<string | null>(null);
+  const load = () => api.socialAccounts().then((r) => setRows(r.accounts)).catch(() => undefined);
+  useEffect(() => {
+    void load();
+  }, []);
+  if (!rows.length) return null;
+  async function connect(key: string) {
+    try {
+      const { url } = key === "youtube" ? await api.youtubeConnect() : await api.socialConnect(key);
+      window.location.href = url;
+    } catch (e) {
+      setNote(errorMessage(e));
+    }
+  }
+  async function drop(key: string) {
+    if (key === "youtube") await api.youtubeDisconnect();
+    else await api.socialDisconnect(key);
+    await load();
+  }
+  return (
+    <div className="connections">
+      {rows.map((r) => (
+        <div key={r.key} className="connection-row">
+          <div className="connection-text">
+            <strong>{r.label}</strong>
+            <small className="muted">
+              {r.connected
+                ? `Connected${r.name ? ` as ${r.name}` : ""} — posts ${r.posts}`
+                : r.configured
+                  ? `Not connected — posts ${r.posts}`
+                  : "Not set up yet — an admin adds this platform's app keys below"}
+            </small>
+          </div>
+          {r.connected ? (
+            <button className="ghost compact" onClick={() => void drop(r.key)}>Disconnect</button>
+          ) : (
+            <button className="primary compact" disabled={!r.configured} onClick={() => void connect(r.key)}>
+              Connect
+            </button>
+          )}
+        </div>
+      ))}
+      {note && <p className="muted small error">{note}</p>}
+    </div>
+  );
+}
+
 /** The templates strip on Home: try ours or save your own. */
 function HomeTemplates({
   saved,
@@ -4736,6 +4863,72 @@ function ProjectBrowser({
         ))}
       </div>
       <TrashSection onChanged={onRefreshAll} open={trashOpen} onToggle={setTrashOpen} />
+    </div>
+  );
+}
+
+/** The Trash as its own page, plain as a bin under a desk. */
+function TrashPage({ onChanged }: { onChanged: () => Promise<void> }) {
+  const [items, setItems] = useState<Project[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = () => api.trashedProjects().then((r) => setItems(r.projects)).catch(() => setItems([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  return (
+    <div className="library-page">
+      <div className="page-heading">
+        <div>
+          <span className="kicker">Library</span>
+          <h2>Trash</h2>
+          <p>Deleted projects wait here for 7 days, then they are gone for good.</p>
+        </div>
+      </div>
+      {items === null ? (
+        <p className="muted">Loading…</p>
+      ) : items.length === 0 ? (
+        <div className="empty-state">
+          <Trash2 size={28} />
+          <strong>The trash is empty.</strong>
+          <span>Delete a project anywhere and it lands here, restorable for a week.</span>
+        </div>
+      ) : (
+        <div className="trash-list page">
+          {items.map((p) => (
+            <div key={p.id} className="trash-row">
+              <span>{p.title}</span>
+              <div className="trash-actions">
+                <button
+                  className="primary compact"
+                  disabled={busy === p.id}
+                  onClick={async () => {
+                    setBusy(p.id);
+                    await api.restoreFromTrash(p.id).catch(() => undefined);
+                    setBusy(null);
+                    await load();
+                    await onChanged();
+                  }}
+                >
+                  Put back
+                </button>
+                <button
+                  className="ghost compact danger"
+                  disabled={busy === p.id}
+                  onClick={async () => {
+                    if (!window.confirm(`Delete "${p.title}" forever? This one cannot be undone.`)) return;
+                    setBusy(p.id);
+                    await api.deleteProject(p.id).catch(() => undefined);
+                    setBusy(null);
+                    await load();
+                  }}
+                >
+                  Delete forever
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
