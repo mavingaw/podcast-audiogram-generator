@@ -13,12 +13,17 @@ are only as good as the boundaries they can be split on.
 
 from __future__ import annotations
 
+import logging
+from contextlib import contextmanager
+
 import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import settings
+
+log = logging.getLogger(__name__)
 
 # Whisper sizes, smallest first. `small` is the default: on a modern GPU it is
 # a second or two per minute of audio and its word timings are good enough to
@@ -201,6 +206,47 @@ def transcribe(
     runtime = choose_runtime(model_size, prefer_gpu, device_index)
     model = load_model(runtime)
 
+    # Decoded by ffmpeg first, not handed to the model as-is. The model's own
+    # decoder (PyAV) raises on the first damaged frame and *stops*, and the
+    # result looks like success: a 58-minute episode came back as nine
+    # minutes of transcript and "Transcript ready". ffmpeg logs the bad frame
+    # and carries on, which is what every player does with the same file.
+    with decoded_for_whisper(path) as audio_path:
+        return _transcribe_decoded(audio_path, model, runtime, language, on_progress)
+
+
+@contextmanager
+def decoded_for_whisper(path: Path):
+    """A 16 kHz mono WAV of `path`, however damaged the original is.
+
+    Falls back to the original file when ffmpeg is missing or cannot open
+    it, so nothing that transcribed before stops transcribing now.
+    """
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="pas-whisper-") as tmp:
+        wav = Path(tmp) / "audio.wav"
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-err_detect", "ignore_err", "-i", str(path),
+                 "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav)],
+                capture_output=True, text=True, timeout=1800,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            log.warning("ffmpeg unavailable for transcription decode: %s", error)
+            yield path
+            return
+        if result.returncode != 0 or not wav.exists() or wav.stat().st_size < 1024:
+            log.warning("ffmpeg could not decode %s for transcription: %s", path.name,
+                        (result.stderr or "").strip()[-200:])
+            yield path
+            return
+        yield wav
+
+
+def _transcribe_decoded(path: Path, model, runtime, language, on_progress) -> dict:
     try:
         segments, info = model.transcribe(
             str(path),
@@ -244,7 +290,7 @@ def transcribe(
         if on_progress and duration:
             on_progress(min(1.0, float(segment.end) / duration))
 
-    return {
+    result = {
         "language": getattr(info, "language", None) or language or "en",
         "duration": duration,
         "model": runtime.model_size,
@@ -252,6 +298,16 @@ def transcribe(
         "device_index": runtime.device_index,
         "segments": collected,
     }
+    # A transcript that ends long before the audio does is not "ready"; say
+    # so, so the person is not left wondering why the captions stop.
+    reached = float(collected[-1]["end"]) if collected else 0.0
+    if duration > 120 and reached < duration * 0.8:
+        result["warnings"] = [
+            f"The words stop at {int(reached // 60)}:{int(reached % 60):02d} of "
+            f"{int(duration // 60)}:{int(duration % 60):02d}. The rest of the audio "
+            "may be silence, music, or damaged."
+        ]
+    return result
 
 
 # Punctuation that belongs to the word before it, so no space is inserted.

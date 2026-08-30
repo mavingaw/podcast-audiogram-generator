@@ -24,10 +24,13 @@ from app.core.config import settings
 log = logging.getLogger(__name__)
 
 
-def cache_path(media_id: str, start: float, end: float) -> Path:
+def cache_path(media_id: str, start: float, end: float, source: Path | None = None) -> Path:
     cache = settings.work_dir / "previews"
     cache.mkdir(parents=True, exist_ok=True)
-    return cache / f"{media_id}-{start:.3f}-{end:.3f}.m4a"
+    # MP3 sources are cut by stream copy, so the cut stays MP3; everything
+    # else is re-encoded to AAC in an M4A.
+    suffix = ".mp3" if source is not None and source.suffix.lower() == ".mp3" else ".m4a"
+    return cache / f"{media_id}-{start:.3f}-{end:.3f}{suffix}"
 
 
 # One cut per clip at a time. The background warm-up and an on-demand
@@ -56,7 +59,7 @@ def sweep(now: float | None = None, max_age_days: float | None = None) -> int:
     cache = settings.work_dir / "previews"
     if not cache.is_dir():
         return 0
-    for path in cache.glob("*.m4a"):
+    for path in list(cache.glob("*.m4a")) + list(cache.glob("*.mp3")):
         try:
             # atime is unreliable on some mounts; mtime is bumped on every serve
             # below, so it doubles as "last opened".
@@ -87,7 +90,7 @@ def ensure(source: Path, media_id: str, start: float, end: float) -> Path:
     _sweep_occasionally()
     start = max(0.0, float(start))
     end = max(start + 0.5, float(end))
-    target = cache_path(media_id, start, end)
+    target = cache_path(media_id, start, end, source)
     if target.exists():
         # Touch it: "last opened" is what the sweep goes by.
         try:
@@ -102,12 +105,20 @@ def ensure(source: Path, media_id: str, start: float, end: float) -> Path:
 
 
 def _cut(source: Path, start: float, end: float, target: Path) -> Path:
-    partial = target.with_name(f"{target.stem}.{threading.get_ident()}.part.m4a")
+    partial = target.with_name(f"{target.stem}.{threading.get_ident()}.part{target.suffix}")
+    if target.suffix == ".mp3":
+        # The source is already MP3: copy the frames rather than re-encode.
+        # Re-encoding a 25-minute clip to AAC took 45 seconds, and the player
+        # had given up long before; a copy is a fraction of a second. The
+        # cut lands on a frame boundary, ~26 ms — nobody hears that.
+        codec = ["-c:a", "copy"]
+    else:
+        codec = ["-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart"]
     result = subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+         "-err_detect", "ignore_err",
          "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(source),
-         "-vn", "-c:a", "aac", "-b:a", "96k", "-ac", "2", "-movflags", "+faststart",
-         str(partial)],
+         "-vn", *codec, str(partial)],
         capture_output=True, text=True, timeout=300,
     )
     if result.returncode != 0 or not partial.exists():

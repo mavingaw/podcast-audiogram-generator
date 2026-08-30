@@ -2007,6 +2007,16 @@ function ClipSelector({
         <TimeField label="End" value={end} min={0.5} onCommit={applyEnd} />
         <TimeField label="Duration" value={end - start} min={0.5} onCommit={applyDuration} />
       </div>
+      {end - start > 180 && (
+        <p className="clip-long-note">
+          This clip is {formatTime(end - start)} long. Social clips work best under
+          90 seconds, and Reels and TikTok will not take more than a few minutes —
+          click a line of the words below to jump to a moment, then drag the
+          yellow handles in.
+        </p>
+      )}
+      <div className="clip-fields" hidden>
+      </div>
       {snapUndo && (
         <div className="snap-note">
           <span>Trimmed to whole words.</span>

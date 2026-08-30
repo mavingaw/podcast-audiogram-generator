@@ -880,7 +880,8 @@ def project_preview_audio(
         target = preview.ensure(source, media.id, project.clip_start, project.clip_end)
     except RuntimeError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
-    return FileResponse(target, media_type="audio/mp4", headers={"Cache-Control": "private, max-age=86400"})
+    media_type = "audio/mpeg" if target.suffix == ".mp3" else "audio/mp4"
+    return FileResponse(target, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
 
 
 class SnapRequest(BaseModel):

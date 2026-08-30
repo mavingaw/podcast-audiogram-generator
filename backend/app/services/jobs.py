@@ -710,6 +710,8 @@ def _transcribe(db, job: Job) -> None:
         detail += f", {speakers_found} speakers"
     if clipped:
         detail += f", {clipped} clips prepared"
+    for warning in transcript.get("warnings") or []:
+        detail += f" — {warning}"
     _finish(
         db, job,
         f"Transcript ready ({detail})",
