@@ -2409,7 +2409,17 @@ function Poster({
   icon: number;
   compact?: boolean;
 }) {
-  const [ok, setOk] = useState(true);
+  // Probed with fetch, not by letting an <img> 404: a failed image load is
+  // a console error on every never-rendered project, which drowns the
+  // console the smoke test watches.
+  const [ok, setOk] = useState(false);
+  useEffect(() => {
+    let stale = false;
+    fetch(api.posterUrl(projectId), { method: "HEAD", credentials: "include" })
+      .then((r) => { if (!stale && r.ok) setOk(true); })
+      .catch(() => undefined);
+    return () => { stale = true; };
+  }, [projectId]);
   if (compact) {
     return ok ? (
       <img className="export-poster" src={api.posterUrl(projectId)} alt="" onError={() => setOk(false)} />
