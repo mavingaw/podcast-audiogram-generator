@@ -1883,7 +1883,22 @@ def shared_video(
     # one that starts at the top is somebody pressing play.
     range_header = request.headers.get("range", "")
     if not range_header or range_header.startswith("bytes=0-"):
-        _record_share_event(db, project, "play")
+        # Through a CDN, one viewer's seeks can arrive as several full-body
+        # origin fetches; a play within a minute of the last one for this
+        # clip is the same sitting, not a new listener.
+        recent = db.scalar(
+            select(func.max(ShareEvent.created_at)).where(
+                ShareEvent.project_id == project.id, ShareEvent.kind == "play"
+            )
+        )
+        fresh = True
+        if recent is not None:
+            from datetime import datetime, timezone
+
+            stamp = recent if recent.tzinfo else recent.replace(tzinfo=timezone.utc)
+            fresh = (datetime.now(timezone.utc) - stamp).total_seconds() > 60
+        if fresh:
+            _record_share_event(db, project, "play")
     video = settings.outputs_dir / project.id / "audiogram.mp4"
     if not video.exists():
         raise HTTPException(status_code=404, detail="This link is no longer available")

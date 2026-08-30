@@ -39,8 +39,10 @@ def test_opens_and_plays_are_counted(client):
     client.get(f"/s/{token}")
     client.get(f"/s/{token}")
     client.get(f"/s/{token}/video.mp4")
-    # Seeking into the middle is not another play.
+    # Seeking into the middle is not another play, and neither is a second
+    # full fetch seconds later (a CDN's own re-request looks like that).
     client.get(f"/s/{token}/video.mp4", headers={"Range": "bytes=2048-4095"})
+    client.get(f"/s/{token}/video.mp4")
 
     client.post("/api/auth/login", json={"username": "owner", "password": "Passw0rd!enough"})
     data = client.get("/api/analytics").json()
