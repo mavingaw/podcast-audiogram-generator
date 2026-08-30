@@ -354,6 +354,31 @@ await step("resize-layer", async () => {
   }
 });
 
+// Arrow keys must move the selected layer; typing in a field must not.
+await step("keyboard", async () => {
+  const title = page.locator(".canvas-layer.layer-title").first();
+  if ((await title.count()) === 0) return;
+  await title.click({ force: true });
+  await page.waitForTimeout(200);
+  const before = (await title.boundingBox())?.x ?? 0;
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(500);
+  const after = (await title.boundingBox())?.x ?? 0;
+  if (after <= before) problems.push(`keyboard: ArrowRight did not nudge the layer (${before} -> ${after})`);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(300);
+  // Typing a name must not move anything.
+  const name = page.locator('.inspector input[type="text"]').first();
+  if (await name.count()) {
+    await name.click();
+    const b2 = (await title.boundingBox())?.x ?? 0;
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(300);
+    const a2 = (await title.boundingBox())?.x ?? 0;
+    if (a2 !== b2) problems.push("keyboard: arrows moved the layer while typing in a field");
+  }
+});
+
 // Cutting words out of the clip is the one feature where the browser and the
 // renderer have to agree about time, and a wrong answer is silent: the export
 // is simply a few seconds off with captions that drift. The click is driven

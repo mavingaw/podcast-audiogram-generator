@@ -47,7 +47,7 @@ export const GUIDES: Record<string, Guide> = {
       "The panel on the right changes colours, fonts and the words on screen.",
       "Press “Preview” to watch it, and “Export” when you are happy. Your video appears under Exports.",
     ],
-    tip: "Made a mess? The History panel on the right can put things back the way they were.",
+    tip: "Keys: Space plays and pauses · arrows nudge the selected item (hold Shift for bigger steps) · Delete removes it · Ctrl+D copies it. Made a mess? History on the right puts things back.",
   },
   projects: {
     title: "Your projects",

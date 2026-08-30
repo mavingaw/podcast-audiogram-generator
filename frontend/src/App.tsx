@@ -2520,6 +2520,53 @@ function Studio({
       // Fine: the choice lasts for this visit.
     }
   };
+  // Keyboard: Space plays, Delete removes the selected layer, arrows nudge
+  // it (Shift for bigger steps), Ctrl/Cmd+D duplicates, Escape deselects.
+  // Never while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable
+      );
+      if (typing || e.altKey) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        void togglePreview();
+        return;
+      }
+      const layer = layers.find((l) => l.id === selectedLayer);
+      if (!layer) return;
+      if (e.key === "Escape") {
+        setSelectedLayer("background");
+        return;
+      }
+      if (layer.type === "background" || layer.locked) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        deleteLayer(layer.id);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        duplicateLayer(layer.id);
+        return;
+      }
+      const step = e.shiftKey ? 5 : 1;
+      const nudge: Record<string, Partial<Layer>> = {
+        ArrowLeft: { x: Math.max(0, layer.x - step) },
+        ArrowRight: { x: Math.min(100 - layer.width, layer.x + step) },
+        ArrowUp: { y: Math.max(0, layer.y - step) },
+        ArrowDown: { y: Math.min(100 - layer.height, layer.y + step) },
+      };
+      if (nudge[e.key]) {
+        e.preventDefault();
+        updateLayer(layer.id, nudge[e.key]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   const watchedRender = useRef<string | null>(null);
   const [readyRender, setReadyRender] = useState<Job | null>(null);
   useEffect(() => {
