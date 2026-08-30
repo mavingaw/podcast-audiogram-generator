@@ -294,6 +294,22 @@ await step("studio", async () => {
   }
 });
 
+// Simple mode hides the advanced panels; "Everything" must bring them
+// back. The rest of these steps use those panels, so switch it on here.
+await step("studio-mode", async () => {
+  const toggle = page.locator(".studio-mode");
+  if ((await toggle.count()) === 0) {
+    problems.push("studio-mode: no Simple / Everything switch");
+    return;
+  }
+  await toggle.locator("button", { hasText: "Simple" }).click();
+  await page.waitForTimeout(300);
+  if (await page.locator(".music-panel").count()) problems.push("studio-mode: Simple still shows the music panel");
+  await toggle.locator("button", { hasText: "Everything" }).click();
+  await page.waitForTimeout(300);
+  if ((await page.locator(".music-panel").count()) === 0) problems.push("studio-mode: Everything did not bring the music panel back");
+});
+
 await step("studio-canvas", async () => {
   // The canvas is the part most likely to throw: it reads the scene, the
   // transcript, and the peaks all at once.

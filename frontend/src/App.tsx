@@ -2406,6 +2406,24 @@ function Studio({
   );
   // The moment the render you are waiting for finishes, say so — with the
   // video right there — rather than leaving a spinner to quietly vanish.
+  // Simple mode hides the panels a first clip does not need. Remembered per
+  // browser; the default is simple, because the person who needs
+  // "Everything" knows to look for it.
+  const [simple, setSimpleState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("kinder.studioSimple") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setSimple = (on: boolean) => {
+    setSimpleState(on);
+    try {
+      localStorage.setItem("kinder.studioSimple", on ? "1" : "0");
+    } catch {
+      // Fine: the choice lasts for this visit.
+    }
+  };
   const watchedRender = useRef<string | null>(null);
   const [readyRender, setReadyRender] = useState<Job | null>(null);
   useEffect(() => {
@@ -2942,6 +2960,10 @@ function Studio({
           )}
         </section>
         <aside className="inspector">
+          <div className="studio-mode" role="group" aria-label="How much to show">
+            <button className={simple ? "on" : ""} onClick={() => setSimple(true)} title="Just the basics: clip, look, words, layers">Simple</button>
+            <button className={simple ? "" : "on"} onClick={() => setSimple(false)} title="Every panel: music, effects, voice-over, shapes, batches">Everything</button>
+          </div>
           <div className="clip-property-block">
             <span className="sidebar-label">Clip</span>
             <div className="mini-fields">
@@ -2979,6 +3001,13 @@ function Studio({
             onScene={(patch) => saveScene(patch)}
             onMediaAdded={onMediaAdded}
           />
+          {simple && (
+            <p className="muted small simple-note">
+              Music, sound effects, voice-over, other shapes and batch tools are
+              under <button className="text-button inline" onClick={() => setSimple(false)}>Everything</button>.
+            </p>
+          )}
+          {!simple && (<>
           <VariantsPanel project={project} onCreated={onReloadProjects} />
           <Destinations project={project} jobs={jobs} />
           <BatchClips
@@ -3012,6 +3041,7 @@ function Studio({
             onChange={(next) => void saveSfx(next)}
             onSeek={(at) => seek(clipStart + at)}
           />
+          </>)}
           <div className="inspector-heading">
             <span className="sidebar-label">What is on the picture</span>
           </div>
@@ -3343,6 +3373,7 @@ function Studio({
               onSeek={seek}
             />
           </div>
+          {!simple && (
           <div className="transcript-editor">
             <div className="inspector-heading">
               <span className="sidebar-label">Full transcript</span>
@@ -3380,6 +3411,7 @@ function Studio({
               <p className="muted">Upload media and wait for transcription to edit captions.</p>
             )}
           </div>
+          )}
         </aside>
       </div>
       <Timeline

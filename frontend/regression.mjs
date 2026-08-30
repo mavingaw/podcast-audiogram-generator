@@ -82,6 +82,9 @@ try {
   const project = projects.find((p) => p.clip_start === 60 && p.clip_end === 80) || projects[0];
   projectId = project.id;
 
+  // The effects panel lives under "Everything".
+  await page.locator('.studio-mode button:has-text("Everything")').click().catch(() => {});
+  await page.waitForTimeout(400);
   await page.locator(".sfx-panel input").first().fill("whoosh");
   await page.waitForTimeout(3000);
   const plus = page.locator('.sfx-result button[title^="Add at"]').first();
