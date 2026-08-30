@@ -100,3 +100,24 @@ def test_signing_in_is_required(client):
 def test_an_unknown_id_is_not_found(client):
     login(client)
     assert client.delete("/api/media/no-such-thing").status_code == 404
+
+
+
+def test_the_light_listing_leaves_transcripts_out(client):
+    """1.5 MB a poll, per tab, for a field nothing in the poll read."""
+    login(client)
+    media = upload(client)
+    from app.db.models import MediaAsset
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        row = db.get(MediaAsset, media["id"])
+        row.transcript_json = '{"segments": [{"id": 1, "start": 0, "end": 1, "text": "hi"}]}'
+        db.commit()
+
+    light = client.get("/api/media?transcripts=0").json()["media"][0]
+    assert "transcript" not in light and light["has_transcript"] is True
+    full = client.get("/api/media").json()["media"][0]
+    assert full["transcript"]["segments"][0]["text"] == "hi"
+    one = client.get(f"/api/media/{media['id']}").json()["media"]
+    assert one["transcript"]["segments"][0]["text"] == "hi"

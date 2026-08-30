@@ -739,6 +739,10 @@ export const api = {
       { method: "POST" },
     );
   },
+  /** The library without transcripts: what the poll asks for. */
+  mediaLight: () => request<{ media: MediaAsset[] }>("/api/media?transcripts=0"),
+  /** One media record with its transcript. */
+  mediaOne: (mediaId: string) => request<{ media: MediaAsset }>(`/api/media/${mediaId}`),
   deleteMedia: (mediaId: string) =>
     request<{ ok: boolean; projects_affected: number }>(`/api/media/${mediaId}`, {
       method: "DELETE",

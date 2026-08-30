@@ -184,8 +184,8 @@ def serialize_user(user: User) -> dict:
     }
 
 
-def serialize_media(media: MediaAsset) -> dict:
-    return {
+def serialize_media(media: MediaAsset, transcript: bool = True) -> dict:
+    payload = {
         "has_waveform": bool(media.peaks_json),
         "id": media.id,
         "original_name": media.original_name,
@@ -195,8 +195,10 @@ def serialize_media(media: MediaAsset) -> dict:
         "created_at": media.created_at.isoformat(),
         "has_transcript": bool(media.transcript_json),
         "artwork_media_id": media.artwork_media_id,
-        "transcript": json.loads(media.transcript_json) if media.transcript_json else None,
     }
+    if transcript:
+        payload["transcript"] = json.loads(media.transcript_json) if media.transcript_json else None
+    return payload
 
 
 def serialize_project(project: Project) -> dict:
@@ -700,9 +702,31 @@ def delete_media(
 
 
 @router.get("/media")
-def list_media(db: Annotated[Session, Depends(get_db)], user: Annotated[User, Depends(current_user)]) -> dict:
+def list_media(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+    transcripts: bool = True,
+) -> dict:
+    """The library. `transcripts=0` leaves the word-level transcripts out.
+
+    A transcript of an hour-long episode is most of a megabyte, and the app
+    polls this list every couple of seconds while anything is running: with
+    two transcribed episodes that was 1.5 MB a poll, per open tab, for a
+    field nothing in the poll was reading. The poll asks for the light form
+    and fetches one media's transcript when it actually needs it.
+    """
     items = db.scalars(select(MediaAsset).where(MediaAsset.owner_id == user.id).order_by(MediaAsset.created_at.desc())).all()
-    return {"media": [serialize_media(item) for item in items]}
+    return {"media": [serialize_media(item, transcript=transcripts) for item in items]}
+
+
+@router.get("/media/{media_id}")
+def get_media(
+    media_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """One media record with its transcript."""
+    return {"media": serialize_media(_owned_media(db, media_id, user))}
 
 
 @router.get("/media/{media_id}/file")

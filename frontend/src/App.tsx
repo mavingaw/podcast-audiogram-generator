@@ -425,10 +425,32 @@ export function App() {
       }
       let busy = false;
       try {
-        const [jobResult, mediaResult] = await Promise.all([api.jobs(), api.media()]);
+        // The light list: no transcripts. With two transcribed episodes the
+        // full list was 1.5 MB a poll, per open tab, for a field nothing in
+        // the poll read. Transcripts already held are kept; one that has
+        // just finished is fetched on its own, a few per tick.
+        const [jobResult, mediaResult] = await Promise.all([api.jobs(), api.mediaLight()]);
         if (stopped) return;
         setJobs(jobResult.jobs);
-        setMedia(mediaResult.media);
+        const missing: string[] = [];
+        setMedia((current) => {
+          const known = new Map(current.map((item) => [item.id, item]));
+          return mediaResult.media.map((item) => {
+            const previous = known.get(item.id);
+            if (item.has_transcript && previous?.transcript) {
+              return { ...item, transcript: previous.transcript };
+            }
+            if (item.has_transcript && missing.length < 3) missing.push(item.id);
+            return { ...item, transcript: previous?.transcript ?? null };
+          });
+        });
+        for (const id of missing) {
+          const detail = await api.mediaOne(id).catch(() => null);
+          if (stopped || !detail) continue;
+          setMedia((current) =>
+            current.map((item) => (item.id === id ? { ...item, transcript: detail.media.transcript ?? null } : item)),
+          );
+        }
         busy = jobResult.jobs.some((job) =>
           ["queued", "running"].includes(job.status),
         );
