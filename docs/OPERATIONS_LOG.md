@@ -128,5 +128,11 @@ social-posting framework (YouTube complete; Meta/TikTok/LinkedIn/Pinterest/X
 wired, waiting on API keys), invite-code signups. Benchmark: 66-min episode →
 uploaded, transcribed, 10×2-min clips in **5m46s**.
 
+2026-08-30 late: five fixes from friend feedback, all verified with real renders
+and the live smoke: cover-art mouse drag (native image drag hijacked the pointer),
+instant arrow nudges, draggable captions (scene.captionY), live bars mirrored into
+a centred EQ mountain (was a lopsided spectrum wedge), cover-art upload chip, and
+eight new templates with genuinely different layouts.
+
 Nightly: Windows scheduled task "Kinder nightly check" (03:30) runs the
 public smoke + regression and logs to `runtime/logs/`.
