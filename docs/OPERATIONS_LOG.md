@@ -42,7 +42,10 @@ created with plain `docker run` (Unraid is template-managed, not compose-run).
   videos, music/sfx library
 - `/boot/config/plugins/dockerMan/templates-user/my-Kinder.xml` — the
   container template (ports, env vars incl. secrets)
-- The git repo on the Windows PC (full history of every change)
+- The git repo on the Windows PC (full history of every change), plus full
+  history bundles at `Documents\kinder-backup\` and
+  `/mnt/storage/backups/kinder-files/kinder-repo-*.bundle` on the box
+  (restore with `git clone kinder-repo-<date>.bundle`)
 
 ## Deploy recipe (the only correct way to ship a change)
 
@@ -71,6 +74,12 @@ Env vars only reach the app if they are in the **template XML** (compose's
   `zcat /mnt/storage/appdata/kinder-db-backups/daily/<file>.sql.gz | docker exec -i kinder-db psql -U kinder kinder`
 - Why no Redis: the job queue is deliberately database-backed so renders
   survive restarts; nothing in the app needs a cache/pub-sub layer.
+- Postgres is tuned for the box (188 GB RAM): `shared_buffers=2GB`,
+  `effective_cache_size=12GB`, `work_mem=32MB`, `wal_compression=on` — set
+  via `ALTER SYSTEM` (one statement per `psql -c`, it refuses batches).
+  Indexes added on `projects/jobs/media_assets (owner_id)` and
+  `jobs (subject_id)`. The app's engine uses `pool_pre_ping`, so a database
+  restart costs one silent reconnect, not a burst of errors.
 
 ## If the whole box died tomorrow (full rebuild)
 
