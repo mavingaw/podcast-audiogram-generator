@@ -1566,6 +1566,16 @@
     .app-header h1 { font-size: 18px; }
     .mobile-menu { display: inline-flex; }
     .header-actions .saved-dot { display: none; }
+    .mobile-new { display: inline-flex; }
+    /* Thumb-sized targets everywhere on a phone. */
+    .icon-button, .menu-button, .source-remove, .flow-next .primary, .creation-tile,
+    .destination-grid button, .template-grid button, .library-card > button { min-height: 44px; }
+    .context-menu button { padding: 12px 12px; font-size: 15px; }
+    .resize-handle { width: 18px; height: 18px; }
+    .resize-handle.nw, .resize-handle.sw, .resize-handle.w { left: -9px; }
+    .resize-handle.ne, .resize-handle.se, .resize-handle.e { right: -9px; }
+    .resize-handle.nw, .resize-handle.ne, .resize-handle.n { top: -9px; }
+    .resize-handle.sw, .resize-handle.se, .resize-handle.s { bottom: -9px; }
 
     .creation-grid,
     .project-cards,
@@ -2712,4 +2722,8 @@ html.large-text #root { zoom: 1.18; }
   .studio-mode button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
   .simple-note { margin: var(--s-2) 0 var(--s-3); }
   .text-button.inline { display: inline; padding: 0; font: inherit; color: var(--accent-text); text-decoration: underline; }
+}
+
+@layer views {
+  .mobile-new { display: none; padding: 8px 14px; border-radius: var(--r-md); font-weight: 700; }
 }

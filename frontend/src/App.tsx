@@ -654,6 +654,13 @@ export function App() {
           </div>
           <div className="header-actions">
             <span className="saved-dot">Local workspace</span>
+            <button
+              className="primary compact mobile-new"
+              onClick={() => setView("quick")}
+              title="Start a new clip"
+            >
+              + New
+            </button>
             <HelpButton
               view={view}
               onStart={() => {
