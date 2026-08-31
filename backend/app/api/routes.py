@@ -197,8 +197,24 @@ def serialize_user(user: User, db: Session | None = None) -> dict:
         "avatar_media_id": avatar,
         "is_admin": user.is_admin,
         "disabled": user.disabled,
-        "created_at": user.created_at.isoformat(),
+        "created_at": iso_utc(user.created_at),
     }
+
+
+def iso_utc(value) -> str | None:
+    """A datetime as ISO-8601 with an explicit UTC offset.
+
+    Storage is naive-UTC (Postgres `timestamp without time zone`); emitting
+    it bare made every browser parse the instant as local time, shifting
+    all displayed dates by the viewer's UTC offset.
+    """
+    if value is None:
+        return None
+    from datetime import timezone as _tz
+
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=_tz.utc)
+    return value.astimezone(_tz.utc).isoformat()
 
 
 def serialize_media(media: MediaAsset, transcript: bool = True) -> dict:
@@ -209,7 +225,7 @@ def serialize_media(media: MediaAsset, transcript: bool = True) -> dict:
         "content_type": media.content_type,
         "size_bytes": media.size_bytes,
         "duration_seconds": media.duration_seconds,
-        "created_at": media.created_at.isoformat(),
+        "created_at": iso_utc(media.created_at),
         "has_transcript": bool(media.transcript_json),
         "artwork_media_id": media.artwork_media_id,
     }
@@ -232,8 +248,8 @@ def serialize_project(project: Project) -> dict:
         # Whether a finished video (and so a poster frame) exists on disk.
         # A stat per row; the list is tens of projects, not thousands.
         "rendered": (settings.outputs_dir / project.id / "audiogram.mp4").exists(),
-        "created_at": project.created_at.isoformat(),
-        "updated_at": project.updated_at.isoformat(),
+        "created_at": iso_utc(project.created_at),
+        "updated_at": iso_utc(project.updated_at),
     }
 
 
@@ -247,8 +263,8 @@ def serialize_job(job: Job) -> dict:
         "message": job.message,
         "error": job.error,
         "result": json.loads(job.result_json) if job.result_json else None,
-        "created_at": job.created_at.isoformat(),
-        "updated_at": job.updated_at.isoformat(),
+        "created_at": iso_utc(job.created_at),
+        "updated_at": iso_utc(job.updated_at),
     }
 
 
@@ -1674,7 +1690,7 @@ def list_revisions(
         {
             "id": row.id,
             "label": row.label,
-            "created_at": row.created_at.isoformat(),
+            "created_at": iso_utc(row.created_at),
         }
         for row in rows
     ]}
@@ -2365,7 +2381,7 @@ def analytics(
     for project_id, kind, n, last in rows:
         entry = per.setdefault(project_id, {"project_id": project_id, "views": 0, "plays": 0, "last": None})
         entry["views" if kind == "view" else "plays"] += n
-        stamp = last.isoformat() if last else None
+        stamp = iso_utc(last)
         if stamp and (entry["last"] is None or stamp > entry["last"]):
             entry["last"] = stamp
     projects = {
@@ -2475,7 +2491,7 @@ def serialize_feed(feed: Feed, episodes: int = 0) -> dict:
         "aspect_ratio": feed.aspect_ratio,
         "template_id": feed.template_id,
         "auto_render": feed.auto_render,
-        "last_checked": feed.last_checked.isoformat() if feed.last_checked else None,
+        "last_checked": iso_utc(feed.last_checked),
         "last_error": feed.last_error,
         "episodes": episodes,
     }
@@ -2824,7 +2840,7 @@ def serialize_template(template: Template) -> dict:
         "name": template.name,
         "aspect_ratio": template.aspect_ratio,
         "scene": json.loads(template.scene_json or "{}"),
-        "created_at": template.created_at.isoformat(),
+        "created_at": iso_utc(template.created_at),
     }
 
 
