@@ -47,6 +47,19 @@ created with plain `docker run` (Unraid is template-managed, not compose-run).
   `/mnt/storage/backups/kinder-files/kinder-repo-*.bundle` on the box
   (restore with `git clone kinder-repo-<date>.bundle`)
 
+## If something breaks and nobody technical is around
+
+The current fully-verified build is frozen as a named safe point:
+git tag `v1.0-stable` (on GitHub too) and Docker image
+`podcast-audiogram-studio:stable` on the box. To return the app to it:
+
+    ssh root@192.168.1.58
+    docker tag podcast-audiogram-studio:stable podcast-audiogram-studio:gpu
+    /mnt/storage/appdata/podcast-audiogram-studio/apply-template.php Kinder
+
+That is the whole rollback - about fifteen seconds, no rebuild, no code.
+Retag a new `:stable` only after a build has passed every check and soaked.
+
 ## Deploy recipe (the only correct way to ship a change)
 
 1. `scp` changed files to
