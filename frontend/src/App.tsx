@@ -3316,6 +3316,8 @@ function Studio({
   }
   const nudgeSaveTimer = useRef<number | null>(null);
   const capSaveTimer = useRef<number | null>(null);
+  const trimSaveTimer = useRef<number | null>(null);
+  const trimPending = useRef<[number, number] | null>(null);
   const [capDragY, setCapDragY] = useState<number | null>(null);
   // The caption drag draft belongs to one project's one timeline;
   // switching projects or restoring history must not carry it over.
@@ -4346,9 +4348,18 @@ function Studio({
             mediaId={media.id}
             transcriptReady={Boolean(media.has_transcript)}
             onChange={(s, e) => {
+              // The trimmer reports every pointer move; saving each tick
+              // floods the server with PATCHes whose late responses can
+              // overwrite whatever edit follows. Track live, save on settle.
               setClipStart(s);
               setClipEnd(e);
-              void saveProjectMeta(s, e);
+              trimPending.current = [s, e];
+              if (trimSaveTimer.current) window.clearTimeout(trimSaveTimer.current);
+              trimSaveTimer.current = window.setTimeout(() => {
+                trimSaveTimer.current = null;
+                const pending = trimPending.current;
+                if (pending) void saveProjectMeta(pending[0], pending[1]);
+              }, 500);
             }}
           />
         </details>
