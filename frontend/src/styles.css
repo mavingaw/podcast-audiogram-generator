@@ -1548,7 +1548,7 @@
 /* ========================================================================== */
 @layer responsive {
   @media (max-width: 1180px) {
-    .studio-grid { grid-template-columns: 120px minmax(300px, 1fr) 280px; }
+    .studio-grid { grid-template-columns: 120px minmax(260px, 1fr) 300px; }
     .creation-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
@@ -3116,4 +3116,19 @@ md-outlined-select { width: 100%; }
   .magic-clip { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: none; color: #c792ea; cursor: pointer; }
   .magic-clip:hover { border-color: #c792ea; }
   .magic-clip:disabled { opacity: 0.6; cursor: default; }
+}
+
+@layer views {
+  /* The omnibar shape switch, styled as a segmented control (the CSS block
+     was lost to a later edit, leaving the buttons an unstyled blob). */
+  .aspect-switch { display: inline-flex; gap: var(--s-1); padding: 3px; border: 1px solid var(--line); border-radius: 10px; }
+  .aspect-switch button { padding: 4px var(--s-3); border-radius: 7px; border: 0; background: none; color: var(--text-subtle); cursor: pointer; font-size: 12px; line-height: 1; }
+  .aspect-switch button:hover { color: var(--text); }
+  .aspect-switch button.on { background: var(--surface-2, rgba(255,255,255,0.08)); color: var(--text); font-weight: 650; }
+
+  /* Number fields and pickers must shrink with their column; without this the
+     inputs' intrinsic min-width clipped the whole inspector on tablet. */
+  .inspector, .layer-inspector, .size-grid { min-width: 0; }
+  .size-field { min-width: 0; }
+  .size-field input, .layer-inspector input[type="number"] { width: 100%; min-width: 0; box-sizing: border-box; }
 }
