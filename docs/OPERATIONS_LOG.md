@@ -134,5 +134,19 @@ instant arrow nudges, draggable captions (scene.captionY), live bars mirrored in
 a centred EQ mountain (was a lopsided spectrum wedge), cover-art upload chip, and
 eight new templates with genuinely different layouts.
 
+2026-08-31: five-agent full review (backend API, render services, frontend,
+infrastructure, live QA). 17 findings fixed in commit 4621cb9 — highlights:
+signup-code throttle now enforced; batch-export ZIP was corrupt with 2+ clips
+(rebuilt over a temp file); password change revokes other sessions; GPU
+settings admin-only; LLM clip scorer now honours the generation lock (crash
+risk); loudness pass got a timeout; branding intro/outro keyed by role; font
+family names sanitized before ASS; plus seven frontend state/debounce/touch
+fixes. OPEN ITEM FOR THE OWNER: the Unraid SMB [storage] share is guest ok +
+writable — the whole LAN can read/write the Postgres dir, dumps, and backups;
+fix in Unraid Shares -> storage -> Security (private/secure), or exclude
+appdata + backups from the export. Dozzle (:8092) is unauthenticated log
+access to every container. Deferred findings live in the session triage notes
+and the repo issues-of-record below.
+
 Nightly: Windows scheduled task "Kinder nightly check" (03:30) runs the
 public smoke + regression and logs to `runtime/logs/`.
