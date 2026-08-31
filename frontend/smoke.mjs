@@ -79,6 +79,12 @@ await step("quick-create", async () => {
 // rather than merely rendered: destination, existing source, then the clipper's
 // transcript search — which is how you find a hook in a long episode.
 await step("quick-create-flow", async () => {
+  // The one-click magic clip must be offered on transcribed sources.
+  // Presence only: clicking would render a real project every night.
+  if ((await page.locator(".source-row").count()) > 0 &&
+      (await page.locator(".magic-clip").count()) === 0) {
+    problems.push("quick-create-flow: no magic-clip button on any source");
+  }
   await page.locator(".new-project").first().click();
   await page.waitForTimeout(500);
 

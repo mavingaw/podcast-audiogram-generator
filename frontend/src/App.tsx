@@ -1345,6 +1345,8 @@ function QuickCreate({
     null,
   );
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [magicBusy, setMagicBusy] = useState<string | null>(null);
+  const [magicNote, setMagicNote] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState(
     selectedMedia?.id ?? media[0]?.id ?? "",
   );
@@ -1474,6 +1476,7 @@ function QuickCreate({
             />
           </label>
           {uploadError && <p className="form-error">{uploadError}</p>}
+          {magicNote && <p className="panel-note">{magicNote}</p>}
           {media.length > 0 && (
             <div className="source-head">
               <span className="sidebar-label">
@@ -1543,8 +1546,51 @@ function QuickCreate({
                     setUploadError(errorMessage(error));
                   }
                 };
+                const magicClip = async () => {
+                  // The blueprint's zero-decision promise: one click, and
+                  // Kinder picks the best moment, applies the house look,
+                  // and renders it. Everything is changeable afterwards.
+                  setMagicBusy(m.id);
+                  setMagicNote(null);
+                  try {
+                    const look = templates[0];
+                    const result = await api.batchClips(m.id, {
+                      count: 1,
+                      aspect_ratio: "9:16",
+                      render: true,
+                      template_id: null,
+                      look: {
+                        template: look.id,
+                        background: look.background,
+                        accent: look.accent,
+                        captionPreset: look.captionPreset,
+                        captionColor: look.captionColor,
+                        font: look.font,
+                        captionFont: look.captionFont,
+                        waveStyle: look.waveStyle,
+                        peakAccent: look.peakAccent,
+                      },
+                    });
+                    setMagicNote(
+                      result.projects.length
+                        ? `Making your clip from ${m.original_name} - it will appear in Exports when ready.`
+                        : "Every good moment in this episode is already a clip.",
+                    );
+                    playSfx("confirm");
+                    await onRefresh();
+                  } catch (error) {
+                    setUploadError(errorMessage(error));
+                  } finally {
+                    setMagicBusy(null);
+                  }
+                };
                 const sourceMenu: MenuItem[] = [
                   { label: "Use this file", onSelect: () => setSourceId(m.id) },
+                  {
+                    label: "Magic clip - pick the best moment for me",
+                    disabled: !m.has_transcript || magicBusy === m.id,
+                    onSelect: () => void magicClip(),
+                  },
                   {
                     label: state.kind === "failed" ? "Transcribe again" : "Transcribe again",
                     hint: state.kind === "working" ? "already running" : undefined,
@@ -1591,6 +1637,16 @@ function QuickCreate({
                       }}
                     >
                       Try again
+                    </button>
+                  )}
+                  {m.has_transcript && (
+                    <button
+                      className="magic-clip"
+                      title="Magic clip: Kinder picks the best moment and makes the video"
+                      disabled={magicBusy === m.id}
+                      onClick={() => void magicClip()}
+                    >
+                      {magicBusy === m.id ? <Loader2 className="spin" size={15} /> : <WandSparkles size={15} />}
                     </button>
                   )}
                   <MenuButton items={sourceMenu} title={m.original_name} />

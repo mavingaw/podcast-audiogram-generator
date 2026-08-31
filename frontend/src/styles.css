@@ -3111,3 +3111,9 @@ html.large-text #root { zoom: 1.18; }
 }
 md-slider { width: 100%; min-inline-size: 0; }
 md-outlined-select { width: 100%; }
+
+@layer views {
+  .magic-clip { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: none; color: #c792ea; cursor: pointer; }
+  .magic-clip:hover { border-color: #c792ea; }
+  .magic-clip:disabled { opacity: 0.6; cursor: default; }
+}
