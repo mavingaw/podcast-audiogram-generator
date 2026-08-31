@@ -37,6 +37,10 @@ Push-Location $frontend
 & node smoke.mjs --base-url $base --username $user --password $pass 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { $failed = $true }
 
+"$(Get-Date -Format s) === mobile smoke against $base ===" | Tee-Object -FilePath $log -Append
+& node mobile-smoke.mjs --base-url $base --username $user --password $pass 2>&1 | Tee-Object -FilePath $log -Append
+if ($LASTEXITCODE -ne 0) { $failed = $true }
+
 "$(Get-Date -Format s) === regression against $base ===" | Tee-Object -FilePath $log -Append
 & node regression.mjs --base-url $base --username $user --password $pass --source "Season 4" 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { $failed = $true }
