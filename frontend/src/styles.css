@@ -994,6 +994,12 @@
   .canvas-area {
     display: grid;
     place-items: center;
+    /* A grid item defaults to min-width:auto and refuses to shrink below its
+       content (the canvas + padding), so at tablet width it overflowed its
+       track and painted over the inspector. min-width:0 lets the track
+       govern; overflow:hidden clips any residue. */
+    min-width: 0;
+    overflow: hidden;
     padding: var(--s-8);
     /* A faint dot grid separates the stage from the panels without a hard edge. */
     background:
