@@ -461,8 +461,10 @@ async function sendChunk(
         .catch(() => ({ detail: response.statusText }));
       const message = errorMessage(payload.detail) || response.statusText;
       // A rejected chunk is a rejected upload: out of order, expired, or over
-      // the size it declared. Retrying sends the same bytes to the same answer.
-      if (response.status !== 500 && response.status !== 502) {
+      // the size it declared. Retrying sends the same bytes to the same
+      // answer — but gateway hiccups (Cloudflare 502/503/504/52x) deserve
+      // another try before an hour-long upload is abandoned.
+      if (![500, 502, 503, 504, 520, 522, 524].includes(response.status)) {
         throw new Error(message);
       }
       lastError = new Error(message);

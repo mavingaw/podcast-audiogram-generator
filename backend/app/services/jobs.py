@@ -942,6 +942,14 @@ def _render_locked(db, job: Job, project: Project, work_dir: Path) -> None:
         clip_peaks = resample_peaks(
             media.peaks_json, 240, clip_start, clip_start + duration
         )
+    if (
+        not clip_peaks
+        and parsed_scene.waveform_layer() is not None
+        and parsed_scene.wave_style in ENVELOPE_STYLES
+    ):
+        # The still styles draw from this envelope; exporting silently with
+        # no waveform reads as a broken render, not a missing ingredient.
+        warnings.append("sound bars skipped: the audio's waveform data is not ready yet")
 
     # A transcribed voice-over's words are captioned at its moment.
     transcript = sfx_service.merge_voiceover_captions(transcript, sfx_cues, clip_start)

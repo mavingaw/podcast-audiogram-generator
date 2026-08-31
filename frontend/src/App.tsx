@@ -2945,6 +2945,9 @@ function Studio({
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const layersRef = useRef(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
+  // The freshest scene the app knows, for building whole-scene PATCHes.
+  const sceneRef = useRef<Record<string, unknown>>(project?.scene ?? {});
+  useEffect(() => { sceneRef.current = project?.scene ?? {}; }, [project?.scene]);
   // Layers can change from outside the canvas — applying a template, or the
   // caption-collision fix — and the canvas has to follow. The dependency is the
   // serialised layers rather than the scene object, which is a fresh reference
@@ -2952,12 +2955,18 @@ function Studio({
   const storedLayers = JSON.stringify(project?.scene?.layers ?? null);
   useEffect(() => {
     setLayers(getLayers(project));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, storedLayers]);
+  useEffect(() => {
+    // Only a different project or a history restore may reset these: keyed
+    // on the layers too, every debounced layer save wiped a half-typed
+    // title and snapped the paused playhead back to the clip start.
     setTitleDraft(project?.title ?? "");
     setClipStart(project?.clip_start ?? 0);
     setClipEnd(project?.clip_end ?? 45);
     setPlayhead(project?.clip_start ?? 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.id, project?.clip_start, project?.clip_end, project?.title, storedLayers]);
+  }, [project?.id, historyVersion]);
   useEffect(() => setTranscriptDraft(media?.transcript ?? null), [media?.id, media?.transcript]);
   // The playhead follows the audio, not a timer.
   //
@@ -3183,9 +3192,9 @@ function Studio({
         const from = capDragY ?? (project?.scene?.captionY as number | undefined) ?? band.top;
         const next = Math.max(2, Math.min(88, from + (e.key === "ArrowUp" ? -step : step)));
         setCapDragY(next);
-        if (nudgeSaveTimer.current) window.clearTimeout(nudgeSaveTimer.current);
-        nudgeSaveTimer.current = window.setTimeout(() => {
-          nudgeSaveTimer.current = null;
+        if (capSaveTimer.current) window.clearTimeout(capSaveTimer.current);
+        capSaveTimer.current = window.setTimeout(() => {
+          capSaveTimer.current = null;
           void saveScene({ captionY: next });
         }, 350);
         return;
@@ -3236,11 +3245,14 @@ function Studio({
   async function save(next: Layer[]) {
     layersRef.current = next;
     setLayers(next);
-    if (project) await onUpdate({ scene: { ...project.scene, layers: next } });
+    if (project) await onUpdate({ scene: { ...sceneRef.current, layers: next } });
   }
   async function saveScene(patch: Record<string, unknown>) {
     if (!project) return;
-    await onUpdate({ scene: { ...project.scene, ...patch } });
+    // Latest scene + the live layers: a PATCH replaces the scene wholesale,
+    // and one built from a render-time snapshot during a debounce window
+    // used to overwrite whichever edit it did not know about.
+    await onUpdate({ scene: { ...sceneRef.current, layers: layersRef.current, ...patch } });
   }
   async function saveCuts(next: CutRange[]) {
     if (!project) return;
@@ -3303,7 +3315,11 @@ function Studio({
     void save(next);
   }
   const nudgeSaveTimer = useRef<number | null>(null);
+  const capSaveTimer = useRef<number | null>(null);
   const [capDragY, setCapDragY] = useState<number | null>(null);
+  // The caption drag draft belongs to one project's one timeline;
+  // switching projects or restoring history must not carry it over.
+  useEffect(() => setCapDragY(null), [project?.id, historyVersion]);
   function updateLayer(id: string, updates: Partial<Layer>) {
     // Apply on screen immediately; persist once the burst of changes stops
     // (holding an arrow key fires dozens of repeats a second — one PATCH
@@ -3446,10 +3462,12 @@ function Studio({
     const up = async () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       await save(layersRef.current);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
   /**
    * Captions are positioned by the renderer from a single number — the top
@@ -3476,10 +3494,12 @@ function Studio({
     const up = async () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       await saveScene({ captionY: Math.round(latest * 10) / 10 });
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
   /**
    * Drag a corner or edge handle. The box is stored as percentages of the
@@ -3521,10 +3541,12 @@ function Studio({
     const up = async () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       await save(layersRef.current);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
   return (
     <div className="studio-editor">
@@ -4956,7 +4978,11 @@ function LayerContent({
       </div>
     );
   if (layer.type === "waveform")
-    return (
+    return waveStyle === "none" ? (
+      // The export draws nothing for this style; a preview still showing
+      // bars told the user the setting was broken.
+      <div className="mini-wave" />
+    ) : (
       <div className="mini-wave">
         <WaveformCanvas
           peaks={peaks}

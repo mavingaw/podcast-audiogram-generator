@@ -72,6 +72,10 @@ def save_font(db: Session, user_id: str, filename: str, data: bytes) -> dict:
     font_id = "uf-" + secrets.token_hex(4)
     stem = Path(filename).stem.strip() or "Font"
     family = family_from_bytes(data) or stem
+    # The family name is written into a comma-separated ASS style line and
+    # into fontconfig lookups: strip the characters that would let a crafted
+    # font shift fields or inject lines, and keep it a sane length.
+    family = "".join(c for c in family if c.isprintable() and c not in ",;{}\\").strip()[:80] or stem[:80]
     entries = list_fonts(db, user_id)
     if any(e["family"].lower() == family.lower() for e in entries):
         raise FontError(f"A font named {family} is already in your list")

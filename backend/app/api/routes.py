@@ -7,6 +7,8 @@ import uuid
 import secrets
 import shutil
 import time
+import os
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Annotated
@@ -23,7 +25,7 @@ from app.api.deps import current_admin, current_user, optional_user
 from app.core.config import settings
 from app.db.models import (
     AppSetting, Feed, FeedEpisode, Job, JobKind, JobStatus, MediaAsset, Project, ShareEvent, ShareLink,
-    SoundAsset, Template, User,
+    SessionToken, SoundAsset, Template, User,
 )
 from app.db.session import SessionLocal, get_db
 from app.services.auth import create_session, delete_session, hash_password, verify_password
@@ -274,6 +276,10 @@ def bootstrap(payload: BootstrapRequest, response: Response, db: Annotated[Sessi
     return {"user": serialize_user(user)}
 
 
+# Hashed once at import: a login miss must cost the same as a real check.
+_TIMING_DUMMY_HASH = hash_password("kinder-timing-dummy-not-a-real-password")
+
+
 @router.post("/auth/login")
 def login(
     payload: LoginRequest,
@@ -294,6 +300,10 @@ def login(
         )
 
     user = db.scalar(select(User).where(User.username == payload.username))
+    if user is None:
+        # Burn the same argon2 time an existing user would cost, so response
+        # timing does not say which usernames exist.
+        verify_password(payload.password, _TIMING_DUMMY_HASH)
     if not user or user.disabled or not verify_password(payload.password, user.password_hash):
         throttle.record_failure(key)
         # One message for both cases: saying which half was wrong tells an
@@ -389,12 +399,23 @@ def register(
         )
     required = signup_code_required()
     if required:
+        # The same throttle the sign-in form gets: recording failures without
+        # ever consulting them let the code be guessed at network speed.
+        key = throttle.key_for(request, "signup")
+        wait = throttle.retry_after(key)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many attempts. Try again in {int(wait) + 1} seconds.",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
         supplied = (payload.code or "").strip()
         # Compared in constant time: a code is a shared secret, and a timing
         # difference on a reachable address is a way to guess it.
         if not secrets.compare_digest(supplied, required):
-            throttle.record_failure(throttle.key_for(request, "signup"))
+            throttle.record_failure(key)
             raise HTTPException(status_code=403, detail="That sign-up code is not valid")
+        throttle.record_success(key)
     elif not signups_open(db):
         raise HTTPException(
             status_code=403,
@@ -476,6 +497,8 @@ class PasswordChange(BaseModel):
 @router.post("/me/password")
 def change_password(
     payload: PasswordChange,
+    request: Request,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user)],
 ) -> dict:
@@ -486,7 +509,13 @@ def change_password(
     if len(payload.new) < 10:
         raise HTTPException(status_code=400, detail="Use at least 10 characters")
     user.password_hash = hash_password(payload.new)
+    # Changing a password is what someone does when a cookie or device is
+    # compromised - every existing session dies with the old password, and
+    # this browser signs straight back in on a fresh one.
+    db.execute(delete(SessionToken).where(SessionToken.user_id == user.id))
+    token = create_session(db, user)
     db.commit()
+    set_session_cookie(response, token, request)
     return {"ok": True}
 
 
@@ -622,7 +651,7 @@ def get_gpu_settings(db: Annotated[Session, Depends(get_db)], _: Annotated[User,
 def set_gpu_settings(
     payload: GpuSettings,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[User, Depends(current_user)],
+    _: Annotated[User, Depends(current_admin)],
 ) -> dict:
     for key, value in payload.model_dump().items():
         setting = db.get(AppSetting, key) or AppSetting(key=key, value="")
@@ -1330,27 +1359,41 @@ def download_batch(
         raise HTTPException(status_code=404, detail="Nothing has finished rendering yet")
 
     def stream():
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
-            used: set[str] = set()
-            for project, path in ready:
-                # MP4 is already compressed; ZIP_STORED avoids spending CPU to
-                # save nothing.
-                safe = "".join(
-                    character if character.isalnum() or character in " -_" else "_"
-                    for character in project.title
-                ).strip() or project.id[:8]
-                name = f"{safe}.mp4"
-                suffix = 2
-                while name in used:
-                    name = f"{safe} ({suffix}).mp4"
-                    suffix += 1
-                used.add(name)
-                archive.write(path, arcname=name)
-                yield buffer.getvalue()
-                buffer.seek(0)
-                buffer.truncate(0)
-        yield buffer.getvalue()
+        # A real temp file, not a truncated BytesIO: zipfile records each
+        # entry's offset from tell(), and resetting the buffer between
+        # entries wrote a central directory whose offsets were all 0 - a
+        # corrupt archive whenever it held more than one clip.
+        # mkstemp + close-before-unlink: Windows refuses to delete a file
+        # any handle still has open.
+        fd, spool_name = tempfile.mkstemp(suffix=".zip", dir=settings.work_dir)
+        spool_path = Path(spool_name)
+        try:
+            with os.fdopen(fd, "w+b") as spool:
+                with zipfile.ZipFile(spool, "w", zipfile.ZIP_STORED) as archive:
+                    used: set[str] = set()
+                    for project, path in ready:
+                        # MP4 is already compressed; ZIP_STORED avoids
+                        # spending CPU to save nothing.
+                        safe = "".join(
+                            character if character.isalnum() or character in " -_" else "_"
+                            for character in project.title
+                        ).strip() or project.id[:8]
+                        name = f"{safe}.mp4"
+                        suffix = 2
+                        while name in used:
+                            name = f"{safe} ({suffix}).mp4"
+                            suffix += 1
+                        used.add(name)
+                        archive.write(path, arcname=name)
+                spool.flush()
+                spool.seek(0)
+                while True:
+                    chunk = spool.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        finally:
+            spool_path.unlink(missing_ok=True)
 
     stem = "".join(
         character if character.isalnum() or character in " -_" else "_"

@@ -383,13 +383,17 @@ def rate(text: str) -> dict | None:
     numbered = "\n".join(f"{index}. {line}" for index, line in enumerate(lines, start=1))
 
     try:
-        response = model.create_chat_completion(
-            messages=[{"role": "user", "content": PROMPT.format(lines=numbered)}],
-            max_tokens=MAX_OUTPUT_TOKENS,
-            temperature=0.2,
-            # Low variance matters more than variety: these are comparisons.
-            top_p=0.9,
-        )
+        # The same lock complete() takes: llama.cpp contexts are not
+        # thread-safe, and the scorer used to drive the model bare while
+        # the show-notes writer held this very lock.
+        with _generate_lock:
+            response = model.create_chat_completion(
+                messages=[{"role": "user", "content": PROMPT.format(lines=numbered)}],
+                max_tokens=MAX_OUTPUT_TOKENS,
+                temperature=0.2,
+                # Low variance matters more than variety: these are comparisons.
+                top_p=0.9,
+            )
         reply = response["choices"][0]["message"]["content"]
     except Exception as error:
         log.warning("Language model scoring failed: %s", error)

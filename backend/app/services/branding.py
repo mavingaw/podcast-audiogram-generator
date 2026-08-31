@@ -15,6 +15,7 @@ nothing after.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -129,7 +130,9 @@ def stitch(
     if not ids["intro"] and not ids["outro"]:
         return False
     try:
-        segments: list[Path] = []
+        # By role, not by list position: with both configured and the intro's
+        # file missing, positional indexing played the outro at both ends.
+        segments: dict[str, Path] = {}
         for role in ("intro", "outro"):
             media_id = ids[role]
             if not media_id:
@@ -144,12 +147,17 @@ def stitch(
                 continue
             cached = _segment_cache(media, width, height)
             if not cached.exists():
-                _normalise(source, cached, width, height)
-            segments.append(cached)
+                # Normalise into a private temp name and rename into place:
+                # two concurrent renders used to write the same cache file
+                # at once, and the loser could persist a truncated clip.
+                scratch = cached.with_name(f".{os.getpid()}-{cached.name}")
+                _normalise(source, scratch, width, height)
+                scratch.replace(cached)
+            segments[role] = cached
         if not segments:
             return False
-        intro = segments[0] if ids["intro"] else None
-        outro = segments[-1] if ids["outro"] else None
+        intro = segments.get("intro")
+        outro = segments.get("outro")
 
         # The main clip is re-muxed to the same fps/timebase family first so
         # the concat demuxer's -c copy never mixes stream parameters.

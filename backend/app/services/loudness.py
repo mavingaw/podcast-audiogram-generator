@@ -123,7 +123,10 @@ def measure(
     ]
     try:
         result = cancellation.run(
-            job_id, command, capture_output=True, text=True, errors="replace"
+            job_id, command, capture_output=True, text=True, errors="replace",
+            # Same guard the encode itself gets: without one, a wedged ffmpeg
+            # parked this render lane until the container restarted.
+            timeout=max(120.0, duration * 6),
         )
     except FileNotFoundError:
         log.warning("Loudness measurement skipped: ffmpeg not found")
