@@ -3067,3 +3067,47 @@ html.large-text #root { zoom: 1.18; }
   .clip-length-block[open] > summary { margin-bottom: var(--s-3); }
   .clip-length-block .clip-selector { margin-top: var(--s-2); }
 }
+
+@layer views {
+  /* Design controls fold away: one glance shows eight plain headings
+     instead of eight stacked panels of choices. */
+  .design-fold { border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; margin: 6px 0; }
+  .design-fold > summary { cursor: pointer; padding: 6px 0; display: flex; align-items: center; gap: 5px; }
+  .design-fold > summary::-webkit-details-marker { display: none; }
+  .design-fold > summary::before { content: "\25B8"; font-size: 10px; color: var(--text-subtle); }
+  .design-fold[open] > summary::before { content: "\25BE"; }
+  .design-fold[open] { padding-bottom: 10px; }
+}
+
+@layer views {
+  .layer-inspector { border: 1px solid var(--accent, #759a92); border-radius: 10px; padding: 10px; margin: 8px 0; display: grid; gap: 8px; }
+  .size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .size-field input { width: 100%; }
+  .align-row { display: flex; gap: 4px; }
+  .align-row button { flex: 1; padding: 5px 0; border-radius: 7px; border: 1px solid var(--line); background: none; color: inherit; cursor: pointer; }
+  .align-row button.on { border-color: var(--text); font-weight: 650; }
+}
+
+/* Material 3 tokens mapped to Kinder's palette - md-* controls pick these
+   up automatically and match the rest of the app. */
+:root {
+  --md-sys-color-primary: #7ec3ff;
+  --md-sys-color-on-primary: #0b1220;
+  --md-sys-color-primary-container: #1e3a5f;
+  --md-sys-color-on-primary-container: #d6e9ff;
+  --md-sys-color-secondary: #9ab7a0;
+  --md-sys-color-on-secondary: #10201a;
+  --md-sys-color-surface: #12151b;
+  --md-sys-color-surface-container: #1a1e26;
+  --md-sys-color-surface-container-high: #222733;
+  --md-sys-color-surface-container-highest: #2a303d;
+  --md-sys-color-on-surface: #e8ecf3;
+  --md-sys-color-on-surface-variant: #9aa3b2;
+  --md-sys-color-outline: #4a5261;
+  --md-sys-color-outline-variant: #2c3340;
+  --md-sys-color-error: #ffb4ab;
+  --md-slider-inactive-track-color: #2c3340;
+  --md-switch-track-outline-color: #4a5261;
+}
+md-slider { width: 100%; min-inline-size: 0; }
+md-outlined-select { width: 100%; }

@@ -1959,6 +1959,9 @@ def _text_filters(
         # ran off both edges of the frame at the height-derived size, and
         # fix_bounds only slides a line back in, it does not shrink it.
         text, font_size = fit_text(text, box_width, box_height)
+        # The user's size dial, applied over the fitted size; fix_bounds
+        # keeps an enlarged line inside the frame.
+        font_size = max(12, int(font_size * layer.font_scale))
 
         # Written beside the other render inputs and named relatively, the same
         # way captions.ass is: FFmpeg runs with the work directory as its cwd.
@@ -1981,10 +1984,16 @@ def _text_filters(
             "expansion=none",
             f"fontcolor={ffmpeg_color(layer.paint('#ffffff'))}",
             f"fontsize={font_size}",
-            # Centre the text inside the box the editor drew, matching how the
-            # canvas preview lays the layer out; the entrance offset drifts
-            # it in from off that mark.
-            f"x={x}+({box_width}-text_w)/2{dx}",
+            # Placed inside the box the editor drew - centred, or pinned to
+            # the edge the user picked; the entrance offset drifts it in
+            # from off that mark.
+            (
+                f"x={x}{dx}"
+                if layer.align == "left"
+                else f"x={x}+({box_width}-text_w){dx}"
+                if layer.align == "right"
+                else f"x={x}+({box_width}-text_w)/2{dx}"
+            ),
             f"y={y}+({box_height}-text_h)/2{dy}",
             # Pull a too-wide line back inside the frame rather than clipping it.
             "fix_bounds=1",
@@ -2189,15 +2198,17 @@ def _write_ass(
     if font_name is None:
         font_name = font_family_for(parsed.caption_font if parsed else DEFAULT_FONT)
 
-    # Width, not height — see CAPTION_PRESETS for why.
-    font_size = max(18, int(width * preset["size_ratio"]))
+    # Width, not height — see CAPTION_PRESETS for why. The user's size
+    # dial multiplies the preset.
+    caption_scale = parsed.caption_scale if parsed else 1.0
+    font_size = max(14, int(width * preset["size_ratio"] * caption_scale))
     margin_v = int(height * preset["margin_ratio"])
     if parsed is not None and parsed.caption_y is not None:
         # The user dragged the captions somewhere. caption_y is the band's
         # top in percent; MarginV measures from the bottom of the frame to
         # the bottom of the text, so convert through the band's own height
         # (two lines at the preset's size, scaled by the frame's shape).
-        block = 2 * preset["size_ratio"] * (width / height)
+        block = 2 * preset["size_ratio"] * caption_scale * (width / height)
         margin_v = int(height * min(0.92, max(0.01, 1 - parsed.caption_y / 100 - block)))
     margin_h = int(width * 0.08)
     bold = -1 if preset["bold"] else 0

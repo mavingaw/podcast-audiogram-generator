@@ -237,15 +237,14 @@ export function DesignPanel({
         />
       </label>
 
-      <div className="design-group">
-        <span className="sidebar-label">Background image</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Background image</summary>
         {sourceIsVideo && (
           <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={scene.videoBackground !== false}
-              onChange={(event) => void onScene({ videoBackground: event.target.checked })}
-            />
+            <md-switch
+              selected={scene.videoBackground !== false}
+              onInput={(event) => void onScene({ videoBackground: (event.target as unknown as { selected: boolean }).selected })}
+            ></md-switch>
             Use the video's own picture as the background
           </label>
         )}
@@ -300,37 +299,35 @@ export function DesignPanel({
           <>
             <label>
               Blur {blur.toFixed(0)}
-              <input
-                type="range"
-                min="0"
-                max="60"
-                step="1"
+              <md-slider
+                min={0}
+                max={60}
+                step={1}
+                labeled
                 value={blur}
-                onChange={(event) => patchBackground({ blur: Number(event.target.value) })}
+                onInput={(event) => patchBackground({ blur: Number((event.target as unknown as { value: number }).value) })}
               />
             </label>
             <label>
               Darken {Math.round(dim * 100)}%
-              <input
-                type="range"
-                min="0"
-                max="95"
-                step="1"
+              <md-slider
+                min={0}
+                max={95}
+                step={1}
+                labeled
                 value={Math.round(dim * 100)}
-                onChange={(event) =>
-                  patchBackground({ dim: Number(event.target.value) / 100 })
+                onInput={(event) =>
+                  patchBackground({ dim: Number((event.target as unknown as { value: number }).value) / 100 })
                 }
               />
             </label>
           </>
         )}
-      </div>
+      </details>
 
       {artwork && (
-        <div className="design-group">
-          <span className="sidebar-label">
-            <ImageIcon size={12} /> Cover art
-          </span>
+        <details className="design-group design-fold">
+          <summary className="sidebar-label"><ImageIcon size={12} /> Cover art</summary>
           <div className="image-picker">
             <button
               className={`image-chip none ${artwork.mediaId ? "" : "selected"}`}
@@ -364,87 +361,87 @@ export function DesignPanel({
           {images.length === 0 && (
             <p className="muted">No pictures yet — tap the arrow to add your show's cover.</p>
           )}
-        </div>
+        </details>
       )}
 
-      <div className="design-group">
-        <span className="sidebar-label">Where is this going?</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Where is this going?</summary>
         <p className="muted">
           Pick the app you will post to and Kinder shades the parts of the
           screen that app covers with its own buttons, so nothing important
           ends up hidden.
         </p>
-        <select
+        <md-outlined-select
           value={String(scene.platform ?? "")}
-          onChange={(event) => void onScene({ platform: event.target.value })}
+          onInput={(event) => void onScene({ platform: (event.target as unknown as { value: string }).value })}
         >
-          <option value="">No guide</option>
+          <md-select-option value=""><div slot="headline">No guide</div></md-select-option>
           {PLATFORMS.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
+            <md-select-option key={value} value={value} selected={String(scene.platform ?? "") === value}>
+              <div slot="headline">{label}</div>
+            </md-select-option>
           ))}
-        </select>
-      </div>
+        </md-outlined-select>
+      </details>
 
-      <div className="design-group">
-        <span className="sidebar-label">Sound bars</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Sound bars</summary>
         <p className="muted">
           The bars that move with the voice. Choose a shape, or turn them off.
         </p>
         <label>
           Style
-          <select
+          <md-outlined-select
             value={String(scene.waveStyle ?? "envelope")}
-            onChange={(event) => void onScene({ waveStyle: event.target.value })}
+            onInput={(event) => void onScene({ waveStyle: (event.target as unknown as { value: string }).value })}
           >
             {WAVE_STYLES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+              <md-select-option key={value} value={value} selected={String(scene.waveStyle ?? "envelope") === value}>
+                <div slot="headline">{label}</div>
+              </md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
-      </div>
+      </details>
 
-      <div className="design-group">
-        <span className="sidebar-label">Font</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Font</summary>
         <p className="muted">
           One font for the title, one for the words on screen. Bebas Neue is
           tall and loud — great for a title, hard to read as captions.
         </p>
         <label>
           Titles
-          <select
+          <md-outlined-select
             value={String(scene.font ?? "inter")}
-            onChange={(event) => void onScene({ font: event.target.value })}
+            onInput={(event) => void onScene({ font: (event.target as unknown as { value: string }).value })}
           >
             {FONTS.map(([id, label]) => (
-              <option key={id} value={id}>{label}</option>
+              <md-select-option key={id} value={id} selected={String(scene.font ?? "inter") === id}><div slot="headline">{label}</div></md-select-option>
             ))}
             {customFonts.map((f) => (
-              <option key={f.id} value={f.id}>{f.family} (yours)</option>
+              <md-select-option key={f.id} value={f.id} selected={String(scene.font ?? "inter") === f.id}><div slot="headline">{f.family} (yours)</div></md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
         <label>
           Captions
-          <select
+          <md-outlined-select
             value={String(scene.captionFont ?? "inter")}
-            onChange={(event) => void onScene({ captionFont: event.target.value })}
+            onInput={(event) => void onScene({ captionFont: (event.target as unknown as { value: string }).value })}
           >
             {FONTS.map(([id, label]) => (
-              <option key={id} value={id}>{label}</option>
+              <md-select-option key={id} value={id} selected={String(scene.captionFont ?? "inter") === id}><div slot="headline">{label}</div></md-select-option>
             ))}
             {customFonts.map((f) => (
-              <option key={f.id} value={f.id}>{f.family} (yours)</option>
+              <md-select-option key={f.id} value={f.id} selected={String(scene.captionFont ?? "inter") === f.id}><div slot="headline">{f.family} (yours)</div></md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
-      </div>
+      </details>
 
-      <div className="design-group">
-        <span className="sidebar-label">Are the words early or late?</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Are the words early or late?</summary>
         <p className="muted">
           If the captions light up a moment after the word is said, slide
           this to bring them earlier. Watch the preview to check.
@@ -453,21 +450,21 @@ export function DesignPanel({
           {Number(scene.captionOffset ?? 0) === 0
             ? "In step with the audio"
             : `${Number(scene.captionOffset ?? 0) > 0 ? "Later" : "Earlier"} by ${Math.abs(Number(scene.captionOffset ?? 0)).toFixed(2)}s`}
-          <input
-            type="range"
+          <md-slider
             min={-1}
             max={1}
             step={0.05}
+            labeled
             value={Number(scene.captionOffset ?? 0)}
-            onChange={(event) =>
-              void onScene({ captionOffset: Number(event.target.value) })
+            onInput={(event) =>
+              void onScene({ captionOffset: Number((event.target as unknown as { value: number }).value) })
             }
           />
         </label>
-      </div>
+      </details>
 
-      <div className="design-group">
-        <span className="sidebar-label">Voice volume</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Voice volume</summary>
         <p className="muted">
           The finished video is always set to the volume the apps expect, so
           you rarely need this. Fade in and fade out soften the very start
@@ -476,57 +473,54 @@ export function DesignPanel({
         <label>
           Level {Number(scene.voiceGainDb ?? 0) >= 0 ? "+" : ""}
           {Number(scene.voiceGainDb ?? 0).toFixed(1)} dB
-          <input
-            type="range"
+          <md-slider
             min={-12}
             max={12}
             step={0.5}
+            labeled
             value={Number(scene.voiceGainDb ?? 0)}
-            onChange={(event) =>
-              void onScene({ voiceGainDb: Number(event.target.value) })
+            onInput={(event) =>
+              void onScene({ voiceGainDb: Number((event.target as unknown as { value: number }).value) })
             }
           />
         </label>
         <div className="fade-row">
           <label>
             Fade in {Number(scene.fadeIn ?? 0).toFixed(1)}s
-            <input
-              type="range"
+            <md-slider
               min={0}
               max={3}
               step={0.1}
+              labeled
               value={Number(scene.fadeIn ?? 0)}
-              onChange={(event) => void onScene({ fadeIn: Number(event.target.value) })}
+              onInput={(event) => void onScene({ fadeIn: Number((event.target as unknown as { value: number }).value) })}
             />
           </label>
           <label>
             Fade out {Number(scene.fadeOut ?? 0).toFixed(1)}s
-            <input
-              type="range"
+            <md-slider
               min={0}
               max={3}
               step={0.1}
+              labeled
               value={Number(scene.fadeOut ?? 0)}
-              onChange={(event) => void onScene({ fadeOut: Number(event.target.value) })}
+              onInput={(event) => void onScene({ fadeOut: Number((event.target as unknown as { value: number }).value) })}
             />
           </label>
         </div>
-      </div>
+      </details>
 
-      <div className="design-group">
-        <span className="sidebar-label">Captions</span>
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Captions</summary>
         <p className="muted">
           Most people watch with the sound off, so the words on screen are
           what they actually get. Pick a style below.
         </p>
         <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={scene.wordHighlight !== false}
-            onChange={(event) =>
-              void onScene({ wordHighlight: event.target.checked })
-            }
-          />
+          <md-switch
+            selected={scene.wordHighlight !== false}
+            onInput={(event) => void onScene({ wordHighlight: (event.target as unknown as { selected: boolean }).selected })}
+          ></md-switch>
           <span>
             Highlight each word as it is spoken
             <small>Uses the transcript's word timings. Off burns whole lines.</small>
@@ -539,16 +533,16 @@ export function DesignPanel({
         />
         <label>
           Style
-          <select
+          <md-outlined-select
             value={String(scene.captionPreset ?? "social")}
-            onChange={(event) => void onScene({ captionPreset: event.target.value })}
+            onInput={(event) => void onScene({ captionPreset: (event.target as unknown as { value: string }).value })}
           >
             {CAPTION_PRESETS.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+              <md-select-option key={value} value={value} selected={String(scene.captionPreset ?? "social") === value}>
+                <div slot="headline">{label}</div>
+              </md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
         <label>
           Colour
@@ -558,7 +552,7 @@ export function DesignPanel({
             onChange={(event) => void onScene({ captionColor: event.target.value })}
           />
         </label>
-      </div>
+      </details>
     </div>
   );
 }

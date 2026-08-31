@@ -112,6 +112,8 @@ type Layer = {
   text?: string;
   startTime?: number;
   endTime?: number;
+  fontScale?: number;
+  align?: string;
 };
 // Mirrors PLATFORM_SAFE_AREAS in backend/app/services/scene.py.
 const SAFE_AREAS: Record<string, { label: string; bottom: number; top: number; right: number }> = {
@@ -3750,6 +3752,7 @@ function Studio({
                     <LayerContent
                       layer={layer}
                       waveStyle={String(project?.scene?.waveStyle ?? "pulse")}
+                      captionScale={Number(project?.scene?.captionScale ?? 1)}
                       title={project?.title ?? "Episode title"}
                       media={media}
                       accent={accent}
@@ -3898,6 +3901,120 @@ function Studio({
               />
             </div>
           </div>
+          {(() => {
+            const layer = layers.find((l) => l.id === selectedLayer);
+            if (!layer || layer.type === "background") return null;
+            const num = (v: number) => Math.round(v * 10) / 10;
+            const field = (
+              label: string,
+              value: number,
+              apply: (v: number) => void,
+              min = -50,
+              max = 150,
+            ) => (
+              <label key={label} className="size-field">
+                {label}
+                <input
+                  type="number"
+                  value={num(value)}
+                  min={min}
+                  max={max}
+                  step={1}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) apply(Math.max(min, Math.min(max, v)));
+                  }}
+                />
+              </label>
+            );
+            return (
+              <div className="layer-inspector">
+                <span className="sidebar-label">Selected: {layer.name || layer.type}</span>
+                {layer.type !== "captions" && (
+                  <div className="size-grid">
+                    {field("Left", layer.x, (v) => updateLayer(layer.id, { x: v }))}
+                    {field("Top", layer.y, (v) => updateLayer(layer.id, { y: v }))}
+                    {field("Width", layer.width, (v) => updateLayer(layer.id, { width: v }), 1, 200)}
+                    {field("Height", layer.height, (v) => updateLayer(layer.id, { height: v }), 1, 200)}
+                  </div>
+                )}
+                {layer.type === "title" && (
+                  <>
+                    <label>
+                      Text size
+                      <md-slider
+                        min={50} max={160} step={5} labeled
+                        value={Math.round(((layer.fontScale as number) ?? 1) * 100)}
+                        onInput={(e) => updateLayer(layer.id, { fontScale: Number((e.target as unknown as { value: number }).value) / 100 })}
+                      ></md-slider>
+                    </label>
+                    <div className="align-row" role="group" aria-label="Text alignment">
+                      {(["left", "center", "right"] as const).map((a) => (
+                        <button
+                          key={a}
+                          className={((layer.align as string) ?? "center") === a ? "on" : ""}
+                          onClick={() => updateLayer(layer.id, { align: a })}
+                        >
+                          {a === "left" ? "Left" : a === "center" ? "Middle" : "Right"}
+                        </button>
+                      ))}
+                    </div>
+                    <label>
+                      Colour
+                      <input
+                        type="color"
+                        value={(layer.color as string) ?? "#ffffff"}
+                        onChange={(e) => updateLayer(layer.id, { color: e.target.value })}
+                      />
+                    </label>
+                  </>
+                )}
+                {layer.type === "captions" && (
+                  <>
+                    <label>
+                      Words size
+                      <md-slider
+                        min={60} max={160} step={5} labeled
+                        value={Math.round(Number(project?.scene?.captionScale ?? 1) * 100)}
+                        onInput={(e) => void saveScene({ captionScale: Number((e.target as unknown as { value: number }).value) / 100 })}
+                      ></md-slider>
+                    </label>
+                    <p className="muted">Drag the captions up or down on the video to move them.</p>
+                  </>
+                )}
+                {layer.type === "artwork" && (
+                  <label>
+                    Rounded corners
+                    <md-slider
+                      min={0} max={50} step={1} labeled
+                      value={Math.round(((layer.radius as number) ?? 0) * 100)}
+                      onInput={(e) => updateLayer(layer.id, { radius: Number((e.target as unknown as { value: number }).value) / 100 })}
+                    ></md-slider>
+                  </label>
+                )}
+                {layer.type === "waveform" && (
+                  <label>
+                    Colour
+                    <input
+                      type="color"
+                      value={(layer.color as string) ?? "#759a92"}
+                      onChange={(e) => updateLayer(layer.id, { color: e.target.value })}
+                    />
+                  </label>
+                )}
+                {layer.type !== "captions" && (
+                  <label>
+                    See-through
+                    <md-slider
+                      min={5} max={100} step={5} labeled
+                      value={Math.round(((layer.opacity as number) ?? 1) * 100)}
+                      onInput={(e) => updateLayer(layer.id, { opacity: Number((e.target as unknown as { value: number }).value) / 100 })}
+                    ></md-slider>
+                  </label>
+                )}
+              </div>
+            );
+          })()}
           <DesignPanel
             project={project}
             media={allMedia}
@@ -4994,6 +5111,7 @@ function LayerContent({
   captionPreset,
   live = null,
   waveStyle = "pulse",
+  captionScale = 1,
 }: {
   layer: Layer;
   title: string;
@@ -5004,6 +5122,7 @@ function LayerContent({
   captionPreset?: string;
   live?: LiveBars | null;
   waveStyle?: string;
+  captionScale?: number;
 }) {
   if (layer.type === "artwork")
     return layer.mediaId ? (
@@ -5038,12 +5157,28 @@ function LayerContent({
     );
   if (layer.type === "captions")
     return (
-      <span className="layer-caption" data-preset={captionPreset ?? "social"}>
+      <span
+        className="layer-caption"
+        data-preset={captionPreset ?? "social"}
+        style={captionScale !== 1 ? { fontSize: `${captionScale * 100}%` } : undefined}
+      >
         {caption ?? layer.text ?? "Captions appear here as the clip plays."}
       </span>
     );
   if (layer.type === "title")
-    return <span className="layer-title">{previewTokens(layer.text ?? title, title)}</span>;
+    return (
+      <span
+        className="layer-title"
+        style={{
+          textAlign: (layer.align as "left" | "center" | "right") ?? "center",
+          width: "100%",
+          display: "block",
+          fontSize: `${((layer.fontScale as number) ?? 1) * 100}%`,
+        }}
+      >
+        {previewTokens(layer.text ?? title, title)}
+      </span>
+    );
   return null;
 }
 function Timeline({
