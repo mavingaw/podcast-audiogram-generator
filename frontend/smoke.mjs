@@ -356,6 +356,55 @@ await step("resize-layer", async () => {
   }
 });
 
+// The exact gesture a friend reported broken: grab a layer's body with the
+// mouse and move it. A native image drag used to hijack this on artwork.
+await step("drag-layer", async () => {
+  const layer = page.locator(".canvas-layer.layer-title").first();
+  if ((await layer.count()) === 0) return;
+  const before = await layer.boundingBox();
+  if (!before) return;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 60, before.y + before.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const after = await layer.boundingBox();
+  const moved = after && (Math.abs(after.x - before.x) > 30 || Math.abs(after.y - before.y) > 20);
+  if (!moved) problems.push("drag-layer: dragging a layer's body did not move it");
+  // Put it back.
+  if (after) {
+    await page.mouse.move(after.x + after.width / 2, after.y + after.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+  }
+});
+
+// Captions used to snap back when dragged; now they must stay put.
+await step("drag-captions", async () => {
+  const captions = page.locator(".canvas-layer.layer-captions").first();
+  if ((await captions.count()) === 0) return;
+  const before = await captions.boundingBox();
+  if (!before) return;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 - 80, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  const after = await captions.boundingBox();
+  if (!after || before.y - after.y < 40)
+    problems.push(`drag-captions: captions did not stay where they were dropped (${before.y} -> ${after?.y})`);
+  // Back down to roughly where they were.
+  if (after) {
+    await page.mouse.move(after.x + after.width / 2, after.y + after.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+  }
+});
+
 // Arrow keys must move the selected layer; typing in a field must not.
 await step("keyboard", async () => {
   const title = page.locator(".canvas-layer.layer-title").first();

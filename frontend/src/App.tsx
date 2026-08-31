@@ -2095,7 +2095,7 @@ function ClipSelector({
     event.preventDefault();
     const point = position(event.clientX);
     dragRef.current = { mode, origin: point, start, end };
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); } catch { /* best-effort */ }
   };
   const move = (event: React.PointerEvent) => {
     const drag = dragRef.current;
@@ -3416,7 +3416,7 @@ function Studio({
     const sy = e.clientY;
     const ox = layer.x;
     const oy = layer.y;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
     const move = (event: PointerEvent) =>
       setLayers((current) => {
         const next = current.map((l) =>
@@ -3468,7 +3468,7 @@ function Studio({
     const from = capDragY ?? (project?.scene?.captionY as number | undefined) ?? band.top;
     const sy = e.clientY;
     let latest = from;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
     const move = (event: PointerEvent) => {
       latest = Math.max(2, Math.min(88, from + ((event.clientY - sy) / rect.height) * 100));
       setCapDragY(latest);
@@ -3495,7 +3495,7 @@ function Studio({
     const sy = e.clientY;
     const o = { x: layer.x, y: layer.y, w: layer.width, h: layer.height };
     const MIN = 4;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
     const move = (event: PointerEvent) => {
       const dx = ((event.clientX - sx) / rect.width) * 100;
       const dy = ((event.clientY - sy) / rect.height) * 100;
@@ -5063,7 +5063,7 @@ function Timeline({
     const from = Math.max(0, layer.startTime ?? 0);
     const to = Math.min(duration, Math.max(from + 0.5, layer.endTime ?? duration));
     const target = event.currentTarget as HTMLElement;
-    target.setPointerCapture(event.pointerId);
+    try { target.setPointerCapture(event.pointerId); } catch { /* best-effort */ }
 
     const onMove = (moveEvent: PointerEvent) => {
       const point = at(moveEvent.clientX);
