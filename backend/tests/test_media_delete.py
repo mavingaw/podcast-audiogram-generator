@@ -117,7 +117,8 @@ def test_the_light_listing_leaves_transcripts_out(client):
 
     light = client.get("/api/media?transcripts=0").json()["media"][0]
     assert "transcript" not in light and light["has_transcript"] is True
-    full = client.get("/api/media").json()["media"][0]
+    # The heavy form is opt-in now; the default is the light listing.
+    full = client.get("/api/media?transcripts=1").json()["media"][0]
     assert full["transcript"]["segments"][0]["text"] == "hi"
     one = client.get(f"/api/media/{media['id']}").json()["media"]
     assert one["transcript"]["segments"][0]["text"] == "hi"

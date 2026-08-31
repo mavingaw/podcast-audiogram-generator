@@ -970,9 +970,9 @@ def delete_media(
 def list_media(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user)],
-    transcripts: bool = True,
+    transcripts: bool = False,
 ) -> dict:
-    """The library. `transcripts=0` leaves the word-level transcripts out.
+    """The library. Transcripts stay out unless `transcripts=1` asks.
 
     A transcript of an hour-long episode is most of a megabyte, and the app
     polls this list every couple of seconds while anything is running: with
