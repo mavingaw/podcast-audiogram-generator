@@ -52,3 +52,17 @@ def test_transcript_downloads(monkeypatch, tmp_path):
     txt = client.get(f"/api/media/{upload['id']}/transcript.txt")
     assert txt.text == "hello\nthere\n"
     assert client.get(f"/api/media/{upload['id']}/transcript.doc").status_code == 400
+
+
+def test_update_rejects_an_unknown_aspect_ratio(monkeypatch, tmp_path):
+    from tests.test_api import create_test_client
+
+    client = create_test_client(monkeypatch, tmp_path)
+    make(client)
+    project = client.post("/api/projects", json={"title": "shape guard"}).json()["project"]
+    ok = client.patch(f"/api/projects/{project['id']}", json={"aspect_ratio": "1:1"})
+    assert ok.status_code == 200 and ok.json()["project"]["aspect_ratio"] == "1:1"
+    bad = client.patch(f"/api/projects/{project['id']}", json={"aspect_ratio": "banana"})
+    assert bad.status_code == 400
+    # The bad value did not land.
+    assert client.get(f"/api/projects/{project['id']}").json()["project"]["aspect_ratio"] == "1:1"

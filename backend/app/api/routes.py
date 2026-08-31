@@ -1648,6 +1648,12 @@ def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
     updates = payload.model_dump(exclude_unset=True)
 
+    # Validate the shape here too, not only on create: this path applies
+    # fields with a raw setattr, so an unknown ratio would otherwise be
+    # stored and only fall back to 9:16 by luck at render time.
+    if "aspect_ratio" in updates and updates["aspect_ratio"] not in RATIO_DIMENSIONS:
+        raise HTTPException(status_code=400, detail="Unknown aspect ratio")
+
     # Keep how it was before applying the change. Throttled, so dragging a
     # slider produces one entry rather than one per frame; see
     # services/revisions.py.
