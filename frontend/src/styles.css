@@ -1563,7 +1563,16 @@
     .sidebar { display: none; }
     .app-main { padding: 0 var(--s-4) var(--s-8); }
     .app-header { height: 64px; }
-    .app-header h1 { font-size: 18px; }
+    /* One line, ellipsized. A long episode title used to wrap into a tall
+       block that painted straight over the toolbar underneath. */
+    .app-header h1 {
+      font-size: 16px;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .mobile-menu { display: inline-flex; }
     .header-actions .saved-dot { display: none; }
     .mobile-new { display: inline-flex; }
