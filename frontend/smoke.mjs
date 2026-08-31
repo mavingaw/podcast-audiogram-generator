@@ -381,6 +381,45 @@ await step("drag-layer", async () => {
   }
 });
 
+// The Design panel's dropdowns are Material components now; picking an
+// option must actually change the scene, not just look pretty.
+await step("material-select", async () => {
+  const fold = page.locator('.design-fold summary:has-text("Sound bars")');
+  if ((await fold.count()) === 0) {
+    problems.push("material-select: no Sound bars fold");
+    return;
+  }
+  await fold.click();
+  await page.waitForTimeout(400);
+  const select = page.locator('.design-fold[open] md-outlined-select').first();
+  if ((await select.count()) === 0) {
+    problems.push("material-select: no Material dropdown in the Sound bars fold");
+    return;
+  }
+  const before = await select.evaluate((el) => el.value);
+  await select.click();
+  await page.waitForTimeout(500);
+  const target = page
+    .locator('.design-fold[open] md-select-option')
+    .filter({ hasText: before === "solid" ? "Still bars" : "Solid shape" })
+    .first();
+  await target.click();
+  await page.waitForTimeout(900);
+  const after = await select.evaluate((el) => el.value);
+  if (after === before) problems.push(`material-select: picking an option changed nothing (${before})`);
+  // Put it back.
+  await select.click();
+  await page.waitForTimeout(500);
+  const options = page.locator('.design-fold[open] md-select-option');
+  const n = await options.count();
+  for (let i = 0; i < n; i += 1) {
+    const value = await options.nth(i).evaluate((el) => el.value);
+    if (value === before) { await options.nth(i).click(); break; }
+  }
+  await page.waitForTimeout(700);
+  await fold.click();
+});
+
 // Changing a clip's length in the Studio must not require starting over:
 // the full trimmer lives above the timeline now.
 await step("clip-length", async () => {
