@@ -4419,8 +4419,14 @@ function TimeField({
   const commit = () => {
     if (text === null) return;
     const parsed = parseClock(text);
-    if (parsed !== null) onCommit(Math.max(min, parsed));
     setText(null);
+    if (parsed === null) return;
+    // An untouched field must not commit: the display rounds to one decimal,
+    // so committing it back drifts the stored value (719.94 -> 719.9), fires
+    // a pointless save, and the re-render swallows whatever the user clicked
+    // next - the blur and that click are the same gesture.
+    if (Math.abs(parsed - value) < 0.05) return;
+    onCommit(Math.max(min, parsed));
   };
   return (
     <label>
