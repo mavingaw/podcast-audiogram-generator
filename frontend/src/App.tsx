@@ -2437,11 +2437,11 @@ function YouTubePost({ projectId, defaultTitle }: { projectId: string; defaultTi
           </label>
           <label>
             Who can see it
-            <select value={privacy} onChange={(e) => setPrivacy(e.target.value)}>
-              <option value="private">Only me (private)</option>
-              <option value="unlisted">Anyone with the link (unlisted)</option>
-              <option value="public">Everyone (public)</option>
-            </select>
+            <md-outlined-select value={privacy} onInput={(e) => setPrivacy(e.target.value)}>
+              <md-select-option value="private"><div slot="headline">Only me (private)</div></md-select-option>
+              <md-select-option value="unlisted"><div slot="headline">Anyone with the link (unlisted)</div></md-select-option>
+              <md-select-option value="public"><div slot="headline">Everyone (public)</div></md-select-option>
+            </md-outlined-select>
           </label>
           <div className="yt-form-actions">
             <button className="primary" type="submit" disabled={state === "busy"}>
@@ -4192,17 +4192,17 @@ function Studio({
                 <div className="layer-image">
                   <label>
                     Image
-                    <select
+                    <md-outlined-select
                       value={active.mediaId ?? ""}
-                      onChange={(e) => updateLayer(active.id, { mediaId: e.target.value || undefined })}
+                      onInput={(e) => updateLayer(active.id, { mediaId: e.target.value || undefined })}
                     >
-                      <option value="">None</option>
+                      <md-select-option value=""><div slot="headline">None</div></md-select-option>
                       {allMedia
                         .filter((item) => item.content_type.startsWith("image/"))
                         .map((item) => (
-                          <option key={item.id} value={item.id}>{item.original_name}</option>
+                          <md-select-option key={item.id} value={item.id}><div slot="headline">{item.original_name}</div></md-select-option>
                         ))}
-                    </select>
+                    </md-outlined-select>
                   </label>
                   <label className="ghost compact upload-inline">
                     <Upload size={13} /> Upload image
@@ -4232,18 +4232,18 @@ function Studio({
                 <div className="field-row">
                   <label>
                     Enters
-                    <select
+                    <md-outlined-select
                       value={active.enter ?? "none"}
-                      onChange={(e) =>
+                      onInput={(e) =>
                         updateLayer(active.id, { enter: e.target.value as Layer["enter"] })
                       }
                     >
-                      <option value="none">Appear</option>
-                      <option value="fade">Fade in</option>
-                      <option value="rise">Rise in</option>
-                      <option value="drop">Drop in</option>
-                      <option value="slide">Slide in</option>
-                    </select>
+                      <md-select-option value="none"><div slot="headline">Appear</div></md-select-option>
+                      <md-select-option value="fade"><div slot="headline">Fade in</div></md-select-option>
+                      <md-select-option value="rise"><div slot="headline">Rise in</div></md-select-option>
+                      <md-select-option value="drop"><div slot="headline">Drop in</div></md-select-option>
+                      <md-select-option value="slide"><div slot="headline">Slide in</div></md-select-option>
+                    </md-outlined-select>
                   </label>
                   <label>
                     Over
@@ -4263,39 +4263,33 @@ function Studio({
               )}
               <label>
                 Width
-                <input
-                  type="range"
-                  min="10"
+                <md-slider labeled min="10"
                   max="100"
                   value={active.width}
-                  onChange={(e) =>
+                  onInput={(e) =>
                     void save(
                       layers.map((l) =>
                         l.id === active.id
-                          ? { ...l, width: Number(e.target.value) }
+                          ? { ...l, width: Number((e.target as unknown as { value: number }).value) }
                           : l,
                       ),
                     )
-                  }
-                />
+                  }></md-slider>
               </label>
               <label>
                 Height
-                <input
-                  type="range"
-                  min="5"
+                <md-slider labeled min="5"
                   max="100"
                   value={active.height}
-                  onChange={(e) =>
+                  onInput={(e) =>
                     void save(
                       layers.map((l) =>
                         l.id === active.id
-                          ? { ...l, height: Number(e.target.value) }
+                          ? { ...l, height: Number((e.target as unknown as { value: number }).value) }
                           : l,
                       ),
                     )
-                  }
-                />
+                  }></md-slider>
               </label>
               <div className="mini-fields">
                 <label>
@@ -4370,13 +4364,10 @@ function Studio({
               {active.type !== "background" && active.type !== "captions" && (
                 <label>
                   See-through {Math.round((active.opacity ?? 1) * 100)}%
-                  <input
-                    type="range"
-                    min={5}
+                  <md-slider labeled min={5}
                     max={100}
                     value={Math.round((active.opacity ?? 1) * 100)}
-                    onChange={(e) => updateLayer(active.id, { opacity: Number(e.target.value) / 100 })}
-                  />
+                    onInput={(e) => updateLayer(active.id, { opacity: Number((e.target as unknown as { value: number }).value) / 100 })}></md-slider>
                 </label>
               )}
               <button
@@ -6127,19 +6118,19 @@ function AutoClips({
         <div className="auto-clips-actions">
           <label>
             How many
-            <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
+            <md-outlined-select value={String(count)} onInput={(e) => setCount(Number(e.target.value))}>
               {[3, 6, 10].map((n) => (
-                <option key={n} value={n}>{n} clips</option>
+                <md-select-option key={n} value={n}><div slot="headline">{n} clips</div></md-select-option>
               ))}
-            </select>
+            </md-outlined-select>
           </label>
           <label>
             Look
-            <select value={lookId} onChange={(e) => setLookId(e.target.value)}>
+            <md-outlined-select value={lookId} onInput={(e) => setLookId(e.target.value)}>
               {templates.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} — {t.style}</option>
+                <md-select-option key={t.id} value={t.id}><div slot="headline">{t.name} — {t.style}</div></md-select-option>
               ))}
-            </select>
+            </md-outlined-select>
           </label>
           <button className="primary" onClick={() => void run()}>
             <WandSparkles size={15} /> Make {count} clips for me
@@ -6205,29 +6196,29 @@ function BatchClips({
       <div className="batch-controls">
         <label>
           Clips
-          <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
+          <md-outlined-select value={String(count)} onInput={(e) => setCount(Number(e.target.value))}>
             {[3, 4, 6, 8, 10, 12].map((n) => (
-              <option key={n} value={n}>{n}</option>
+              <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
         <label>
           Shape
-          <select value={ratio} onChange={(e) => setRatio(e.target.value as Ratio)}>
+          <md-outlined-select value={ratio} onInput={(e) => setRatio(e.target.value as Ratio)}>
             {(["9:16", "4:5", "1:1", "16:9"] as Ratio[]).map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <md-select-option key={r} value={r}><div slot="headline">{r}</div></md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
         {templates.length > 0 && (
           <label>
             Look
-            <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-              <option value="">Default</option>
+            <md-outlined-select value={templateId} onInput={(e) => setTemplateId(e.target.value)}>
+              <md-select-option value=""><div slot="headline">Default</div></md-select-option>
               {templates.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <md-select-option key={t.id} value={t.id}><div slot="headline">{t.name}</div></md-select-option>
               ))}
-            </select>
+            </md-outlined-select>
           </label>
         )}
       </div>
@@ -6811,52 +6802,49 @@ function Feeds({
               <div className="feed-controls">
                 <label>
                   Clips per episode
-                  <select
-                    value={feed.clip_count}
-                    onChange={async (event) => {
+                  <md-outlined-select
+                    value={String(feed.clip_count)}
+                    onInput={async (event) => {
                       await api.updateFeed(feed.id, {
                         clip_count: Number(event.target.value),
                       });
                       await refresh();
                     }}
                   >
-                    <option value={0}>None — just transcribe</option>
+                    <md-select-option value={0}><div slot="headline">None — just transcribe</div></md-select-option>
                     {[3, 4, 6, 8, 10].map((n) => (
-                      <option key={n} value={n}>{n}</option>
+                      <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
                     ))}
-                  </select>
+                  </md-outlined-select>
                 </label>
                 {feed.clip_count > 0 && templates.length > 0 && (
                   <label>
                     Look
-                    <select
+                    <md-outlined-select
                       value={feed.template_id ?? ""}
-                      onChange={async (event) => {
+                      onInput={async (event) => {
                         await api.updateFeed(feed.id, {
                           template_id: event.target.value || null,
                         });
                         await refresh();
                       }}
                     >
-                      <option value="">Default</option>
+                      <md-select-option value=""><div slot="headline">Default</div></md-select-option>
                       {templates.map((t) => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
+                        <md-select-option key={t.id} value={t.id}><div slot="headline">{t.name}</div></md-select-option>
                       ))}
-                    </select>
+                    </md-outlined-select>
                   </label>
                 )}
                 {feed.clip_count > 0 && (
                   <label className="checkbox-row feed-render">
-                    <input
-                      type="checkbox"
-                      checked={feed.auto_render}
-                      onChange={async (event) => {
+                    <md-switch selected={feed.auto_render}
+                      onInput={async (event) => {
                         await api.updateFeed(feed.id, {
-                          auto_render: event.target.checked,
+                          auto_render: (event.target as unknown as { selected: boolean }).selected,
                         });
                         await refresh();
-                      }}
-                    />
+                      }}></md-switch>
                     <span>
                       Render them too
                       <small>
@@ -6868,16 +6856,16 @@ function Feeds({
               </div>
 
               <div className="feed-import-older">
-                <select
-                  value={olderCount[feed.id] ?? 5}
-                  onChange={(e) =>
+                <md-outlined-select
+                  value={String(olderCount[feed.id] ?? 5)}
+                  onInput={(e) =>
                     setOlderCount((current) => ({ ...current, [feed.id]: Number(e.target.value) }))
                   }
                 >
                   {[1, 3, 5, 10, 25].map((n) => (
-                    <option key={n} value={n}>{n}</option>
+                    <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
                   ))}
-                </select>
+                </md-outlined-select>
                 <button
                   className="ghost-button"
                   disabled={pulling === feed.id}
@@ -7139,11 +7127,9 @@ function AdminStrip({
         </form>
         {adminError && <p className="error">{adminError}</p>}
         <label className="signup-toggle">
-          <input
-            type="checkbox"
-            checked={signupsOpen}
-            onChange={async (event) => {
-              const next = event.target.checked;
+          <md-switch selected={signupsOpen}
+            onInput={async (event) => {
+              const next = (event.target as unknown as { selected: boolean }).selected;
               setSignupsOpen(next);
               try {
                 await api.setSignups(next);
@@ -7151,8 +7137,7 @@ function AdminStrip({
                 setSignupsOpen(!next);
                 setAdminError((cause as Error).message);
               }
-            }}
-          />
+            }}></md-switch>
           Anyone can create an account
         </label>
         <div className="admin-users">
@@ -7227,19 +7212,17 @@ function AdminStrip({
         )}
         <label>
           Transcription GPU
-          <select
+          <md-outlined-select
             value={values.transcription_gpu_uuid ?? ""}
-            onChange={(e) =>
+            onInput={(e) =>
               void onSave({ ...values, transcription_gpu_uuid: e.target.value })
             }
           >
-            <option value="">CPU / automatic</option>
+            <md-select-option value=""><div slot="headline">CPU / automatic</div></md-select-option>
             {gpus.map((g) => (
-              <option key={g.uuid} value={g.uuid}>
-                {g.name}
-              </option>
+              <md-select-option key={g.uuid} value={g.uuid}><div slot="headline">{g.name}</div></md-select-option>
             ))}
-          </select>
+          </md-outlined-select>
         </label>
       </div>
     </details>

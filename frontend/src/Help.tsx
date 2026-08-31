@@ -170,14 +170,11 @@ export function HelpButton({ view, onStart }: { view: string; onStart?: () => vo
             {guide.tip && <p className="help-tip">{guide.tip}</p>}
             <div className="help-foot">
               <label className="help-switch">
-                <input
-                  type="checkbox"
-                  checked={large}
-                  onChange={(e) => {
-                    setLarge(e.target.checked);
-                    applyLargeText(e.target.checked);
-                  }}
-                />
+                <md-switch selected={large}
+                  onInput={(e) => {
+                    setLarge((e.target as unknown as { selected: boolean }).selected);
+                    applyLargeText((e.target as unknown as { selected: boolean }).selected);
+                  }}></md-switch>
                 Large text
               </label>
               <div className="help-actions">

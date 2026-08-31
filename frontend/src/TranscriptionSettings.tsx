@@ -81,41 +81,34 @@ export function TranscriptionPanel({ isAdmin }: { isAdmin: boolean }) {
 
       <label>
         Model
-        <select
+        <md-outlined-select
           value={settings.model}
           disabled={!isAdmin || saving}
-          onChange={(event) => void save({ model: event.target.value })}
+          onInput={(event) => void save({ model: event.target.value })}
         >
           {settings.models.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
+            <md-select-option key={name} value={name}><div slot="headline">{name}</div></md-select-option>
           ))}
-        </select>
+        </md-outlined-select>
       </label>
 
       <label>
         Language
-        <select
+        <md-outlined-select
           value={settings.language}
           disabled={!isAdmin || saving}
-          onChange={(event) => void save({ language: event.target.value })}
+          onInput={(event) => void save({ language: event.target.value })}
         >
           {LANGUAGES.map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
+            <md-select-option key={value} value={value}><div slot="headline">{label}</div></md-select-option>
           ))}
-        </select>
+        </md-outlined-select>
       </label>
 
       <label className="music-toggle">
-        <input
-          type="checkbox"
-          checked={settings.enabled}
+        <md-switch selected={settings.enabled}
           disabled={!isAdmin || saving}
-          onChange={(event) => void save({ enabled: event.target.checked })}
-        />
+          onInput={(event) => void save({ enabled: (event.target as unknown as { selected: boolean }).selected })}></md-switch>
         Transcribe uploads automatically
       </label>
 

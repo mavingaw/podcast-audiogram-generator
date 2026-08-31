@@ -112,15 +112,12 @@ export function SfxPanel({
                 {stamp(cue.at)}
               </button>
               <span className="sfx-name">{cue.title ?? "Effect"}</span>
-              <input
-                type="range"
-                min={-24}
+              <md-slider labeled min={-24}
                 max={12}
                 step={1}
                 value={cue.gainDb}
                 title={`${cue.gainDb > 0 ? "+" : ""}${cue.gainDb} dB`}
-                onChange={(event) => patch(index, { gainDb: Number(event.target.value) })}
-              />
+                onInput={(event) => patch(index, { gainDb: Number((event.target as unknown as { value: number }).value) })}></md-slider>
               <button
                 className="layer-action"
                 title="Remove"

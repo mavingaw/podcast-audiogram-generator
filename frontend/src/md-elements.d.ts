@@ -3,7 +3,7 @@
 // react/jsx-runtime module - augment every place a tool might look.
 import type * as React from "react";
 
-type MdProps = React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+type MdProps = Omit<React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>, "onInput" | "onChange"> & {
   value?: string | number;
   min?: string | number;
   max?: string | number;
@@ -15,6 +15,8 @@ type MdProps = React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLEl
   label?: string;
   disabled?: boolean;
   name?: string;
+  onInput?: (event: { target: { value: string; selected: boolean } } & React.SyntheticEvent<HTMLElement>) => void;
+  onChange?: (event: { target: { value: string; selected: boolean } } & React.SyntheticEvent<HTMLElement>) => void;
 };
 
 interface MdElements {

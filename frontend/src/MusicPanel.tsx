@@ -131,25 +131,19 @@ export function MusicPanel({
           </small>
           <label>
             Level {bed.gainDb.toFixed(0)} dB
-            <input
-              type="range"
-              min="-40"
+            <md-slider labeled min="-40"
               max="0"
               step="1"
               value={bed.gainDb}
-              onChange={(event) => patch({ gainDb: Number(event.target.value) })}
-            />
+              onInput={(event) => patch({ gainDb: Number((event.target as unknown as { value: number }).value) })}></md-slider>
           </label>
           <label>
             Dip under speech {bed.duckDb.toFixed(0)} dB
-            <input
-              type="range"
-              min="-30"
+            <md-slider labeled min="-30"
               max="0"
               step="1"
               value={bed.duckDb}
-              onChange={(event) => patch({ duckDb: Number(event.target.value) })}
-            />
+              onInput={(event) => patch({ duckDb: Number((event.target as unknown as { value: number }).value) })}></md-slider>
           </label>
           <div className="mini-fields">
             <label>
@@ -176,11 +170,8 @@ export function MusicPanel({
             </label>
           </div>
           <label className="music-toggle">
-            <input
-              type="checkbox"
-              checked={bed.loop}
-              onChange={(event) => patch({ loop: event.target.checked })}
-            />
+            <md-switch selected={bed.loop}
+              onInput={(event) => patch({ loop: (event.target as unknown as { selected: boolean }).selected })}></md-switch>
             Loop to fill the clip
           </label>
           <div className="music-automation">
@@ -207,19 +198,16 @@ export function MusicPanel({
                 {(bed.automation ?? []).map((point, index) => (
                   <li key={`${point.at}-${index}`}>
                     <span className="sfx-time">{formatClock(point.at)}</span>
-                    <input
-                      type="range"
-                      min={-40}
+                    <md-slider labeled min={-40}
                       max={6}
                       step={1}
                       value={point.gainDb}
                       title={`${point.gainDb > 0 ? "+" : ""}${point.gainDb} dB`}
-                      onChange={(event) => {
+                      onInput={(event) => {
                         const next = [...(bed.automation ?? [])];
-                        next[index] = { ...point, gainDb: Number(event.target.value) };
+                        next[index] = { ...point, gainDb: Number((event.target as unknown as { value: number }).value) };
                         patch({ automation: next });
-                      }}
-                    />
+                      }}></md-slider>
                     <small>{point.gainDb > 0 ? "+" : ""}{point.gainDb} dB</small>
                     <button
                       className="layer-action"
@@ -247,14 +235,12 @@ export function MusicPanel({
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
-        <select value={genre} onChange={(event) => setGenre(event.target.value)}>
-          <option value="">All genres</option>
+        <md-outlined-select value={genre} onInput={(event) => setGenre(event.target.value)}>
+          <md-select-option value=""><div slot="headline">All genres</div></md-select-option>
           {genres.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
+            <md-select-option key={name} value={name}><div slot="headline">{name}</div></md-select-option>
           ))}
-        </select>
+        </md-outlined-select>
       </div>
 
       {error && <p className="error">{error}</p>}
