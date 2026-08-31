@@ -381,6 +381,39 @@ await step("drag-layer", async () => {
   }
 });
 
+// Changing a clip's length in the Studio must not require starting over:
+// the full trimmer lives above the timeline now.
+await step("clip-length", async () => {
+  const summary = page.locator(".clip-length-block summary");
+  if ((await summary.count()) === 0) {
+    problems.push("clip-length: no trimmer block in the Studio");
+    return;
+  }
+  await summary.click();
+  await page.waitForTimeout(600);
+  const endField = page.locator(".clip-length-block .clip-fields input").nth(1);
+  const before = await endField.inputValue();
+  const handle = page.locator(".clip-length-block .range-handle.end");
+  const box = await handle.boundingBox();
+  if (!box) {
+    problems.push("clip-length: no draggable end handle");
+    return;
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 60, box.y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  const after = await endField.inputValue();
+  if (after === before) problems.push("clip-length: dragging the end handle changed nothing");
+  // Put the clip back exactly as it was.
+  await endField.click();
+  await endField.fill(before);
+  await endField.press("Enter");
+  await page.waitForTimeout(600);
+  await summary.click();
+});
+
 // Captions used to snap back when dragged; now they must stay put.
 await step("drag-captions", async () => {
   const captions = page.locator(".canvas-layer.layer-captions").first();

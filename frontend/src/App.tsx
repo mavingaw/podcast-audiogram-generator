@@ -4328,6 +4328,31 @@ function Studio({
           )}
         </aside>
       </div>
+      {media && (
+        /* The full trimmer, not just two m:ss boxes: before this, changing a
+           clip's length after creation meant typing timestamps blind, and
+           people started a new clip from scratch instead. Same waveform,
+           yellow handles, transcript lines, and zoom as the create step. */
+        <details className="clip-length-block">
+          <summary>
+            Change the clip's length
+            <span className="muted"> — drag the yellow handles or type times</span>
+          </summary>
+          <ClipSelector
+            start={clipStart}
+            end={clipEnd}
+            duration={media.duration_seconds ?? Math.max(clipEnd, clipStart + 0.5)}
+            segments={media.transcript?.segments ?? []}
+            mediaId={media.id}
+            transcriptReady={Boolean(media.has_transcript)}
+            onChange={(s, e) => {
+              setClipStart(s);
+              setClipEnd(e);
+              void saveProjectMeta(s, e);
+            }}
+          />
+        </details>
+      )}
       <Timeline
         project={project}
         playhead={playhead}

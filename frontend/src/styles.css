@@ -3059,3 +3059,11 @@ html.large-text #root { zoom: 1.18; }
   .image-picker .image-chip { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; }
   .image-picker .image-chip img { width: 100%; height: 100%; object-fit: cover; }
 }
+
+@layer views {
+  /* The clip trimmer inside the Studio, above the timeline. */
+  .clip-length-block { margin: var(--s-3) 0 0; border: 1px solid var(--line); border-radius: 12px; padding: var(--s-2) var(--s-4); }
+  .clip-length-block > summary { cursor: pointer; font-weight: 600; padding: var(--s-2) 0; list-style-position: inside; }
+  .clip-length-block[open] > summary { margin-bottom: var(--s-3); }
+  .clip-length-block .clip-selector { margin-top: var(--s-2); }
+}
