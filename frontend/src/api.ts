@@ -846,6 +846,8 @@ export const api = {
   },
   /** The library without transcripts: what the poll asks for. */
   mediaLight: () => request<{ media: MediaAsset[] }>("/api/media?transcripts=0"),
+  switchAspect: (projectId: string, ratio: string) =>
+    request<{ project: Project }>(`/api/projects/${projectId}/aspect/${ratio}`, { method: "POST" }),
   /** One media record with its transcript. */
   mediaOne: (mediaId: string) => request<{ media: MediaAsset }>(`/api/media/${mediaId}`),
   transcribeMedia: (mediaId: string) =>

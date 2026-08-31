@@ -704,6 +704,21 @@ export function App() {
     // rather than being handed a count to trust.
     setHistoryVersion((current) => current + 1);
   }
+  async function switchAspect(ratio: string) {
+    if (!selected) return;
+    const id = selected.id;
+    const seq = ++editSeq.current;
+    // Optimistic on the ratio only; the server owns the remapped layers.
+    setProjects((current) =>
+      current.map((p) => (p.id === id ? { ...p, aspect_ratio: ratio as Project["aspect_ratio"] } : p)),
+    );
+    const result = await api.switchAspect(id, ratio);
+    if (seq !== editSeq.current) return;
+    setProjects((current) =>
+      current.map((p) => (p.id === result.project.id ? result.project : p)),
+    );
+    setHistoryVersion((current) => current + 1);
+  }
   async function updateTranscript(mediaId: string, transcript: Transcript) {
     const result = await api.updateTranscript(mediaId, transcript);
     setMedia(media.map((m) => (m.id === mediaId ? result.media : m)));
@@ -860,6 +875,7 @@ export function App() {
             allMedia={media}
             jobs={jobs}
             onUpdate={updateProject}
+            onAspect={switchAspect}
             onTranscriptUpdate={updateTranscript}
             onMediaAdded={(asset) => setMedia((current) => [asset, ...current])}
             onReloadProjects={() => loadData()}
@@ -2893,6 +2909,7 @@ function Studio({
   allMedia,
   jobs,
   onUpdate,
+  onAspect,
   onTranscriptUpdate,
   onRender,
   onMediaAdded,
@@ -2908,6 +2925,7 @@ function Studio({
   allMedia: MediaAsset[];
   jobs: Job[];
   onUpdate: (u: Partial<Project>) => Promise<void>;
+  onAspect: (ratio: string) => Promise<void>;
   onTranscriptUpdate: (mediaId: string, transcript: Transcript) => Promise<void>;
   onRender: (force?: boolean) => Promise<string | null>;
   onMediaAdded: (asset: MediaAsset) => void;
@@ -3572,6 +3590,19 @@ function Studio({
         <button className="icon-button" title="Zoom canvas" onClick={() => setZoom((value) => value >= 1.25 ? 0.85 : value + 0.1)}>
           <ZoomIn size={17} />
         </button>
+        <span className="toolbar-divider" />
+        <span className="aspect-switch" role="group" aria-label="Video shape">
+          {(["9:16", "4:5", "1:1", "16:9"] as const).map((r) => (
+            <button
+              key={r}
+              className={(project?.aspect_ratio ?? "9:16") === r ? "on" : ""}
+              title={`Switch this clip to ${r}`}
+              onClick={() => void onAspect(r)}
+            >
+              {r}
+            </button>
+          ))}
+        </span>
         <span className="toolbar-spacer" />
         {activeRender && (
           <span className="render-status">
@@ -4401,6 +4432,20 @@ function Studio({
           <div className="transcript-editor">
             <div className="inspector-heading">
               <span className="sidebar-label">Full transcript</span>
+              {media?.has_transcript && (
+                <span className="transcript-downloads">
+                  {(["srt", "vtt", "txt"] as const).map((fmt) => (
+                    <a
+                      key={fmt}
+                      className="link-button"
+                      href={`/api/media/${media.id}/transcript.${fmt}`}
+                      download
+                    >
+                      {fmt.toUpperCase()}
+                    </a>
+                  ))}
+                </span>
+              )}
               {transcriptDraft && (
                 <button className="ghost compact" onClick={() => void saveTranscript()}>
                   Save

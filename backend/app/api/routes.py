@@ -8,6 +8,7 @@ import secrets
 import shutil
 import time
 import os
+import pathlib
 import tempfile
 import zipfile
 from pathlib import Path
@@ -2894,6 +2895,89 @@ def delete_template(
     db.delete(template)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/projects/{project_id}/aspect/{ratio}")
+def switch_aspect(
+    project_id: str,
+    ratio: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+) -> dict:
+    """Change a clip's shape in place, carrying the whole design across.
+
+    The blueprint-grade version of this is a toolbar toggle, not a new
+    project: the same remap the template system uses moves every layer into
+    the new frame, and the platform guide follows the shape.
+    """
+    from app.services.variants import RATIO_DIMENSIONS as _RATIOS
+    from app.services.variants import remap_scene as _remap
+
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if ratio not in _RATIOS:
+        raise HTTPException(status_code=400, detail="Unknown shape")
+    if ratio == project.aspect_ratio:
+        return {"project": serialize_project(project)}
+
+    revisions.record(db, project, {"aspect_ratio": ratio, "scene": None})
+    scene = _remap(json.loads(project.scene_json or "{}"), project.aspect_ratio, ratio)
+    project.scene_json = json.dumps(scene)
+    project.aspect_ratio = ratio
+    db.commit()
+    return {"project": serialize_project(project)}
+
+
+@router.get("/media/{media_id}/transcript.{fmt}")
+def download_transcript(
+    media_id: str,
+    fmt: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user)],
+):
+    """The transcript as a file, one click, no buried menus: srt, vtt, txt."""
+    from fastapi.responses import PlainTextResponse
+
+    from app.services.jobs import _srt_timestamp, _vtt_timestamp
+
+    media = db.get(MediaAsset, media_id)
+    if not media or media.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Media not found")
+    if fmt not in ("srt", "vtt", "txt"):
+        raise HTTPException(status_code=400, detail="srt, vtt, or txt")
+    transcript = json.loads(media.transcript_json) if media.transcript_json else None
+    segments = (transcript or {}).get("segments") or []
+    if not segments:
+        raise HTTPException(status_code=404, detail="No transcript yet")
+
+    if fmt == "txt":
+        body = "\n".join(str(seg.get("text") or "").strip() for seg in segments) + "\n"
+    elif fmt == "srt":
+        blocks = []
+        for index, seg in enumerate(segments, start=1):
+            blocks.append(
+                f"{index}\n"
+                f"{_srt_timestamp(float(seg.get('start') or 0))} --> "
+                f"{_srt_timestamp(float(seg.get('end') or 0))}\n"
+                f"{str(seg.get('text') or '').strip()}\n"
+            )
+        body = "\n".join(blocks)
+    else:
+        blocks = ["WEBVTT\n"]
+        for seg in segments:
+            blocks.append(
+                f"{_vtt_timestamp(float(seg.get('start') or 0))} --> "
+                f"{_vtt_timestamp(float(seg.get('end') or 0))}\n"
+                f"{str(seg.get('text') or '').strip()}\n"
+            )
+        body = "\n".join(blocks)
+
+    stem = pathlib.Path(media.original_name).stem or "transcript"
+    return PlainTextResponse(
+        body,
+        headers={"Content-Disposition": f'attachment; filename="{stem}.{fmt}"'},
+    )
 
 
 @router.post("/projects/{project_id}/template/{template_id}")
