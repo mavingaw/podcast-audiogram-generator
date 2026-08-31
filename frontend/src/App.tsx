@@ -3151,8 +3151,13 @@ function Studio({
   // The clip's own audio, not the episode. Studio used to play the whole
   // file and seek into it: 90 MB through the tunnel before the first second
   // played, and a scrubber over ninety minutes the clip did not contain.
+  // Keyed by the SAVED bounds, not the live ones: while a trim handle is
+  // mid-drag the local clipStart/clipEnd change per pointer tick, and a src
+  // that churns through dozens of URLs makes the server cut a preview per
+  // tick and leaves the player issuing ranged requests from the previous,
+  // longer resource against a shorter new file - a console 416 every time.
   const sourceUrl = project?.id && media
-    ? api.projectPreviewUrl(project.id, clipStart, clipEnd)
+    ? api.projectPreviewUrl(project.id, project.clip_start, project.clip_end)
     : "";
   const activeRender = jobs.find(
     (job) =>
