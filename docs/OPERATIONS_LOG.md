@@ -148,5 +148,15 @@ appdata + backups from the export. Dozzle (:8092) is unauthenticated log
 access to every container. Deferred findings live in the session triage notes
 and the repo issues-of-record below.
 
+2026-08-31: GPU roles swapped to the sensible split (owner's architecture note
+was right about the routing): Whisper transcription -> Quadro RTX 5000 (GPU-39ad,
+16GB is ample for distil-large-v3), local LLM + NVENC encodes -> RTX 4090
+(GPU-8b1b; PAS_LLM_GPU=1 in the template). All via the app's own runtime
+settings - no container split needed. The rest of that note's stack (vLLM,
+separate Whisper/FFmpeg containers, aigate, Redis, MinIO) is mapped in
+docs/BLUEPRINT_TRIAGE.md: in-process on one box beats IPC between six
+containers, the Whisper model is already held resident (_model_cache), and
+MinIO is an S3 API on the same disk the app reads natively.
+
 Nightly: Windows scheduled task "Kinder nightly check" (03:30) runs the
 public smoke + regression and logs to `runtime/logs/`.
