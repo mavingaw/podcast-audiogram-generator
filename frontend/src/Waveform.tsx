@@ -155,7 +155,10 @@ export function WaveformCanvas({
       if (live) {
         const heights = liveHeights(live);
         const pitch = width / heights.length;
-        const gap = Math.max(1, pitch * 0.33);
+        // Spaced like the style's still bars, so the live look differs per
+        // style too and not only while paused.
+        const share = (STYLE_SHAPES[styleId] ?? STYLE_SHAPES.pulse).gap;
+        const gap = share === 0 ? 0 : Math.max(1, pitch * share);
         context.fillStyle = color;
         heights.forEach((value, index) => {
           const amplitude = Math.max(2, value * middle);

@@ -1,9 +1,9 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
   AudioLines,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
   Download,
   Eye,
   EyeOff,
@@ -37,6 +37,7 @@ import {
   UserPlus,
   Users,
   Trash2,
+  Type,
   Unlock,
   Share2,
   Check,
@@ -55,6 +56,7 @@ import {
   captionCharBudget,
   captionLines,
   errorMessage,
+  joinWords,
   Gpu,
   Job,
   MediaAsset,
@@ -76,7 +78,7 @@ import {
 } from "./api";
 import { Coach, MAKE_A_CLIP } from "./Coach";
 import { ContextMenuHost, MenuButton, MenuItem, openMenu } from "./ContextMenu";
-import { DesignPanel } from "./DesignPanel";
+import { DesignPanel, PicturesPanel, TextStylePanel } from "./DesignPanel";
 import { HelpButton, applyLargeText, readLargeText } from "./Help";
 import { HistoryPanel } from "./HistoryPanel";
 import { SfxCue, SfxPanel } from "./SfxPanel";
@@ -114,7 +116,13 @@ type Layer = {
   endTime?: number;
   fontScale?: number;
   align?: string;
+  /** What kind of text this is; picks a size so people need not dial one. */
+  kind?: TextKind;
 };
+type TextKind = "title" | "headline" | "body";
+// Size over the fitted text for each kind. A dropdown with three words
+// beats a slider for somebody who has never sized type.
+const TEXT_KINDS: Record<TextKind, number> = { title: 1.3, headline: 1, body: 0.75 };
 // Mirrors PLATFORM_SAFE_AREAS in backend/app/services/scene.py.
 const SAFE_AREAS: Record<string, { label: string; bottom: number; top: number; right: number }> = {
   tiktok: { label: "TikTok", bottom: 0.22, top: 0.1, right: 0.16 },
@@ -3390,8 +3398,8 @@ function Studio({
       clip_end: Math.max(start + 0.5, end),
     });
   }
-  function addLayer(type: Layer["type"], name: string) {
-    const next = [...layersRef.current, { id: `${type}-${Date.now()}`, name, type, x: 20, y: 20, width: 60, height: 10, visible: true, locked: false, color: accent, text: name, startTime: 0, endTime: clipDuration }];
+  function addLayer(type: Layer["type"], name: string, extra: Partial<Layer> = {}) {
+    const next = [...layersRef.current, { id: `${type}-${Date.now()}`, name, type, x: 20, y: 20, width: 60, height: 10, visible: true, locked: false, color: accent, text: name, startTime: 0, endTime: clipDuration, ...extra }];
     setSelectedLayer(next.at(-1)?.id ?? "");
     void save(next);
   }
@@ -3465,6 +3473,27 @@ function Studio({
   async function saveTranscript(next = transcriptDraft) {
     if (!media || !next) return;
     await onTranscriptUpdate(media.id, next);
+  }
+  /** Retype one word of the transcript: the same moment, the right spelling.
+   *  The line's text is rebuilt from its words so the two never disagree. */
+  function editWord(segmentId: number, index: number, text: string) {
+    if (!transcriptDraft) return;
+    const next: Transcript = {
+      ...transcriptDraft,
+      segments: transcriptDraft.segments.map((segment) => {
+        if (segment.id !== segmentId || !segment.words?.[index]) return segment;
+        const words = segment.words.map((word, at) =>
+          at === index
+            // Whisper tokens carry their own leading space; keep it so the
+            // line joins back together the way it was.
+            ? { ...word, text: (/^\s/.test(word.text) ? " " : "") + text.trim() }
+            : word,
+        );
+        return { ...segment, words, text: joinWords(words) };
+      }),
+    };
+    setTranscriptDraft(next);
+    void saveTranscript(next);
   }
   function updateSegmentText(id: number, text: string) {
     if (!transcriptDraft) return;
@@ -3808,6 +3837,7 @@ function Studio({
                 .map((layer) => (
                   <div
                     key={layer.id}
+                    data-layer-id={layer.id}
                     onContextMenu={(e) => {
                       setSelectedLayer(layer.id);
                       openMenu(e, layerMenu(layer), layer.name);
@@ -3836,9 +3866,30 @@ function Studio({
                       borderColor: accent,
                     }}
                     onPointerDown={(e) => {
-                      setSelectedLayer(layer.id);
-                      if (layer.type === "captions") dragCaptions(e);
-                      else drag(e, layer);
+                      let target = layer;
+                      if (
+                        layer.type === "captions"
+                        && selectedLayer !== layer.id
+                        && !(e.target as HTMLElement).closest(".layer-caption")
+                      ) {
+                        // The captions box is a wide band that is empty most
+                        // of the time, stacked on top of everything. A press
+                        // on its empty part used to grab the captions — so
+                        // the picture or title underneath could not be
+                        // clicked, dragged or resized. Hand it to whatever
+                        // is actually under the pointer.
+                        const under = document
+                          .elementsFromPoint(e.clientX, e.clientY)
+                          .find((el) => el !== e.currentTarget && el.classList.contains("canvas-layer")) as HTMLElement | undefined;
+                        // Once the captions are selected they keep the whole
+                        // band, so they can still be dragged by an empty part
+                        // of it; the background never takes a press.
+                        const found = layers.find((l) => l.id === under?.dataset.layerId && l.type !== "background");
+                        if (found) target = found;
+                      }
+                      setSelectedLayer(target.id);
+                      if (target.type === "captions") dragCaptions(e);
+                      else drag(e, target);
                     }}
                   >
                     <LayerContent
@@ -3959,160 +4010,406 @@ function Studio({
         </section>
         <aside className="inspector">
           <div className="studio-mode" role="group" aria-label="How much to show">
-            <button className={simple ? "on" : ""} onClick={() => setSimple(true)} title="Just the basics: clip, look, words, layers">Simple</button>
+            <button className={simple ? "on" : ""} onClick={() => setSimple(true)} title="Just the basics: pictures, words, look, clip">Simple</button>
             <button className={simple ? "" : "on"} onClick={() => setSimple(false)} title="Every panel: music, effects, voice-over, shapes, batches">Everything</button>
           </div>
-          <div className="clip-property-block">
-            <span className="sidebar-label">Clip</span>
-            <div className="mini-fields">
-              <TimeField
-                label="Start"
-                value={clipStart}
-                onCommit={(value) => {
-                  // Keep the clip's length when the start is moved past the
-                  // end, rather than refusing the start.
-                  const next = Math.max(0, value);
-                  let end = clipEnd;
-                  if (next >= clipEnd) {
-                    end = next + Math.max(0.5, clipEnd - clipStart);
-                    setClipEnd(end);
-                  }
-                  setClipStart(next);
-                  void saveProjectMeta(next, end);
-                }}
-              />
-              <TimeField
-                label="End"
-                value={clipEnd}
-                min={0.5}
-                onCommit={(value) => {
-                  const end = Math.max(clipStart + 0.5, value);
-                  setClipEnd(end);
-                  void saveProjectMeta(clipStart, end);
-                }}
-              />
-            </div>
-          </div>
-          {(() => {
-            const layer = layers.find((l) => l.id === selectedLayer);
-            if (!layer || layer.type === "background") return null;
-            const num = (v: number) => Math.round(v * 10) / 10;
-            const field = (
-              label: string,
-              value: number,
-              apply: (v: number) => void,
-              min = -50,
-              max = 150,
-            ) => (
-              <label key={label} className="size-field">
-                {label}
-                <input
-                  type="number"
-                  value={num(value)}
-                  min={min}
-                  max={max}
-                  step={1}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) apply(Math.max(min, Math.min(max, v)));
-                  }}
-                />
-              </label>
-            );
-            return (
-              <div className="layer-inspector">
-                <span className="sidebar-label">Selected: {layer.name || layer.type}</span>
-                {layer.type !== "captions" && (
-                  <div className="size-grid">
-                    {field("Left", layer.x, (v) => updateLayer(layer.id, { x: v }))}
-                    {field("Top", layer.y, (v) => updateLayer(layer.id, { y: v }))}
-                    {field("Width", layer.width, (v) => updateLayer(layer.id, { width: v }), 1, 200)}
-                    {field("Height", layer.height, (v) => updateLayer(layer.id, { height: v }), 1, 200)}
-                  </div>
-                )}
-                {layer.type === "title" && (
-                  <>
-                    <label>
-                      Text size
-                      <md-slider
-                        min={50} max={160} step={5} labeled
-                        value={Math.round(((layer.fontScale as number) ?? 1) * 100)}
-                        onInput={(e) => updateLayer(layer.id, { fontScale: Number((e.target as unknown as { value: number }).value) / 100 })}
-                      ></md-slider>
-                    </label>
-                    <div className="align-row" role="group" aria-label="Text alignment">
-                      {(["left", "center", "right"] as const).map((a) => (
-                        <button
-                          key={a}
-                          className={((layer.align as string) ?? "center") === a ? "on" : ""}
-                          onClick={() => updateLayer(layer.id, { align: a })}
-                        >
-                          {a === "left" ? "Left" : a === "center" ? "Middle" : "Right"}
-                        </button>
-                      ))}
-                    </div>
-                    <label>
-                      Colour
-                      <input
-                        type="color"
-                        value={(layer.color as string) ?? "#ffffff"}
-                        onChange={(e) => updateLayer(layer.id, { color: e.target.value })}
-                      />
-                    </label>
-                  </>
-                )}
-                {layer.type === "captions" && (
-                  <>
-                    <label>
-                      Words size
-                      <md-slider
-                        min={60} max={160} step={5} labeled
-                        value={Math.round(Number(project?.scene?.captionScale ?? 1) * 100)}
-                        onInput={(e) => void saveScene({ captionScale: Number((e.target as unknown as { value: number }).value) / 100 })}
-                      ></md-slider>
-                    </label>
-                    <p className="muted">Drag the captions up or down on the video to move them.</p>
-                  </>
-                )}
-                {layer.type === "artwork" && (
-                  <label>
-                    Rounded corners
-                    <md-slider
-                      min={0} max={50} step={1} labeled
-                      value={Math.round(((layer.radius as number) ?? 0) * 100)}
-                      onInput={(e) => updateLayer(layer.id, { radius: Number((e.target as unknown as { value: number }).value) / 100 })}
-                    ></md-slider>
-                  </label>
-                )}
-                {layer.type === "waveform" && (
-                  <label>
-                    Colour
-                    <input
-                      type="color"
-                      value={(layer.color as string) ?? "#759a92"}
-                      onChange={(e) => updateLayer(layer.id, { color: e.target.value })}
-                    />
-                  </label>
-                )}
-                {layer.type !== "captions" && (
-                  <label>
-                    See-through
-                    <md-slider
-                      min={5} max={100} step={5} labeled
-                      value={Math.round(((layer.opacity as number) ?? 1) * 100)}
-                      onInput={(e) => updateLayer(layer.id, { opacity: Number((e.target as unknown as { value: number }).value) / 100 })}
-                    ></md-slider>
-                  </label>
-                )}
-              </div>
-            );
-          })()}
-          <DesignPanel
+          {/* Pictures first: adding your own cover is what most people open
+              the panel to do, and it used to be buried under the layer list. */}
+          <PicturesPanel
             project={project}
             media={allMedia}
             sourceIsVideo={Boolean(media?.content_type.startsWith("video/"))}
             onScene={(patch) => saveScene(patch)}
             onMediaAdded={onMediaAdded}
+          />
+          <div className="inspector-heading layers-heading">
+            <span className="sidebar-label"><Layers3 size={12} /> What is on the picture</span>
+          </div>
+          <p className="muted small">
+            Front to back. Click one to change it. The arrows put it in front
+            of or behind the others; to move it, drag it on the video.
+          </p>
+          {layers
+            .slice()
+            .reverse()
+            .map((layer) => {
+              const index = layers.findIndex((l) => l.id === layer.id);
+              const fixed = layer.type === "background";
+              return (
+              <div
+                className={`layer-row ${selectedLayer === layer.id ? "selected" : ""}`}
+                key={layer.id}
+                onClick={() => setSelectedLayer(layer.id)}
+              >
+                <Move size={14} />
+                <span>{layer.name}</span>
+                <button
+                  className="layer-action"
+                  title="Bring forward (in front of the one above)"
+                  aria-label="Bring forward"
+                  disabled={fixed || index >= layers.length - 1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveLayer(layer.id, 1);
+                  }}
+                >
+                  <ChevronsUp size={13} />
+                </button>
+                <button
+                  className="layer-action"
+                  title="Send back (behind the one below)"
+                  aria-label="Send back"
+                  disabled={fixed || index <= 1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveLayer(layer.id, -1);
+                  }}
+                >
+                  <ChevronsDown size={13} />
+                </button>
+                <button
+                  className="layer-action"
+                  title={layer.visible ? "Hide layer" : "Show layer"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void save(
+                      layers.map((l) =>
+                        l.id === layer.id ? { ...l, visible: !l.visible } : l,
+                      ),
+                    );
+                  }}
+                >
+                  {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                </button>
+                <button
+                  className="layer-action"
+                  title={layer.locked ? "Unlock layer" : "Lock layer"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateLayer(layer.id, { locked: !layer.locked });
+                  }}
+                >
+                  {layer.locked ? <Lock size={13} /> : <Unlock size={13} />}
+                </button>
+              </div>
+              );
+            })}
+          {active && active.type !== "background" && (
+            <div className="properties">
+              <span className="sidebar-label">Selected: {active.name || active.type}</span>
+              <label>
+                Name
+                <input
+                  value={active.name}
+                  onChange={(e) => updateLayer(active.id, { name: e.target.value })}
+                />
+              </label>
+              {active.type === "artwork" && (
+                <div className="layer-image">
+                  <label>
+                    Picture
+                    <md-outlined-select
+                      value={active.mediaId ?? ""}
+                      onInput={(e) => updateLayer(active.id, { mediaId: e.target.value || undefined })}
+                    >
+                      <md-select-option value=""><div slot="headline">None</div></md-select-option>
+                      {allMedia
+                        .filter((item) => item.content_type.startsWith("image/"))
+                        .map((item) => (
+                          <md-select-option key={item.id} value={item.id}><div slot="headline">{item.original_name}</div></md-select-option>
+                        ))}
+                    </md-outlined-select>
+                  </label>
+                  <label className="ghost compact upload-inline">
+                    <Upload size={13} /> Upload a picture
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      hidden
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        e.target.value = "";
+                        try {
+                          // A logo or a sponsor badge for this layer alone;
+                          // the background and the other layers keep theirs.
+                          const result = await api.uploadMedia(file);
+                          onMediaAdded(result.media);
+                          updateLayer(active.id, { mediaId: result.media.id });
+                        } catch (error) {
+                          setExportNote(error instanceof Error ? error.message : "Upload failed");
+                        }
+                      }}
+                    />
+                  </label>
+                  <p className="muted small">
+                    On the video, drag the picture to move it and drag its
+                    corners to crop it — it fills whatever box you draw.
+                  </p>
+                  <label>
+                    Rounded corners
+                    <md-slider
+                      min={0} max={50} step={1} labeled
+                      value={Math.round(((active.radius as number) ?? 0) * 100)}
+                      onInput={(e) => updateLayer(active.id, { radius: Number((e.target as unknown as { value: number }).value) / 100 })}
+                    ></md-slider>
+                  </label>
+                </div>
+              )}
+              {active.type === "waveform" && (
+                <label>
+                  Colour
+                  <input
+                    type="color"
+                    value={active.color ?? accent}
+                    onChange={(e) => updateLayer(active.id, { color: e.target.value })}
+                  />
+                </label>
+              )}
+              {active.type === "title" && (
+                <p className="muted small">The words, size and colour of this text are under Text, below.</p>
+              )}
+              {active.type === "captions" && (
+                <p className="muted small">
+                  Style, font and size are under Text, below. Drag the captions
+                  up or down on the video to move them.
+                </p>
+              )}
+              {["title", "artwork"].includes(active.type) && (
+                <div className="field-row">
+                  <label>
+                    Enters
+                    <md-outlined-select
+                      value={active.enter ?? "none"}
+                      onInput={(e) =>
+                        updateLayer(active.id, { enter: e.target.value as Layer["enter"] })
+                      }
+                    >
+                      <md-select-option value="none"><div slot="headline">Appear</div></md-select-option>
+                      <md-select-option value="fade"><div slot="headline">Fade in</div></md-select-option>
+                      <md-select-option value="rise"><div slot="headline">Rise in</div></md-select-option>
+                      <md-select-option value="drop"><div slot="headline">Drop in</div></md-select-option>
+                      <md-select-option value="slide"><div slot="headline">Slide in</div></md-select-option>
+                    </md-outlined-select>
+                  </label>
+                  <label>
+                    Over
+                    <input
+                      type="number"
+                      min={0.1}
+                      max={3}
+                      step={0.1}
+                      value={active.enterSeconds ?? 0.5}
+                      disabled={(active.enter ?? "none") === "none"}
+                      onChange={(e) =>
+                        updateLayer(active.id, { enterSeconds: Number(e.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+              )}
+              {active.type !== "captions" && (
+                <>
+                  <div className="mini-fields">
+                    <label>
+                      Left %
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={active.x.toFixed(1)}
+                        onChange={(e) => updateLayer(active.id, { x: Number(e.target.value) })}
+                      />
+                    </label>
+                    <label>
+                      Top %
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={active.y.toFixed(1)}
+                        onChange={(e) => updateLayer(active.id, { y: Number(e.target.value) })}
+                      />
+                    </label>
+                  </div>
+                  <div className="mini-fields">
+                    <label>
+                      Width %
+                      <input
+                        type="number"
+                        min="4"
+                        max="100"
+                        value={active.width.toFixed(1)}
+                        onChange={(e) => updateLayer(active.id, { width: Math.max(4, Math.min(100, Number(e.target.value))) })}
+                      />
+                    </label>
+                    <label>
+                      Height %
+                      <input
+                        type="number"
+                        min="4"
+                        max="100"
+                        value={active.height.toFixed(1)}
+                        onChange={(e) => updateLayer(active.id, { height: Math.max(4, Math.min(100, Number(e.target.value))) })}
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
+              <div className="mini-fields">
+                <label>
+                  In
+                  <input
+                    type="number"
+                    min="0"
+                    max={clipDuration}
+                    step="0.1"
+                    value={(active.startTime ?? 0).toFixed(1)}
+                    onChange={(e) => updateLayer(active.id, { startTime: Number(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  Out
+                  <input
+                    type="number"
+                    min="0"
+                    max={clipDuration}
+                    step="0.1"
+                    value={(active.endTime ?? clipDuration).toFixed(1)}
+                    onChange={(e) => updateLayer(active.id, { endTime: Number(e.target.value) })}
+                  />
+                </label>
+              </div>
+              {active.type !== "captions" && (
+                <label>
+                  See-through {Math.round((active.opacity ?? 1) * 100)}%
+                  <md-slider labeled min={5}
+                    max={100}
+                    value={Math.round((active.opacity ?? 1) * 100)}
+                    onInput={(e) => updateLayer(active.id, { opacity: Number((e.target as unknown as { value: number }).value) / 100 })}></md-slider>
+                </label>
+              )}
+              <button
+                className="ghost compact danger"
+                onClick={() => deleteLayer(active.id)}
+              >
+                <Trash2 size={14} /> Delete layer
+              </button>
+            </div>
+          )}
+          {/* Everything about text in one place: the captions' style and
+              font, and the words of whichever text layer is selected. */}
+          <section className="design-panel text-panel">
+            <div className="inspector-heading">
+              <span className="sidebar-label"><Type size={12} /> Text</span>
+              <button
+                className="ghost compact add-text"
+                title="Put your own words on the video"
+                onClick={() =>
+                  addLayer("title", "Text", {
+                    text: "Your words here",
+                    kind: "headline",
+                    fontScale: TEXT_KINDS.headline,
+                    x: 12, y: 40, width: 76, height: 8,
+                  })
+                }
+              >
+                <Plus size={13} /> Add text
+              </button>
+            </div>
+            {active?.type === "title" && (
+              <div className="text-layer-fields">
+                <span className="sidebar-label">This text: {active.name}</span>
+                <label>
+                  Text type
+                  <md-outlined-select
+                    value={active.kind ?? "title"}
+                    onInput={(e) => {
+                      const kind = e.target.value as TextKind;
+                      updateLayer(active.id, { kind, fontScale: TEXT_KINDS[kind] });
+                    }}
+                  >
+                    {(["title", "headline", "body"] as const).map((kind) => (
+                      <md-select-option key={kind} value={kind} selected={(active.kind ?? "title") === kind}>
+                        <div slot="headline">{kind === "title" ? "Title" : kind === "headline" ? "Headline" : "Body"}</div>
+                      </md-select-option>
+                    ))}
+                  </md-outlined-select>
+                </label>
+                <label>
+                  Words
+                  <textarea
+                    ref={textFieldRef}
+                    value={active.text ?? ""}
+                    onChange={(e) => updateLayer(active.id, { text: e.target.value })}
+                  />
+                </label>
+                <div className="token-help">
+                  <span className="muted small">
+                    Insert something that changes with the clip:
+                  </span>
+                  <div className="token-chips">
+                    {TOKENS.map(([name, description]) => (
+                      <button
+                        key={name}
+                        className="token-chip"
+                        title={description}
+                        onClick={() => {
+                          // Inserted at the caret rather than appended, so a
+                          // token can go in the middle of a line somebody has
+                          // already written.
+                          const field = textFieldRef.current;
+                          const current = active.text ?? "";
+                          const at = field?.selectionStart ?? current.length;
+                          const next =
+                            current.slice(0, at) + `{{${name}}}` + current.slice(
+                              field?.selectionEnd ?? at,
+                            );
+                          updateLayer(active.id, { text: next });
+                        }}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="align-row" role="group" aria-label="Text alignment">
+                  {(["left", "center", "right"] as const).map((a) => (
+                    <button
+                      key={a}
+                      className={((active.align as string) ?? "center") === a ? "on" : ""}
+                      onClick={() => updateLayer(active.id, { align: a })}
+                    >
+                      {a === "left" ? "Left" : a === "center" ? "Middle" : "Right"}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  Colour
+                  <input
+                    type="color"
+                    value={active.color ?? "#ffffff"}
+                    onChange={(e) => updateLayer(active.id, { color: e.target.value })}
+                  />
+                </label>
+                {!simple && (
+                  <label>
+                    Text size
+                    <md-slider
+                      min={50} max={160} step={5} labeled
+                      value={Math.round(((active.fontScale as number) ?? 1) * 100)}
+                      onInput={(e) => updateLayer(active.id, { fontScale: Number((e.target as unknown as { value: number }).value) / 100 })}
+                    ></md-slider>
+                  </label>
+                )}
+              </div>
+            )}
+            <TextStylePanel project={project} onScene={(patch) => saveScene(patch)} />
+          </section>
+          <DesignPanel
+            project={project}
+            onScene={(patch) => saveScene(patch)}
+            advanced={!simple}
           />
           {simple && (
             <p className="muted small simple-note">
@@ -4155,322 +4452,37 @@ function Studio({
             onSeek={(at) => seek(clipStart + at)}
           />
           </>)}
-          <div className="inspector-heading">
-            <span className="sidebar-label">What is on the picture</span>
-          </div>
-          <p className="muted small">
-            Front to back. Click one to change it; use the arrows to move it in
-            front of or behind the others.
-          </p>
-          {layers
-            .slice()
-            .reverse()
-            .map((layer) => (
-              <div
-                className={`layer-row ${selectedLayer === layer.id ? "selected" : ""}`}
-                key={layer.id}
-                onClick={() => setSelectedLayer(layer.id)}
-              >
-                <Move size={14} />
-                <span>{layer.name}</span>
-                <button
-                  className="layer-action"
-                  title="Move layer down"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveLayer(layer.id, -1);
-                  }}
-                >
-                  <ArrowDown size={13} />
-                </button>
-                <button
-                  className="layer-action"
-                  title="Move layer up"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveLayer(layer.id, 1);
-                  }}
-                >
-                  <ArrowUp size={13} />
-                </button>
-                <button
-                  className="layer-action"
-                  title={layer.visible ? "Hide layer" : "Show layer"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void save(
-                      layers.map((l) =>
-                        l.id === layer.id ? { ...l, visible: !l.visible } : l,
-                      ),
-                    );
-                  }}
-                >
-                  {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                </button>
-                <button
-                  className="layer-action"
-                  title={layer.locked ? "Unlock layer" : "Lock layer"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateLayer(layer.id, { locked: !layer.locked });
-                  }}
-                >
-                  {layer.locked ? <Lock size={13} /> : <Unlock size={13} />}
-                </button>
-              </div>
-            ))}
-          {active && (
-            <div className="properties">
-              <span className="sidebar-label">Selected item</span>
-              <label>
-                Name
-                <input
-                  value={active.name}
-                  onChange={(e) => updateLayer(active.id, { name: e.target.value })}
-                />
-              </label>
-              {["title", "captions"].includes(active.type) && (
-                <>
-                  <label>
-                    Text
-                    <textarea
-                      ref={textFieldRef}
-                      value={active.text ?? ""}
-                      onChange={(e) => updateLayer(active.id, { text: e.target.value })}
-                    />
-                  </label>
-                  {active.type === "title" && (
-                    <div className="token-help">
-                      <span className="muted small">
-                        Insert something that changes with the clip:
-                      </span>
-                      <div className="token-chips">
-                        {TOKENS.map(([name, description]) => (
-                          <button
-                            key={name}
-                            className="token-chip"
-                            title={description}
-                            onClick={() => {
-                              // Inserted at the caret rather than appended, so a
-                              // token can go in the middle of a line somebody has
-                              // already written.
-                              const field = textFieldRef.current;
-                              const current = active.text ?? "";
-                              const at = field?.selectionStart ?? current.length;
-                              const next =
-                                current.slice(0, at) + `{{${name}}}` + current.slice(
-                                  field?.selectionEnd ?? at,
-                                );
-                              updateLayer(active.id, { text: next });
-                            }}
-                          >
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-              <label>
-                Color
-                <input
-                  type="color"
-                  value={active.color ?? accent}
-                  onChange={(e) => updateLayer(active.id, { color: e.target.value })}
-                />
-              </label>
-              {active.type === "artwork" && (
-                <div className="layer-image">
-                  <label>
-                    Image
-                    <md-outlined-select
-                      value={active.mediaId ?? ""}
-                      onInput={(e) => updateLayer(active.id, { mediaId: e.target.value || undefined })}
-                    >
-                      <md-select-option value=""><div slot="headline">None</div></md-select-option>
-                      {allMedia
-                        .filter((item) => item.content_type.startsWith("image/"))
-                        .map((item) => (
-                          <md-select-option key={item.id} value={item.id}><div slot="headline">{item.original_name}</div></md-select-option>
-                        ))}
-                    </md-outlined-select>
-                  </label>
-                  <label className="ghost compact upload-inline">
-                    <Upload size={13} /> Upload image
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      hidden
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        e.target.value = "";
-                        try {
-                          // A logo or a sponsor badge for this layer alone;
-                          // the background and the other layers keep theirs.
-                          const result = await api.uploadMedia(file);
-                          onMediaAdded(result.media);
-                          updateLayer(active.id, { mediaId: result.media.id });
-                        } catch (error) {
-                          setExportNote(error instanceof Error ? error.message : "Upload failed");
-                        }
-                      }}
-                    />
-                  </label>
-                </div>
-              )}
-              {["title", "artwork"].includes(active.type) && (
-                <div className="field-row">
-                  <label>
-                    Enters
-                    <md-outlined-select
-                      value={active.enter ?? "none"}
-                      onInput={(e) =>
-                        updateLayer(active.id, { enter: e.target.value as Layer["enter"] })
-                      }
-                    >
-                      <md-select-option value="none"><div slot="headline">Appear</div></md-select-option>
-                      <md-select-option value="fade"><div slot="headline">Fade in</div></md-select-option>
-                      <md-select-option value="rise"><div slot="headline">Rise in</div></md-select-option>
-                      <md-select-option value="drop"><div slot="headline">Drop in</div></md-select-option>
-                      <md-select-option value="slide"><div slot="headline">Slide in</div></md-select-option>
-                    </md-outlined-select>
-                  </label>
-                  <label>
-                    Over
-                    <input
-                      type="number"
-                      min={0.1}
-                      max={3}
-                      step={0.1}
-                      value={active.enterSeconds ?? 0.5}
-                      disabled={(active.enter ?? "none") === "none"}
-                      onChange={(e) =>
-                        updateLayer(active.id, { enterSeconds: Number(e.target.value) })
-                      }
-                    />
-                  </label>
-                </div>
-              )}
-              <label>
-                Width
-                <md-slider labeled min="10"
-                  max="100"
-                  value={active.width}
-                  onInput={(e) =>
-                    void save(
-                      layers.map((l) =>
-                        l.id === active.id
-                          ? { ...l, width: Number((e.target as unknown as { value: number }).value) }
-                          : l,
-                      ),
-                    )
-                  }></md-slider>
-              </label>
-              <label>
-                Height
-                <md-slider labeled min="5"
-                  max="100"
-                  value={active.height}
-                  onInput={(e) =>
-                    void save(
-                      layers.map((l) =>
-                        l.id === active.id
-                          ? { ...l, height: Number((e.target as unknown as { value: number }).value) }
-                          : l,
-                      ),
-                    )
-                  }></md-slider>
-              </label>
-              <div className="mini-fields">
-                <label>
-                  X
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={active.x.toFixed(1)}
-                    onChange={(e) => updateLayer(active.id, { x: Number(e.target.value) })}
-                  />
-                </label>
-                <label>
-                  Y
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={active.y.toFixed(1)}
-                    onChange={(e) => updateLayer(active.id, { y: Number(e.target.value) })}
-                  />
-                </label>
-              </div>
-              {active.type !== "captions" && (
-                <div className="mini-fields">
-                  <label>
-                    Width %
-                    <input
-                      type="number"
-                      min="4"
-                      max="100"
-                      value={active.width.toFixed(1)}
-                      onChange={(e) => updateLayer(active.id, { width: Math.max(4, Math.min(100, Number(e.target.value))) })}
-                    />
-                  </label>
-                  <label>
-                    Height %
-                    <input
-                      type="number"
-                      min="4"
-                      max="100"
-                      value={active.height.toFixed(1)}
-                      onChange={(e) => updateLayer(active.id, { height: Math.max(4, Math.min(100, Number(e.target.value))) })}
-                    />
-                  </label>
-                </div>
-              )}
-              <div className="mini-fields">
-                <label>
-                  In
-                  <input
-                    type="number"
-                    min="0"
-                    max={clipDuration}
-                    step="0.1"
-                    value={(active.startTime ?? 0).toFixed(1)}
-                    onChange={(e) => updateLayer(active.id, { startTime: Number(e.target.value) })}
-                  />
-                </label>
-                <label>
-                  Out
-                  <input
-                    type="number"
-                    min="0"
-                    max={clipDuration}
-                    step="0.1"
-                    value={(active.endTime ?? clipDuration).toFixed(1)}
-                    onChange={(e) => updateLayer(active.id, { endTime: Number(e.target.value) })}
-                  />
-                </label>
-              </div>
-              {active.type !== "background" && active.type !== "captions" && (
-                <label>
-                  See-through {Math.round((active.opacity ?? 1) * 100)}%
-                  <md-slider labeled min={5}
-                    max={100}
-                    value={Math.round((active.opacity ?? 1) * 100)}
-                    onInput={(e) => updateLayer(active.id, { opacity: Number((e.target as unknown as { value: number }).value) / 100 })}></md-slider>
-                </label>
-              )}
-              <button
-                className="ghost compact danger"
-                disabled={active.type === "background"}
-                onClick={() => deleteLayer(active.id)}
-              >
-                <Trash2 size={14} /> Delete layer
-              </button>
+          <div className="properties clip-property-block">
+            <span className="sidebar-label">Clip</span>
+            <div className="mini-fields">
+              <TimeField
+                label="Start"
+                value={clipStart}
+                onCommit={(value) => {
+                  // Keep the clip's length when the start is moved past the
+                  // end, rather than refusing the start.
+                  const next = Math.max(0, value);
+                  let end = clipEnd;
+                  if (next >= clipEnd) {
+                    end = next + Math.max(0.5, clipEnd - clipStart);
+                    setClipEnd(end);
+                  }
+                  setClipStart(next);
+                  void saveProjectMeta(next, end);
+                }}
+              />
+              <TimeField
+                label="End"
+                value={clipEnd}
+                min={0.5}
+                onCommit={(value) => {
+                  const end = Math.max(clipStart + 0.5, value);
+                  setClipEnd(end);
+                  void saveProjectMeta(clipStart, end);
+                }}
+              />
             </div>
-          )}
+          </div>
           <HistoryPanel
             projectId={project?.id ?? null}
             version={historyVersion}
@@ -4487,6 +4499,7 @@ function Studio({
               cuts={sceneCuts}
               onChange={(next) => void saveCuts(next)}
               onSeek={seek}
+              onEditWord={editWord}
             />
           </div>
           {!simple && (

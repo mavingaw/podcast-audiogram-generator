@@ -11,11 +11,14 @@ import {
 import { play as playSfx } from "./sfx";
 
 /**
- * Look and feel for the exported clip: background, artwork, waveform, captions.
+ * Look and feel for the exported clip, in three pieces the Studio places
+ * where they belong: the pictures at the top of the panel, the text controls
+ * together in one place, and the rest (colours, sound bars, the dials only
+ * an "Everything" user wants) under Design.
  *
  * Everything here writes into the project scene, which is the single document
- * the renderer reads — so what this panel changes is exactly what the export
- * changes. Nothing in the panel is preview-only.
+ * the renderer reads — so what these panels change is exactly what the export
+ * changes. Nothing in them is preview-only.
  */
 
 // Keep in step with FONT_LABELS in backend/app/services/scene.py.
@@ -126,7 +129,12 @@ function captionCollisions(
   return { layers: hit, band };
 }
 
-export function DesignPanel({
+/**
+ * The pictures: the cover art and the blurred backdrop, with the upload
+ * button right there. At the top of the Studio panel, because adding your
+ * own picture is the first thing most people come to do.
+ */
+export function PicturesPanel({
   project,
   media,
   onScene,
@@ -139,10 +147,11 @@ export function DesignPanel({
   onMediaAdded: (asset: MediaAsset) => void;
   sourceIsVideo?: boolean;
 }) {
-  const customFonts = useCustomFonts();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Which picture an upload is for: the cover art or the backdrop.
+  const uploadTarget = useRef<"artwork" | "background">("artwork");
 
   const scene = (project?.scene ?? {}) as Scene;
   const background = (scene.backgroundImage ?? {}) as Record<string, unknown>;
@@ -155,29 +164,6 @@ export function DesignPanel({
     return layers.find((layer) => layer.type === "artwork") ?? null;
   }, [scene.layers]);
 
-  async function upload(file: File) {
-    setUploading(true);
-    setError(null);
-    try {
-      const result = await api.uploadMedia(file);
-      onMediaAdded(result.media);
-      // A freshly uploaded image is almost always the one you meant to use.
-      await onScene({
-        backgroundImage: { ...background, mediaId: result.media.id },
-      });
-      playSfx("confirm");
-    } catch (cause) {
-      setError((cause as Error).message);
-      playSfx("error");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  function patchBackground(patch: Record<string, unknown>) {
-    void onScene({ backgroundImage: { ...background, ...patch } });
-  }
-
   function setArtwork(mediaId: string | null) {
     const layers = [...((scene.layers ?? []) as Record<string, unknown>[])];
     const index = layers.findIndex((layer) => layer.type === "artwork");
@@ -187,15 +173,285 @@ export function DesignPanel({
     void onScene({ layers });
   }
 
+  function patchBackground(patch: Record<string, unknown>) {
+    void onScene({ backgroundImage: { ...background, ...patch } });
+  }
+
+  async function upload(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await api.uploadMedia(file);
+      onMediaAdded(result.media);
+      // A freshly uploaded picture is almost always the one you meant to use.
+      if (uploadTarget.current === "background" || !artwork) {
+        await onScene({ backgroundImage: { ...background, mediaId: result.media.id } });
+      } else {
+        setArtwork(result.media.id);
+      }
+      playSfx("confirm");
+    } catch (cause) {
+      setError((cause as Error).message);
+      playSfx("error");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function pick(target: "artwork" | "background") {
+    uploadTarget.current = target;
+    fileRef.current?.click();
+  }
+
   const blur = Number(background.blur ?? 18);
   const dim = Number(background.dim ?? 0.35);
   const backgroundId = (background.mediaId as string) ?? "";
 
   return (
+    <div className="design-panel pictures-panel">
+      <div className="inspector-heading">
+        <span className="sidebar-label">
+          <ImageIcon size={12} /> Pictures
+        </span>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+          event.target.value = "";
+        }}
+      />
+
+      {artwork && (
+        <div className="design-group cover-art">
+          <span className="sidebar-label">Cover art</span>
+          <p className="muted">
+            Pick a picture or add a new one. On the video, drag it to move it
+            and drag its corners to crop it.
+          </p>
+          <div className="image-picker">
+            <button
+              className={`image-chip none ${artwork.mediaId ? "" : "selected"}`}
+              title="No cover art"
+              onClick={() => setArtwork(null)}
+            >
+              <X size={13} />
+            </button>
+            {images.map((asset) => (
+              <button
+                key={asset.id}
+                className={`image-chip ${artwork.mediaId === asset.id ? "selected" : ""}`}
+                title={asset.original_name}
+                onClick={() => {
+                  playSfx("select");
+                  setArtwork(asset.id);
+                }}
+              >
+                <img src={api.mediaFileUrl(asset.id)} alt="" loading="lazy" />
+              </button>
+            ))}
+            <button
+              className="image-chip upload"
+              title="Add a picture"
+              onClick={() => pick("artwork")}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="spin" size={14} /> : <Upload size={14} />}
+            </button>
+          </div>
+          <button className="ghost compact upload-button" onClick={() => pick("artwork")} disabled={uploading}>
+            <Upload size={13} /> Add a picture
+          </button>
+          {images.length === 0 && (
+            <p className="muted">No pictures yet — add your show's cover.</p>
+          )}
+        </div>
+      )}
+
+      <details className="design-group design-fold">
+        <summary className="sidebar-label">Background picture</summary>
+        {sourceIsVideo && (
+          <label className="checkbox-row">
+            <md-switch
+              selected={scene.videoBackground !== false}
+              onInput={(event) => void onScene({ videoBackground: (event.target as unknown as { selected: boolean }).selected })}
+            ></md-switch>
+            Use the video's own picture as the background
+          </label>
+        )}
+        <p className="muted">
+          A soft, blurred version of a picture fills the whole video behind
+          everything else. Turn the blur down to see it clearly.
+        </p>
+        <div className="image-picker">
+          <button
+            className={`image-chip none ${backgroundId ? "" : "selected"}`}
+            title="No background image"
+            onClick={() => patchBackground({ mediaId: null })}
+          >
+            <X size={13} />
+          </button>
+          {images.map((asset) => (
+            <button
+              key={asset.id}
+              className={`image-chip ${backgroundId === asset.id ? "selected" : ""}`}
+              title={asset.original_name}
+              onClick={() => {
+                playSfx("select");
+                patchBackground({ mediaId: asset.id });
+              }}
+            >
+              <img src={api.mediaFileUrl(asset.id)} alt="" loading="lazy" />
+            </button>
+          ))}
+          <button
+            className="image-chip upload"
+            title="Upload an image"
+            onClick={() => pick("background")}
+            disabled={uploading}
+          >
+            {uploading ? <Loader2 className="spin" size={14} /> : <Upload size={14} />}
+          </button>
+        </div>
+        {backgroundId && (
+          <>
+            <label>
+              Blur {blur.toFixed(0)}
+              <md-slider
+                min={0}
+                max={60}
+                step={1}
+                labeled
+                value={blur}
+                onInput={(event) => patchBackground({ blur: Number((event.target as unknown as { value: number }).value) })}
+              />
+            </label>
+            <label>
+              Darken {Math.round(dim * 100)}%
+              <md-slider
+                min={0}
+                max={95}
+                step={1}
+                labeled
+                value={Math.round(dim * 100)}
+                onInput={(event) =>
+                  patchBackground({ dim: Number((event.target as unknown as { value: number }).value) / 100 })
+                }
+              />
+            </label>
+          </>
+        )}
+      </details>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * The text controls that belong to the whole clip: the style the captions
+ * are drawn in, whether the spoken word lights up, the font, the colour and
+ * the size. The Studio puts these beside the selected text layer's own words
+ * so everything about text is in one place.
+ */
+export function TextStylePanel({
+  project,
+  onScene,
+}: {
+  project: Project | null;
+  onScene: (patch: Scene) => Promise<void>;
+}) {
+  const customFonts = useCustomFonts();
+  const scene = (project?.scene ?? {}) as Scene;
+  const font = String(scene.captionFont ?? scene.font ?? "inter");
+  return (
+    <div className="text-style">
+      <label>
+        Text style
+        <md-outlined-select
+          value={String(scene.captionPreset ?? "social")}
+          onInput={(event) => void onScene({ captionPreset: (event.target as unknown as { value: string }).value })}
+        >
+          {CAPTION_PRESETS.map(([value, label]) => (
+            <md-select-option key={value} value={value} selected={String(scene.captionPreset ?? "social") === value}>
+              <div slot="headline">{label}</div>
+            </md-select-option>
+          ))}
+        </md-outlined-select>
+      </label>
+      <label className="checkbox-row plain">
+        <input
+          type="checkbox"
+          checked={scene.wordHighlight !== false}
+          onChange={(event) => void onScene({ wordHighlight: event.target.checked })}
+        />
+        <span>Highlight each word as it is spoken</span>
+      </label>
+      <label>
+        Font
+        <md-outlined-select
+          value={font}
+          onInput={(event) => {
+            // One font for everything on the video: the captions and any
+            // text you add. Two pickers was one too many.
+            const value = (event.target as unknown as { value: string }).value;
+            void onScene({ font: value, captionFont: value });
+          }}
+        >
+          {FONTS.map(([id, label]) => (
+            <md-select-option key={id} value={id} selected={font === id}><div slot="headline">{label}</div></md-select-option>
+          ))}
+          {customFonts.map((f) => (
+            <md-select-option key={f.id} value={f.id} selected={font === f.id}><div slot="headline">{f.family} (yours)</div></md-select-option>
+          ))}
+        </md-outlined-select>
+      </label>
+      <label>
+        Caption colour
+        <input
+          type="color"
+          value={String(scene.captionColor ?? "#ffffff")}
+          onChange={(event) => void onScene({ captionColor: event.target.value })}
+        />
+      </label>
+      <label>
+        Caption size
+        <md-slider
+          min={60} max={160} step={5} labeled
+          value={Math.round(Number(scene.captionScale ?? 1) * 100)}
+          onInput={(event) => void onScene({ captionScale: Number((event.target as unknown as { value: number }).value) / 100 })}
+        ></md-slider>
+      </label>
+      <CaptionCollisionNotice
+        scene={scene}
+        aspectRatio={project?.aspect_ratio ?? "9:16"}
+        onScene={onScene}
+      />
+    </div>
+  );
+}
+
+/** Colours, sound bars, and — under "Everything" — the finer dials. */
+export function DesignPanel({
+  project,
+  onScene,
+  advanced = false,
+}: {
+  project: Project | null;
+  onScene: (patch: Scene) => Promise<void>;
+  /** Show the dials most people never need (platform guide, timing, volume). */
+  advanced?: boolean;
+}) {
+  const scene = (project?.scene ?? {}) as Scene;
+
+  return (
     <div className="design-panel">
       <div className="inspector-heading">
         <span className="sidebar-label">
-          <Palette size={12} /> Design
+          <Palette size={12} /> Colours
         </span>
       </div>
 
@@ -238,153 +494,6 @@ export function DesignPanel({
       </label>
 
       <details className="design-group design-fold">
-        <summary className="sidebar-label">Background image</summary>
-        {sourceIsVideo && (
-          <label className="checkbox-row">
-            <md-switch
-              selected={scene.videoBackground !== false}
-              onInput={(event) => void onScene({ videoBackground: (event.target as unknown as { selected: boolean }).selected })}
-            ></md-switch>
-            Use the video's own picture as the background
-          </label>
-        )}
-        <p className="muted">
-          A soft, blurred version of your cover picture fills the whole video
-          behind everything else. Turn the blur down to see it clearly.
-        </p>
-        <div className="image-picker">
-          <button
-            className={`image-chip none ${backgroundId ? "" : "selected"}`}
-            title="No background image"
-            onClick={() => patchBackground({ mediaId: null })}
-          >
-            <X size={13} />
-          </button>
-          {images.map((asset) => (
-            <button
-              key={asset.id}
-              className={`image-chip ${backgroundId === asset.id ? "selected" : ""}`}
-              title={asset.original_name}
-              onClick={() => {
-                playSfx("select");
-                patchBackground({ mediaId: asset.id });
-              }}
-            >
-              <img src={api.mediaFileUrl(asset.id)} alt="" loading="lazy" />
-            </button>
-          ))}
-          <button
-            className="image-chip upload"
-            title="Upload an image"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? <Loader2 className="spin" size={14} /> : <Upload size={14} />}
-          </button>
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void upload(file);
-            event.target.value = "";
-          }}
-        />
-        {error && <p className="error">{error}</p>}
-
-        {backgroundId && (
-          <>
-            <label>
-              Blur {blur.toFixed(0)}
-              <md-slider
-                min={0}
-                max={60}
-                step={1}
-                labeled
-                value={blur}
-                onInput={(event) => patchBackground({ blur: Number((event.target as unknown as { value: number }).value) })}
-              />
-            </label>
-            <label>
-              Darken {Math.round(dim * 100)}%
-              <md-slider
-                min={0}
-                max={95}
-                step={1}
-                labeled
-                value={Math.round(dim * 100)}
-                onInput={(event) =>
-                  patchBackground({ dim: Number((event.target as unknown as { value: number }).value) / 100 })
-                }
-              />
-            </label>
-          </>
-        )}
-      </details>
-
-      {artwork && (
-        <details className="design-group design-fold">
-          <summary className="sidebar-label"><ImageIcon size={12} /> Cover art</summary>
-          <div className="image-picker">
-            <button
-              className={`image-chip none ${artwork.mediaId ? "" : "selected"}`}
-              title="No cover art"
-              onClick={() => setArtwork(null)}
-            >
-              <X size={13} />
-            </button>
-            {images.map((asset) => (
-              <button
-                key={asset.id}
-                className={`image-chip ${artwork.mediaId === asset.id ? "selected" : ""}`}
-                title={asset.original_name}
-                onClick={() => {
-                  playSfx("select");
-                  setArtwork(asset.id);
-                }}
-              >
-                <img src={api.mediaFileUrl(asset.id)} alt="" loading="lazy" />
-              </button>
-            ))}
-            <button
-              className="image-chip upload"
-              title="Upload a picture"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? <Loader2 className="spin" size={14} /> : <Upload size={14} />}
-            </button>
-          </div>
-          {images.length === 0 && (
-            <p className="muted">No pictures yet — tap the arrow to add your show's cover.</p>
-          )}
-        </details>
-      )}
-
-      <details className="design-group design-fold">
-        <summary className="sidebar-label">Where is this going?</summary>
-        <p className="muted">
-          Pick the app you will post to and Kinder shades the parts of the
-          screen that app covers with its own buttons, so nothing important
-          ends up hidden.
-        </p>
-        <md-outlined-select
-          value={String(scene.platform ?? "")}
-          onInput={(event) => void onScene({ platform: (event.target as unknown as { value: string }).value })}
-        >
-          <md-select-option value=""><div slot="headline">No guide</div></md-select-option>
-          {PLATFORMS.map(([value, label]) => (
-            <md-select-option key={value} value={value} selected={String(scene.platform ?? "") === value}>
-              <div slot="headline">{label}</div>
-            </md-select-option>
-          ))}
-        </md-outlined-select>
-      </details>
-
-      <details className="design-group design-fold">
         <summary className="sidebar-label">Sound bars</summary>
         <p className="muted">
           The bars that move with the voice. Choose a shape, or turn them off.
@@ -404,155 +513,99 @@ export function DesignPanel({
         </label>
       </details>
 
-      <details className="design-group design-fold">
-        <summary className="sidebar-label">Font</summary>
-        <p className="muted">
-          One font for the title, one for the words on screen. Bebas Neue is
-          tall and loud — great for a title, hard to read as captions.
-        </p>
-        <label>
-          Titles
-          <md-outlined-select
-            value={String(scene.font ?? "inter")}
-            onInput={(event) => void onScene({ font: (event.target as unknown as { value: string }).value })}
-          >
-            {FONTS.map(([id, label]) => (
-              <md-select-option key={id} value={id} selected={String(scene.font ?? "inter") === id}><div slot="headline">{label}</div></md-select-option>
-            ))}
-            {customFonts.map((f) => (
-              <md-select-option key={f.id} value={f.id} selected={String(scene.font ?? "inter") === f.id}><div slot="headline">{f.family} (yours)</div></md-select-option>
-            ))}
-          </md-outlined-select>
-        </label>
-        <label>
-          Captions
-          <md-outlined-select
-            value={String(scene.captionFont ?? "inter")}
-            onInput={(event) => void onScene({ captionFont: (event.target as unknown as { value: string }).value })}
-          >
-            {FONTS.map(([id, label]) => (
-              <md-select-option key={id} value={id} selected={String(scene.captionFont ?? "inter") === id}><div slot="headline">{label}</div></md-select-option>
-            ))}
-            {customFonts.map((f) => (
-              <md-select-option key={f.id} value={f.id} selected={String(scene.captionFont ?? "inter") === f.id}><div slot="headline">{f.family} (yours)</div></md-select-option>
-            ))}
-          </md-outlined-select>
-        </label>
-      </details>
+      {advanced && (
+        <>
+          <details className="design-group design-fold">
+            <summary className="sidebar-label">Where is this going?</summary>
+            <p className="muted">
+              Pick the app you will post to and Kinder shades the parts of the
+              screen that app covers with its own buttons, so nothing important
+              ends up hidden.
+            </p>
+            <md-outlined-select
+              value={String(scene.platform ?? "")}
+              onInput={(event) => void onScene({ platform: (event.target as unknown as { value: string }).value })}
+            >
+              <md-select-option value=""><div slot="headline">No guide</div></md-select-option>
+              {PLATFORMS.map(([value, label]) => (
+                <md-select-option key={value} value={value} selected={String(scene.platform ?? "") === value}>
+                  <div slot="headline">{label}</div>
+                </md-select-option>
+              ))}
+            </md-outlined-select>
+          </details>
 
-      <details className="design-group design-fold">
-        <summary className="sidebar-label">Are the words early or late?</summary>
-        <p className="muted">
-          If the captions light up a moment after the word is said, slide
-          this to bring them earlier. Watch the preview to check.
-        </p>
-        <label>
-          {Number(scene.captionOffset ?? 0) === 0
-            ? "In step with the audio"
-            : `${Number(scene.captionOffset ?? 0) > 0 ? "Later" : "Earlier"} by ${Math.abs(Number(scene.captionOffset ?? 0)).toFixed(2)}s`}
-          <md-slider
-            min={-1}
-            max={1}
-            step={0.05}
-            labeled
-            value={Number(scene.captionOffset ?? 0)}
-            onInput={(event) =>
-              void onScene({ captionOffset: Number((event.target as unknown as { value: number }).value) })
-            }
-          />
-        </label>
-      </details>
+          <details className="design-group design-fold">
+            <summary className="sidebar-label">Are the words early or late?</summary>
+            <p className="muted">
+              If the captions light up a moment after the word is said, slide
+              this to bring them earlier. Watch the preview to check.
+            </p>
+            <label>
+              {Number(scene.captionOffset ?? 0) === 0
+                ? "In step with the audio"
+                : `${Number(scene.captionOffset ?? 0) > 0 ? "Later" : "Earlier"} by ${Math.abs(Number(scene.captionOffset ?? 0)).toFixed(2)}s`}
+              <md-slider
+                min={-1}
+                max={1}
+                step={0.05}
+                labeled
+                value={Number(scene.captionOffset ?? 0)}
+                onInput={(event) =>
+                  void onScene({ captionOffset: Number((event.target as unknown as { value: number }).value) })
+                }
+              />
+            </label>
+          </details>
 
-      <details className="design-group design-fold">
-        <summary className="sidebar-label">Voice volume</summary>
-        <p className="muted">
-          The finished video is always set to the volume the apps expect, so
-          you rarely need this. Fade in and fade out soften the very start
-          and end of the clip.
-        </p>
-        <label>
-          Level {Number(scene.voiceGainDb ?? 0) >= 0 ? "+" : ""}
-          {Number(scene.voiceGainDb ?? 0).toFixed(1)} dB
-          <md-slider
-            min={-12}
-            max={12}
-            step={0.5}
-            labeled
-            value={Number(scene.voiceGainDb ?? 0)}
-            onInput={(event) =>
-              void onScene({ voiceGainDb: Number((event.target as unknown as { value: number }).value) })
-            }
-          />
-        </label>
-        <div className="fade-row">
-          <label>
-            Fade in {Number(scene.fadeIn ?? 0).toFixed(1)}s
-            <md-slider
-              min={0}
-              max={3}
-              step={0.1}
-              labeled
-              value={Number(scene.fadeIn ?? 0)}
-              onInput={(event) => void onScene({ fadeIn: Number((event.target as unknown as { value: number }).value) })}
-            />
-          </label>
-          <label>
-            Fade out {Number(scene.fadeOut ?? 0).toFixed(1)}s
-            <md-slider
-              min={0}
-              max={3}
-              step={0.1}
-              labeled
-              value={Number(scene.fadeOut ?? 0)}
-              onInput={(event) => void onScene({ fadeOut: Number((event.target as unknown as { value: number }).value) })}
-            />
-          </label>
-        </div>
-      </details>
-
-      <details className="design-group design-fold">
-        <summary className="sidebar-label">Captions</summary>
-        <p className="muted">
-          Most people watch with the sound off, so the words on screen are
-          what they actually get. Pick a style below.
-        </p>
-        <label className="checkbox-row">
-          <md-switch
-            selected={scene.wordHighlight !== false}
-            onInput={(event) => void onScene({ wordHighlight: (event.target as unknown as { selected: boolean }).selected })}
-          ></md-switch>
-          <span>
-            Highlight each word as it is spoken
-            <small>Uses the transcript's word timings. Off burns whole lines.</small>
-          </span>
-        </label>
-        <CaptionCollisionNotice
-          scene={scene}
-          aspectRatio={project?.aspect_ratio ?? "9:16"}
-          onScene={onScene}
-        />
-        <label>
-          Style
-          <md-outlined-select
-            value={String(scene.captionPreset ?? "social")}
-            onInput={(event) => void onScene({ captionPreset: (event.target as unknown as { value: string }).value })}
-          >
-            {CAPTION_PRESETS.map(([value, label]) => (
-              <md-select-option key={value} value={value} selected={String(scene.captionPreset ?? "social") === value}>
-                <div slot="headline">{label}</div>
-              </md-select-option>
-            ))}
-          </md-outlined-select>
-        </label>
-        <label>
-          Colour
-          <input
-            type="color"
-            value={String(scene.captionColor ?? "#ffffff")}
-            onChange={(event) => void onScene({ captionColor: event.target.value })}
-          />
-        </label>
-      </details>
+          <details className="design-group design-fold">
+            <summary className="sidebar-label">Voice volume</summary>
+            <p className="muted">
+              The finished video is always set to the volume the apps expect, so
+              you rarely need this. Fade in and fade out soften the very start
+              and end of the clip.
+            </p>
+            <label>
+              Level {Number(scene.voiceGainDb ?? 0) >= 0 ? "+" : ""}
+              {Number(scene.voiceGainDb ?? 0).toFixed(1)} dB
+              <md-slider
+                min={-12}
+                max={12}
+                step={0.5}
+                labeled
+                value={Number(scene.voiceGainDb ?? 0)}
+                onInput={(event) =>
+                  void onScene({ voiceGainDb: Number((event.target as unknown as { value: number }).value) })
+                }
+              />
+            </label>
+            <div className="fade-row">
+              <label>
+                Fade in {Number(scene.fadeIn ?? 0).toFixed(1)}s
+                <md-slider
+                  min={0}
+                  max={3}
+                  step={0.1}
+                  labeled
+                  value={Number(scene.fadeIn ?? 0)}
+                  onInput={(event) => void onScene({ fadeIn: Number((event.target as unknown as { value: number }).value) })}
+                />
+              </label>
+              <label>
+                Fade out {Number(scene.fadeOut ?? 0).toFixed(1)}s
+                <md-slider
+                  min={0}
+                  max={3}
+                  step={0.1}
+                  labeled
+                  value={Number(scene.fadeOut ?? 0)}
+                  onInput={(event) => void onScene({ fadeOut: Number((event.target as unknown as { value: number }).value) })}
+                />
+              </label>
+            </div>
+          </details>
+        </>
+      )}
     </div>
   );
 }

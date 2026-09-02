@@ -339,6 +339,27 @@ def join_words(words: list[dict]) -> str:
     return out.strip()
 
 
+def edited_words(segment: dict) -> list[dict]:
+    """The segment's words, honouring a line somebody retyped.
+
+    The transcript editor changes a segment's `text`; the word timings stay
+    as Whisper heard them. Captions are built from the words, so a corrected
+    spelling never reached the video — the transcript said one thing and the
+    burned-in captions another. When the retyped line has as many tokens as
+    there are words, each token takes its word's timing. When it does not,
+    the timings cannot be trusted to line up, so the line goes out whole
+    (no per-word highlight), which is still the right words.
+    """
+    words = segment.get("words") or []
+    text = str(segment.get("text", "")).strip()
+    if not words or not text or join_words(words) == text:
+        return words
+    tokens = text.split()
+    if len(tokens) == len(words):
+        return [{**word, "text": token} for word, token in zip(words, tokens)]
+    return []
+
+
 def caption_lines(
     transcript: dict, start: float, end: float, max_chars: int | None = None
 ) -> list[dict]:
@@ -357,7 +378,7 @@ def caption_lines(
         if seg_end <= start or seg_start >= end:
             continue
 
-        words = segment.get("words") or []
+        words = edited_words(segment)
         if not words:
             text = str(segment.get("text", "")).strip()
             if text:

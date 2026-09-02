@@ -74,7 +74,7 @@ const CAPTION_SIZE_RATIOS: Record<string, number> = {
 const ATTACHING = ",.!?;:%)]}'’”-";
 const OPENING = "([{‘“";
 
-function joinWords(words: TranscriptWord[]): string {
+export function joinWords(words: TranscriptWord[]): string {
   let out = "";
   for (const word of words) {
     const token = word.text ?? "";
@@ -92,6 +92,20 @@ function joinWords(words: TranscriptWord[]): string {
     }
   }
   return out.trim();
+}
+
+/** Mirrors edited_words in backend/app/services/transcription.py: a line
+ *  somebody retyped wins over the words the computer heard. Same token count
+ *  keeps the timings; a different count burns the line in whole. */
+export function editedWords(segment: TranscriptSegment): TranscriptWord[] {
+  const words = segment.words ?? [];
+  const text = (segment.text ?? "").trim();
+  if (!words.length || !text || joinWords(words) === text) return words;
+  const tokens = text.split(/\s+/);
+  if (tokens.length === words.length) {
+    return words.map((word, index) => ({ ...word, text: tokens[index] }));
+  }
+  return [];
 }
 
 /** Mirrors the `margin_ratio` of each preset in scene.py. Captions are drawn
@@ -153,7 +167,7 @@ export function captionLines(
 
   for (const segment of transcript.segments) {
     if (segment.end <= start || segment.start >= end) continue;
-    const words = (segment.words ?? []).filter(
+    const words = editedWords(segment).filter(
       (word) => word.end > start && word.start < end,
     );
     if (!words.length) {

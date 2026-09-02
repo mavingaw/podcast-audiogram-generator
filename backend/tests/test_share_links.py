@@ -70,7 +70,13 @@ def test_somebody_elses_project_cannot_be_shared(client):
 
 
 def test_a_made_up_token_is_a_404(client):
-    assert client.get("/s/not-a-real-token").status_code == 404
+    bad = client.get("/s/not-a-real-token")
+    assert bad.status_code == 404
+    # A person opening the link in a browser gets a friendly page, not JSON.
+    assert "text/html" in bad.headers["content-type"]
+    assert "isn't available" in bad.text
+    # The asset routes stay as they are (consumed by the <video> tag).
+    assert client.get("/s/not-a-real-token/video.mp4").status_code == 404
 
 
 def test_the_poster_is_a_recognised_output(client):

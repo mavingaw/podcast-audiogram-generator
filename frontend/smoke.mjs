@@ -463,21 +463,43 @@ await step("clip-length", async () => {
 await step("drag-captions", async () => {
   const captions = page.locator(".canvas-layer.layer-captions").first();
   if ((await captions.count()) === 0) return;
+  // Select them in the list first, the way a person does: an unselected
+  // caption band hands presses on its empty part to the layer underneath.
+  await page.locator('.layer-row:has-text("Captions")').first().click().catch(() => {});
+  // The clip-length step above may have scrolled the canvas off the top;
+  // positions are measured against the canvas, not the viewport, because
+  // selecting a layer changes the panel's height and can shift the page.
+  // Centred, not merely "in view": the sticky app header covers the top of
+  // a canvas that is scrolled just into view, and a caption band parked at
+  // the top of the picture then gets its press swallowed by the header.
+  const canvasBox = page.locator(".design-canvas").first();
+  await canvasBox.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(300);
+  const relativeTop = async () => {
+    const canvas = await canvasBox.boundingBox();
+    const box = await captions.boundingBox();
+    return canvas && box ? box.y - canvas.y : null;
+  };
   const before = await captions.boundingBox();
-  if (!before) return;
+  const beforeTop = await relativeTop();
+  if (!before || beforeTop === null) return;
+  // Up, unless the band is already parked at the top of the canvas (a
+  // previous run can leave it there), in which case down.
+  const delta = beforeTop < 60 ? 80 : -80;
   await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
   await page.mouse.down();
-  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 - 80, { steps: 8 });
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + delta, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(800);
+  const afterTop = await relativeTop();
+  if (afterTop === null || (afterTop - beforeTop) * Math.sign(delta) < 40)
+    problems.push(`drag-captions: captions did not stay where they were dropped (${beforeTop} -> ${afterTop})`);
+  // Back to roughly where they were.
   const after = await captions.boundingBox();
-  if (!after || before.y - after.y < 40)
-    problems.push(`drag-captions: captions did not stay where they were dropped (${before.y} -> ${after?.y})`);
-  // Back down to roughly where they were.
   if (after) {
     await page.mouse.move(after.x + after.width / 2, after.y + after.height / 2);
     await page.mouse.down();
-    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2, { steps: 8 });
+    await page.mouse.move(after.x + after.width / 2, after.y + after.height / 2 - delta, { steps: 8 });
     await page.mouse.up();
     await page.waitForTimeout(500);
   }
@@ -559,6 +581,70 @@ await step("transcript-cuts", async () => {
     }
   } else {
     problems.push("transcript-cuts: no way to restore what was cut");
+  }
+});
+
+// A misheard name must be fixable right where the words are, and the fix
+// must stick (the captions are built from the transcript's words).
+await step("fix-word", async () => {
+  const words = page.locator(".cuts-line .word");
+  if ((await words.count()) < 2) return;
+  const fix = page.locator('.cuts-summary button:has-text("Fix a word")');
+  if ((await fix.count()) === 0) {
+    problems.push("fix-word: no Fix a word button");
+    return;
+  }
+  await fix.click();
+  await page.waitForTimeout(300);
+  const original = (await words.nth(1).innerText()).trim();
+  await words.nth(1).click();
+  const input = page.locator(".cuts-line .word.editing input");
+  if ((await input.count()) === 0) {
+    problems.push("fix-word: clicking a word in fix mode opened no box");
+    await page.locator('.cuts-summary button:has-text("Done fixing")').click().catch(() => {});
+    return;
+  }
+  await input.fill(`${original}x`);
+  await input.press("Enter");
+  await page.waitForTimeout(900);
+  const changed = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
+  if (changed !== `${original}x`) {
+    problems.push(`fix-word: the word did not change (${original} -> ${changed})`);
+  }
+  // Put it back, so the smoke run does not leave a typo on a real project.
+  await page.locator(".cuts-line .word").nth(1).click();
+  const again = page.locator(".cuts-line .word.editing input");
+  await again.fill(original);
+  await again.press("Enter");
+  await page.waitForTimeout(900);
+  const restored = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
+  if (restored !== original) problems.push(`fix-word: could not restore the word (${restored})`);
+  await page.locator('.cuts-summary button:has-text("Done fixing")').click();
+});
+
+// The arrows in "What is on the picture" reorder the stack — the list, the
+// canvas, and (since the export follows the list) the video.
+await step("layer-order", async () => {
+  const rows = page.locator(".layer-row");
+  if ((await rows.count()) < 3) return;
+  const names = async () => (await rows.allInnerTexts()).map((text) => text.trim());
+  const before = await names();
+  const forward = rows.nth(1).locator('button[aria-label="Bring forward"]');
+  if (await forward.isDisabled()) {
+    problems.push("layer-order: Bring forward is disabled on a movable layer");
+    return;
+  }
+  await forward.click();
+  await page.waitForTimeout(700);
+  const after = await names();
+  if (after[0] !== before[1] || after[1] !== before[0]) {
+    problems.push(`layer-order: Bring forward did not reorder (${before.slice(0, 2)} -> ${after.slice(0, 2)})`);
+  }
+  await rows.nth(0).locator('button[aria-label="Send back"]').click();
+  await page.waitForTimeout(700);
+  const restored = await names();
+  if (restored[0] !== before[0] || restored[1] !== before[1]) {
+    problems.push("layer-order: Send back did not restore the order");
   }
 });
 

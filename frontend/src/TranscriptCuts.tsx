@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { Scissors, Undo2 } from "lucide-react";
-import { Transcript, TranscriptWord } from "./api";
+import { useMemo, useRef, useState } from "react";
+import { Pencil, Scissors, Undo2 } from "lucide-react";
+import { editedWords, Transcript, TranscriptWord } from "./api";
 
 /**
  * Editing the clip by editing its words.
@@ -14,6 +14,10 @@ import { Transcript, TranscriptWord } from "./api";
  * before anything else runs. See backend/app/services/cuts.py, which is where
  * the mapping between source time and output time actually lives; this panel
  * only decides which ranges exist.
+ *
+ * "Fix a word" is the other edit people reach for here: the computer heard
+ * "Afia" and the captions will say so unless somebody can retype it. In that
+ * mode a click opens the word for typing instead of cutting it.
  *
  * Only the clip's own words are shown. The panel next to this one lists all
  * 1123 segments of a 93-minute episode, which is the right scope for finding a
@@ -78,6 +82,8 @@ function isCut(time: number, cuts: CutRange[]): boolean {
   return cuts.some((cut) => time >= cut.start && time <= cut.end);
 }
 
+type Editing = { segment: number; index: number; draft: string };
+
 export function TranscriptCuts({
   transcript,
   clipStart,
@@ -85,6 +91,7 @@ export function TranscriptCuts({
   cuts,
   onChange,
   onSeek,
+  onEditWord,
 }: {
   transcript: Transcript | null;
   clipStart: number;
@@ -92,9 +99,18 @@ export function TranscriptCuts({
   cuts: CutRange[];
   onChange: (next: CutRange[]) => void;
   onSeek?: (time: number) => void;
+  /** Retype one word; `index` is its position in the segment's own words. */
+  onEditWord?: (segmentId: number, index: number, text: string) => void;
 }) {
+  const [fixing, setFixing] = useState(false);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  // Enter commits and blurs; the blur must not commit a second time.
+  const editingRef = useRef<Editing | null>(null);
+  editingRef.current = editing;
+
   // Only the words inside the clip, and only once: a segment that straddles an
-  // edge contributes the part that is actually in the clip.
+  // edge contributes the part that is actually in the clip. Each word keeps
+  // its index in the segment, which is what a correction is addressed to.
   const rows = useMemo(() => {
     const segments = (transcript?.segments ?? []).filter(
       (segment) => segment.end > clipStart && segment.start < clipEnd,
@@ -103,9 +119,9 @@ export function TranscriptCuts({
       .map((segment) => ({
         id: segment.id,
         speaker: segment.speaker,
-        words: (segment.words ?? []).filter(
-          (word) => word.end > clipStart && word.start < clipEnd,
-        ),
+        words: editedWords(segment)
+          .map((word, index) => ({ word, index }))
+          .filter(({ word }) => word.end > clipStart && word.start < clipEnd),
         text: segment.text,
       }))
       .filter((row) => row.words.length > 0 || row.text);
@@ -134,6 +150,17 @@ export function TranscriptCuts({
     }
   }
 
+  function commit(original: string) {
+    const current = editingRef.current;
+    if (!current) return;
+    editingRef.current = null;
+    setEditing(null);
+    const text = current.draft.trim();
+    if (text && text !== original.trim()) {
+      onEditWord?.(current.segment, current.index, text);
+    }
+  }
+
   if (!transcript) {
     return (
       <p className="muted">
@@ -153,10 +180,11 @@ export function TranscriptCuts({
   }
 
   return (
-    <div className="transcript-cuts">
+    <div className={`transcript-cuts ${fixing ? "fixing" : ""}`}>
       <p className="muted">
-        Click a word to remove it from the clip — an “um”, a false start, a
-        name. Click it again to put it back. The audio is trimmed to match.
+        {fixing
+          ? "Click a word to retype it — a name the computer misheard, a wrong spelling. Press Enter to keep it."
+          : "Click a word to remove it from the clip — an “um”, a false start, a name. Click it again to put it back. The audio is trimmed to match."}
       </p>
       <div className="cuts-summary">
         <span>
@@ -167,6 +195,18 @@ export function TranscriptCuts({
         <span className="cuts-runtime">
           Clip runs {remaining.toFixed(1)}s
         </span>
+        {onEditWord && (
+          <button
+            className={`ghost compact fix-words ${fixing ? "on" : ""}`}
+            onClick={() => {
+              setEditing(null);
+              setFixing((value) => !value);
+            }}
+            title={fixing ? "Back to cutting words" : "Retype a word the computer got wrong"}
+          >
+            <Pencil size={13} /> {fixing ? "Done fixing" : "Fix a word"}
+          </button>
+        )}
         {merged.length > 0 && (
           <button className="ghost compact" onClick={() => onChange([])}>
             <Undo2 size={13} /> Restore all
@@ -179,45 +219,85 @@ export function TranscriptCuts({
         </p>
       )}
       <div className="cuts-body">
-        {rows.map((row) => (
-          <p className="cuts-line" key={row.id}>
-            <b>{row.speaker}</b>
-            {row.words.length ? (
-              row.words.map((word, index) => {
-                const cut = isCut((word.start + word.end) / 2, merged);
-                return (
-                  <span
-                    key={`${row.id}-${index}`}
-                    className={cut ? "word cut" : "word"}
-                    role="button"
-                    tabIndex={0}
-                    title={`${word.start.toFixed(2)}s — click to ${cut ? "restore" : "cut"}`}
-                    onClick={(event) => {
-                      // Alt-click auditions the word instead of cutting it:
-                      // deciding whether a sentence survives usually means
-                      // hearing it first.
-                      if (event.altKey) {
-                        onSeek?.(word.start);
-                        return;
+        {rows.map((row) => {
+          const words = row.words.map((entry) => entry.word);
+          return (
+            <p className="cuts-line" key={row.id}>
+              <b>{row.speaker}</b>
+              {row.words.length ? (
+                row.words.map(({ word, index }, position) => {
+                  const cut = isCut((word.start + word.end) / 2, merged);
+                  if (editing && editing.segment === row.id && editing.index === index) {
+                    return (
+                      <span key={`${row.id}-${index}`} className="word editing">
+                        <input
+                          autoFocus
+                          aria-label="Retype this word"
+                          value={editing.draft}
+                          size={Math.max(3, editing.draft.length + 1)}
+                          onChange={(event) =>
+                            setEditing({ ...editing, draft: event.target.value })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              commit(word.text);
+                            } else if (event.key === "Escape") {
+                              editingRef.current = null;
+                              setEditing(null);
+                            }
+                          }}
+                          onBlur={() => commit(word.text)}
+                        />
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      key={`${row.id}-${index}`}
+                      className={cut ? "word cut" : "word"}
+                      role="button"
+                      tabIndex={0}
+                      title={
+                        fixing
+                          ? "Click to retype this word"
+                          : `${word.start.toFixed(2)}s — click to ${cut ? "restore" : "cut"}`
                       }
-                      toggle(row.words, index);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        toggle(row.words, index);
-                      }
-                    }}
-                  >
-                    {word.text}
-                  </span>
-                );
-              })
-            ) : (
-              <span className="word-plain">{row.text}</span>
-            )}
-          </p>
-        ))}
+                      onClick={(event) => {
+                        // Alt-click auditions the word instead of cutting it:
+                        // deciding whether a sentence survives usually means
+                        // hearing it first.
+                        if (event.altKey) {
+                          onSeek?.(word.start);
+                          return;
+                        }
+                        if (fixing && onEditWord) {
+                          setEditing({ segment: row.id, index, draft: word.text.trim() });
+                          return;
+                        }
+                        toggle(words, position);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          if (fixing && onEditWord) {
+                            setEditing({ segment: row.id, index, draft: word.text.trim() });
+                          } else {
+                            toggle(words, position);
+                          }
+                        }
+                      }}
+                    >
+                      {word.text}
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="word-plain">{row.text}</span>
+              )}
+            </p>
+          );
+        })}
       </div>
       <p className="muted small">
         <Scissors size={12} /> Hold Alt and click a word to hear it instead of

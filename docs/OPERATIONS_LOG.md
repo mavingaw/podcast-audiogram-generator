@@ -173,3 +173,20 @@ MinIO is an S3 API on the same disk the app reads natively.
 
 Nightly: Windows scheduled task "Kinder nightly check" (03:30) runs the
 public smoke + regression and logs to `runtime/logs/`.
+
+2026-09-02: Studio panel reshuffle + two export bugs. (1) The export now
+composites layers in the order the panel lists them ("Bring forward" used to
+change only the preview; every picture went under the sound bars and every
+title over the captions regardless) — tests/test_layer_order.py; verified
+with two real renders on the box (default order and artwork-over-bars). (2) A
+retyped transcript word now reaches the burned-in captions (they were built
+from Whisper's words, so corrections never showed) — "Fix a word" in Cut the
+clip; tests/test_edited_captions.py. (3) An expired/bad share link shows a
+friendly page instead of raw JSON. Panel: Pictures first (cover art + upload),
+one Text section (words of the selected text layer + caption style/font/size),
+Colours, then Everything-only dials; layer arrows are Bring forward / Send
+back and disable at the ends of the stack. Smoke: 32 steps (new fix-word,
+layer-order). DEPLOY GOTCHA: `docker compose build` on the box needs
+KINDER_DB_PASSWORD exported (the compose file declares kinder-db) — without it
+the build fails before it starts and apply-template quietly reuses the old
+image. Read it from the template XML on the box; never write it to .env.

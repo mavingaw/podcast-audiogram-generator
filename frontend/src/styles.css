@@ -3138,3 +3138,30 @@ md-outlined-select { width: 100%; }
   .size-field { min-width: 0; }
   .size-field input, .layer-inspector input[type="number"] { width: 100%; min-width: 0; box-sizing: border-box; }
 }
+
+/* Studio panel reshuffle (2026-09-02): pictures at the top, everything about
+   text together, clearer layer arrows, and word fixing in "Cut the clip". */
+.pictures-panel { margin-top: var(--s-3); }
+.pictures-panel .cover-art { border-top: 0; padding-top: 0; }
+.upload-button { justify-self: start; }
+.layers-heading { margin-top: var(--s-5); margin-bottom: var(--s-1); }
+.layer-action:disabled { opacity: 0.2; cursor: default; }
+.layer-action:disabled:hover { background: transparent; }
+.text-panel .text-layer-fields {
+  display: grid; gap: var(--s-2); padding: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.text-panel .text-layer-fields label,
+.text-style label { display: grid; gap: var(--s-1); font-size: 11px; color: var(--text-muted); }
+.text-panel textarea { min-height: 60px; font-size: 12.5px; }
+.text-style { display: grid; gap: var(--s-3); }
+.checkbox-row.plain { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.checkbox-row.plain input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.fix-words.on { border-color: var(--accent); color: var(--accent-text); }
+.transcript-cuts.fixing .cuts-line .word { cursor: text; }
+.transcript-cuts.fixing .cuts-line .word:hover { background: var(--accent-soft); color: var(--accent-text); }
+.cuts-line .word.editing input {
+  font: inherit; padding: 0 4px; min-width: 3ch;
+  border: 1px solid var(--accent); border-radius: 4px;
+  background: var(--surface); color: var(--text);
+}

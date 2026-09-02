@@ -2021,12 +2021,35 @@ def shared_poster(token: str, db: Annotated[Session, Depends(get_db)]):
     return FileResponse(poster, media_type="image/jpeg")
 
 
+_EXPIRED_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Link expired</title>
+<style>
+  body{margin:0;background:#0B0D11;color:#F8FAFC;font:15px/1.6 -apple-system,Segoe UI,Inter,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}
+  main{display:grid;gap:12px;max-width:380px;text-align:center}
+  h1{font-size:20px;margin:0}
+  small{color:#94A3B8}
+</style></head><body><main>
+<h1>This link isn't available</h1>
+<p>The clip may have been removed, or the link has expired.</p>
+<small>Ask whoever shared it for a fresh link.</small>
+</main></body></html>"""
+
+
 @public_router.get("/s/{token}", response_class=HTMLResponse)
-def shared_page(token: str, db: Annotated[Session, Depends(get_db)]) -> str:
-    """A plain page: the video, a download button, nothing to sign in to."""
+def shared_page(token: str, db: Annotated[Session, Depends(get_db)]):
+    """A plain page: the video, a download button, nothing to sign in to.
+
+    A bad or expired token gets a friendly HTML page, not raw JSON: this is a
+    URL a person opens in a browser, often one a friend was handed.
+    """
     import html
 
-    project = _shared_project(db, token)
+    try:
+        project = _shared_project(db, token)
+    except HTTPException:
+        return HTMLResponse(_EXPIRED_PAGE, status_code=404)
     _record_share_event(db, project, "view")
     title = html.escape(project.title)
     ratio = project.aspect_ratio.replace(":", " / ")

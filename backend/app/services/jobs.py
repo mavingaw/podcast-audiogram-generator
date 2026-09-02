@@ -42,6 +42,7 @@ from app.services.scene import (
     CUSTOM_FONTS,
     enter_offsets,
     PULSE_STYLES,
+    RENDERABLE_TEXT_TYPES,
     WAVE_STYLES,
     font_family_for,
     font_file_for,
@@ -1465,97 +1466,6 @@ def build_render_command(
         audio_chains.append(f"{video_label}[{background_input}:v]overlay=x=0:y=0[vbg]")
         video_label = "[vbg]"
 
-    # Artwork plates are pre-cropped and pre-masked; only the placement is left.
-    for offset, layer in enumerate(image_layers):
-        index = first_image_input + offset
-        x, y, _, _ = layer.pixels(width, height)
-        source = f"[{index}:v]"
-        x_expr: str = str(x)
-        y_expr: str = str(y)
-        if layer.opacity < 1.0:
-            # A translucent plate — the watermark case. aa scales the alpha
-            # channel; everything else passes through.
-            audio_chains.append(
-                f"{source}format=rgba,colorchannelmixer=aa={layer.opacity:.3f}[vimgop{offset}]"
-            )
-            source = f"[vimgop{offset}]"
-        if layer.enter != "none":
-            # The plate fades in over its entrance and, for the moving styles,
-            # drifts into place. overlay evaluates x/y per frame, so the drift
-            # is one expression rather than one filter per frame.
-            progress = f"min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))"
-            audio_chains.append(
-                f"{source}format=rgba,fade=t=in:st={layer.start:.3f}:"
-                f"d={layer.enter_seconds:.3f}:alpha=1[vimgin{offset}]"
-            )
-            source = f"[vimgin{offset}]"
-            dx, dy = enter_offsets(layer.enter, progress)
-            x_expr, y_expr = f"{x}{dx}", f"{y}{dy}"
-        overlay = f"{video_label}{source}overlay=x={x_expr}:y={y_expr}"
-        guard = enable_expression(layer.start, layer.end, duration)
-        if guard:
-            overlay += f":enable='{guard}'"
-        audio_chains.append(f"{overlay}[vimg{offset}]")
-        video_label = f"[vimg{offset}]"
-
-    wave_layer = parsed.waveform_layer()
-    if wave_layer is not None and parsed.wave_style in PULSE_STYLES:
-        video_label = _pulse_wave(
-            audio_chains, video_label, parsed, wave_layer, width, height, duration
-        )
-    elif wave_layer is not None and parsed.wave_style in ENVELOPE_STYLES:
-        video_label = (
-            _envelope_wave(
-                audio_chains, video_label, parsed, wave_layer,
-                width, height, duration, peaks or [],
-            )
-            or video_label
-        )
-    elif wave_layer is not None and parsed.wave_style != "none":
-        mode, bar_width, height_scale = WAVE_STYLES[parsed.wave_style]
-        wave_x, wave_y, wave_width, wave_height = wave_layer.pixels(width, height)
-        wave_height = max(40, int(wave_height * height_scale))
-        # Draw into a narrow buffer and scale it back up with nearest-neighbour
-        # so each column becomes a solid bar; at bar_width 1 this is a no-op.
-        draw_width = max(16, wave_width // bar_width)
-        upscale = (
-            f",scale={wave_width}:{wave_height}:flags=neighbor" if bar_width > 1 else ""
-        )
-        # The waveform always tracks speech, never the music bed, so the visual
-        # stays locked to what the listener is following.
-        audio_chains.append(
-            # dynaudnorm normalises only this branch. Conversational speech sits
-            # far below peak, so an untouched signal draws a thin line barely
-            # off the centre axis; lifting it fills the box the way an audiogram
-            # is expected to look. The exported audio comes from [voice] and is
-            # never touched by this.
-            f"[wavesrc]dynaudnorm=framelen=200:gausssize=11:peak=0.95,"
-            f"showwaves=s={draw_width}x{wave_height}:mode={mode}:"
-            # draw=full paints each drawn sample at full intensity; the default
-            # dims by amplitude, which the nearest-neighbour upscale then
-            # smears into a washed-out band.
-            f"draw=full:scale={parsed.wave_scale}:"
-            f"colors={showwaves_colors(wave_layer.paint(parsed.accent))}"
-            f"{upscale},format=rgba[waves]"
-        )
-        overlay = f"{video_label}[waves]overlay=x={wave_x}:y={wave_y}"
-        guard = enable_expression(wave_layer.start, wave_layer.end, duration)
-        if guard:
-            overlay += f":enable='{guard}'"
-        audio_chains.append(f"{overlay}[vwave]")
-        video_label = "[vwave]"
-    if not any(name in ";".join(audio_chains) for name in ("showwaves", "showfreqs")):
-        # showwaves is the only consumer of that split branch; without it the
-        # graph has a dangling output and FFmpeg refuses to run.
-        audio_chains.append("[wavesrc]anullsink")
-
-    progress_chain = _progress_filter(parsed, width, height, duration)
-    text_chain = _text_filters(
-        parsed, width, height, duration,
-        font_file if font_file is not None else font_file_for(parsed.font, "title"),
-        token_context,
-        work_dir=output_path.parent,
-    )
     # fontsdir points libass at the bundled faces so the caption style can
     # name "Inter" or "Bebas Neue" and get it, wherever the container runs.
     # An uploaded caption font lives in the shared uploads fonts directory
@@ -1567,7 +1477,55 @@ def build_render_command(
         ass_fonts_root = user_fonts_dir()
     fonts_dir = escape_drawtext(str(ass_fonts_root)) if ass_fonts_root.is_dir() else ""
     ass_filter = f"ass=captions.ass:fontsdir='{fonts_dir}'" if fonts_dir else "ass=captions.ass"
-    audio_chains.append(f"{video_label}{ass_filter}{progress_chain}{text_chain}[v]")
+    title_font = font_file if font_file is not None else font_file_for(parsed.font, "title")
+
+    # Composited in the order the editor lists the layers, back to front, so
+    # what "bring forward" does in the panel is what the export does. Before
+    # this every picture went under the sound bars and every title over the
+    # captions whatever the panel said: the preview honoured the order and
+    # the video did not, which read as the arrows doing nothing.
+    image_inputs = {
+        layer.id: first_image_input + offset for offset, layer in enumerate(image_layers)
+    }
+    wave_drawn = False
+    ass_drawn = False
+    text_count = 0
+    for layer in parsed.layers:
+        if not layer.visible:
+            continue
+        if layer.id in image_inputs:
+            index = image_inputs[layer.id]
+            video_label = _overlay_image(
+                audio_chains, video_label, layer, index, index - first_image_input,
+                width, height, duration,
+            )
+        elif layer.type == "waveform" and not wave_drawn:
+            wave_drawn = True
+            video_label = _wave_chain(
+                audio_chains, video_label, parsed, layer, width, height, duration, peaks or [],
+            )
+        elif layer.type == "captions" and not ass_drawn:
+            ass_drawn = True
+            audio_chains.append(f"{video_label}{ass_filter}[vcap]")
+            video_label = "[vcap]"
+        elif layer.type in RENDERABLE_TEXT_TYPES and layer.text.strip():
+            chain = _text_filters(
+                parsed, width, height, duration, title_font, token_context,
+                work_dir=output_path.parent, layers=[layer], first_index=text_count,
+            )
+            text_count += 1
+            if chain:
+                audio_chains.append(f"{video_label}{chain[1:]}[vtxt{text_count}]")
+                video_label = f"[vtxt{text_count}]"
+    if not any(name in ";".join(audio_chains) for name in ("showwaves", "showfreqs")):
+        # showwaves is the only consumer of that split branch; without it the
+        # graph has a dangling output and FFmpeg refuses to run.
+        audio_chains.append("[wavesrc]anullsink")
+
+    # The progress bar rides on top of everything; captions do too when the
+    # scene has no captions layer to place them by.
+    tail = ("" if ass_drawn else ass_filter) + _progress_filter(parsed, width, height, duration)
+    audio_chains.append(f"{video_label}{tail.lstrip(',') or 'null'}[v]")
 
     command = [
         "ffmpeg",
@@ -1656,6 +1614,108 @@ def _peak_bars(buckets: list[float]) -> set[int]:
         if value > previous or value > following:
             peaks.add(index)
     return peaks
+
+
+def _overlay_image(
+    chains: list[str],
+    video_label: str,
+    layer: "RenderLayer",
+    index: int,
+    offset: int,
+    width: int,
+    height: int,
+    duration: float,
+) -> str:
+    """Place one pre-baked artwork plate; returns the new video label.
+
+    Plates are pre-cropped and pre-masked (see services/plates.py), so only
+    the placement, the opacity and the entrance are left to do here.
+    """
+    x, y, _, _ = layer.pixels(width, height)
+    source = f"[{index}:v]"
+    x_expr: str = str(x)
+    y_expr: str = str(y)
+    if layer.opacity < 1.0:
+        # A translucent plate — the watermark case. aa scales the alpha
+        # channel; everything else passes through.
+        chains.append(
+            f"{source}format=rgba,colorchannelmixer=aa={layer.opacity:.3f}[vimgop{offset}]"
+        )
+        source = f"[vimgop{offset}]"
+    if layer.enter != "none":
+        # The plate fades in over its entrance and, for the moving styles,
+        # drifts into place. overlay evaluates x/y per frame, so the drift
+        # is one expression rather than one filter per frame.
+        progress = f"min(1\\,max(0\\,(t-{layer.start:.3f})/{layer.enter_seconds:.3f}))"
+        chains.append(
+            f"{source}format=rgba,fade=t=in:st={layer.start:.3f}:"
+            f"d={layer.enter_seconds:.3f}:alpha=1[vimgin{offset}]"
+        )
+        source = f"[vimgin{offset}]"
+        dx, dy = enter_offsets(layer.enter, progress)
+        x_expr, y_expr = f"{x}{dx}", f"{y}{dy}"
+    overlay = f"{video_label}{source}overlay=x={x_expr}:y={y_expr}"
+    guard = enable_expression(layer.start, layer.end, duration)
+    if guard:
+        overlay += f":enable='{guard}'"
+    chains.append(f"{overlay}[vimg{offset}]")
+    return f"[vimg{offset}]"
+
+
+def _wave_chain(
+    chains: list[str],
+    video_label: str,
+    parsed: Scene,
+    wave_layer: "RenderLayer",
+    width: int,
+    height: int,
+    duration: float,
+    peaks: list[float],
+) -> str:
+    """Draw the sound bars in the scene's style; returns the new video label."""
+    if parsed.wave_style in PULSE_STYLES:
+        return _pulse_wave(chains, video_label, parsed, wave_layer, width, height, duration)
+    if parsed.wave_style in ENVELOPE_STYLES:
+        return (
+            _envelope_wave(
+                chains, video_label, parsed, wave_layer, width, height, duration, peaks,
+            )
+            or video_label
+        )
+    if parsed.wave_style == "none":
+        return video_label
+    mode, bar_width, height_scale = WAVE_STYLES[parsed.wave_style]
+    wave_x, wave_y, wave_width, wave_height = wave_layer.pixels(width, height)
+    wave_height = max(40, int(wave_height * height_scale))
+    # Draw into a narrow buffer and scale it back up with nearest-neighbour
+    # so each column becomes a solid bar; at bar_width 1 this is a no-op.
+    draw_width = max(16, wave_width // bar_width)
+    upscale = (
+        f",scale={wave_width}:{wave_height}:flags=neighbor" if bar_width > 1 else ""
+    )
+    # The waveform always tracks speech, never the music bed, so the visual
+    # stays locked to what the listener is following.
+    chains.append(
+        # dynaudnorm normalises only this branch. Conversational speech sits
+        # far below peak, so an untouched signal draws a thin line barely
+        # off the centre axis; lifting it fills the box the way an audiogram
+        # is expected to look. The exported audio comes from [voice] and is
+        # never touched by this.
+        f"[wavesrc]dynaudnorm=framelen=200:gausssize=11:peak=0.95,"
+        f"showwaves=s={draw_width}x{wave_height}:mode={mode}:"
+        # draw=full paints each drawn sample at full intensity; the default
+        # dims by amplitude, which the nearest-neighbour upscale then
+        # smears into a washed-out band.
+        f"draw=full:scale={parsed.wave_scale}:"
+        f"colors={showwaves_colors(wave_layer.paint(parsed.accent))}"
+        f"{upscale},format=rgba[waves]"
+    )
+    overlay = f"{video_label}[waves]overlay=x={wave_x}:y={wave_y}"
+    guard = enable_expression(wave_layer.start, wave_layer.end, duration)
+    if guard:
+        overlay += f":enable='{guard}'"
+    chains.append(f"{overlay}[vwave]")
+    return "[vwave]"
 
 
 def _pulse_wave(
@@ -1916,8 +1976,13 @@ def _text_filters(
     font_file: Path | None,
     token_context: dict[str, str] | None = None,
     work_dir: Path | None = None,
+    layers: "list[RenderLayer] | None" = None,
+    first_index: int = 0,
 ) -> str:
     """drawtext filters for the scene's text layers, in stacking order.
+
+    `layers` narrows it to a subset (the render walks the stack one layer at
+    a time); `first_index` keeps the text files it writes uniquely named.
 
     Captions from the transcript are burned in by the ASS subtitle filter; these
     are the standalone text elements the editor lets you place on the canvas,
@@ -1941,7 +2006,8 @@ def _text_filters(
         # layers still produces a usable audiogram.
         return ""
     chain = ""
-    for index, layer in enumerate(parsed.text_layers()):
+    chosen = parsed.text_layers() if layers is None else layers
+    for index, layer in enumerate(chosen, start=first_index):
         if layer.type == "captions":
             # The transcript already drives these through captions.ass.
             continue
