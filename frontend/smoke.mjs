@@ -9,7 +9,7 @@
  *
  *   npm run smoke -- --base-url http://localhost:8080
  */
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 
 const arg = (name, fallback) => {
   const index = process.argv.indexOf(`--${name}`);
@@ -20,12 +20,16 @@ const BASE = arg("base-url", "http://127.0.0.1:8080");
 const USERNAME = arg("username", "demo");
 const PASSWORD = arg("password", "studio-demo-2026");
 const SHOTS = arg("shots", null);
+// --engine webkit drives the same steps in Safari's engine. Safari delivers
+// pointer moves faster than React renders, which is how a drag that looked
+// fine in Chromium saved only its first pixel there.
+const ENGINE = arg("engine", "chromium") === "webkit" ? webkit : chromium;
 
 const problems = [];
 // Before sign-in the app probes /api/me and is correctly told 401. That is the
 // auth check working, not a fault, so it only counts once a session exists.
 let signedIn = false;
-const browser = await chromium.launch();
+const browser = await ENGINE.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 
 page.on("console", (message) => {
@@ -37,6 +41,19 @@ page.on("console", (message) => {
   problems.push(`console: ${text}`);
 });
 page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+
+// Poll for a condition for up to `timeout` ms; false when it never held.
+// Fixed pauses fail on the slower engines (WebKit saves and reloads take
+// longer than Chromium), and a pause that is long enough for them makes
+// every run slow.
+const settles = async (check, timeout = 8000) => {
+  const until = Date.now() + timeout;
+  while (Date.now() < until) {
+    if (await check()) return true;
+    await page.waitForTimeout(250);
+  }
+  return false;
+};
 
 const step = async (name, action) => {
   const before = problems.length;
@@ -55,7 +72,7 @@ const step = async (name, action) => {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/smoke-${name}.png` });
 };
 
-console.log(`Browser smoke: ${BASE}\n`);
+console.log(`Browser smoke: ${BASE} (${ENGINE === webkit ? "webkit" : "chromium"})\n`);
 
 await step("sign-in-screen", () => page.goto(BASE, { waitUntil: "networkidle" }));
 
@@ -606,9 +623,10 @@ await step("fix-word", async () => {
   }
   await input.fill(`${original}x`);
   await input.press("Enter");
-  await page.waitForTimeout(900);
-  const changed = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
-  if (changed !== `${original}x`) {
+  const wordIs = (text) => async () =>
+    (await page.locator(".cuts-line .word").nth(1).innerText()).trim() === text;
+  if (!(await settles(wordIs(`${original}x`)))) {
+    const changed = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
     problems.push(`fix-word: the word did not change (${original} -> ${changed})`);
   }
   // Put it back, so the smoke run does not leave a typo on a real project.
@@ -616,9 +634,10 @@ await step("fix-word", async () => {
   const again = page.locator(".cuts-line .word.editing input");
   await again.fill(original);
   await again.press("Enter");
-  await page.waitForTimeout(900);
-  const restored = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
-  if (restored !== original) problems.push(`fix-word: could not restore the word (${restored})`);
+  if (!(await settles(wordIs(original)))) {
+    const restored = (await page.locator(".cuts-line .word").nth(1).innerText()).trim();
+    problems.push(`fix-word: could not restore the word (${restored})`);
+  }
   await page.locator('.cuts-summary button:has-text("Done fixing")').click();
 });
 
@@ -772,10 +791,10 @@ await step("templates", async () => {
 
   // Clean up after ourselves so repeated runs do not pile up.
   await card.locator('.icon-button').click();
-  await page.waitForTimeout(900);
-  if (await page.locator(`.saved-template:has-text("${LOOK}")`).count()) {
-    problems.push("templates: deleting the saved look did not remove it");
-  }
+  const gone = await settles(
+    async () => (await page.locator(`.saved-template:has-text("${LOOK}")`).count()) === 0,
+  );
+  if (!gone) problems.push("templates: deleting the saved look did not remove it");
 });
 
 await step("inbox", async () => {
@@ -796,7 +815,9 @@ await step("settings", async () => {
   const text = await page.locator(".settings-page").innerText().catch(() => "");
   if (!text.includes("Your show")) problems.push("settings: no Your show section");
   if (!text.includes("Posting accounts")) problems.push("settings: no posting accounts");
-  if ((await page.locator(".connection-row").count()) < 3) problems.push("settings: platform list missing");
+  // The platform rows arrive from the API after the page paints.
+  if (!(await settles(async () => (await page.locator(".connection-row").count()) >= 3)))
+    problems.push("settings: platform list missing");
 });
 
 await step("exports", async () => {

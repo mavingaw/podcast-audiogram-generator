@@ -727,9 +727,20 @@ export function App() {
     );
     setHistoryVersion((current) => current + 1);
   }
+  // Transcript saves go out one at a time and only the newest one's answer
+  // is kept. Two quick word fixes used to race: the first save's response
+  // (a whole transcript, seconds in flight in Safari) landed after the
+  // second edit and put the old word back on screen — and, had the server
+  // finished them out of order, on disk too.
+  const transcriptQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const transcriptSaveSeq = useRef(0);
   async function updateTranscript(mediaId: string, transcript: Transcript) {
-    const result = await api.updateTranscript(mediaId, transcript);
-    setMedia(media.map((m) => (m.id === mediaId ? result.media : m)));
+    const seq = ++transcriptSaveSeq.current;
+    const run = transcriptQueue.current.then(() => api.updateTranscript(mediaId, transcript));
+    transcriptQueue.current = run.catch(() => undefined);
+    const result = await run;
+    if (seq !== transcriptSaveSeq.current) return;
+    setMedia((current) => current.map((m) => (m.id === mediaId ? result.media : m)));
   }
   if (auth === "loading")
     return (
@@ -3545,32 +3556,37 @@ function Studio({
     const ox = layer.x;
     const oy = layer.y;
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* capture is best-effort */ }
-    const move = (event: PointerEvent) =>
-      setLayers((current) => {
-        const next = current.map((l) =>
-          l.id === layer.id
-            ? {
-                ...l,
-                x: Math.max(
-                  0,
-                  Math.min(
-                    100 - l.width,
-                    ox + ((event.clientX - sx) / rect.width) * 100,
-                  ),
+    const move = (event: PointerEvent) => {
+      // Worked out from the ref, never inside a state updater: React runs
+      // functional updaters when it next renders, and Safari hands over
+      // pointer moves faster than it renders, so at pointerup the ref still
+      // held the FIRST move's position — save() sent that, the response
+      // put it back, and the picture snapped to where it started after a
+      // few pixels ("moving the cover art with the cursor does not work").
+      const next = layersRef.current.map((l) =>
+        l.id === layer.id
+          ? {
+              ...l,
+              x: Math.max(
+                0,
+                Math.min(
+                  100 - l.width,
+                  ox + ((event.clientX - sx) / rect.width) * 100,
                 ),
-                y: Math.max(
-                  0,
-                  Math.min(
-                    100 - l.height,
-                    oy + ((event.clientY - sy) / rect.height) * 100,
-                  ),
+              ),
+              y: Math.max(
+                0,
+                Math.min(
+                  100 - l.height,
+                  oy + ((event.clientY - sy) / rect.height) * 100,
                 ),
-              }
-            : l,
-        );
-        layersRef.current = next;
-        return next;
-      });
+              ),
+            }
+          : l,
+      );
+      layersRef.current = next;
+      setLayers(next);
+    };
     const up = async () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -3644,11 +3660,11 @@ function Studio({
         h = o.h + (o.y - ny);
         y = ny;
       }
-      setLayers((current) => {
-        const next = current.map((l) => (l.id === layer.id ? { ...l, x, y, width: w, height: h } : l));
-        layersRef.current = next;
-        return next;
-      });
+      // Same as drag(): computed from the ref so the last move, not the
+      // first, is what gets saved when Safari outruns React's renders.
+      const next = layersRef.current.map((l) => (l.id === layer.id ? { ...l, x, y, width: w, height: h } : l));
+      layersRef.current = next;
+      setLayers(next);
     };
     const up = async () => {
       window.removeEventListener("pointermove", move);

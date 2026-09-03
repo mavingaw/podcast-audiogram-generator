@@ -37,6 +37,13 @@ Push-Location $frontend
 & node smoke.mjs --base-url $base --username $user --password $pass 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { $failed = $true }
 
+# Safari's engine too: it hands pointer moves to the page faster than React
+# renders, which is how a drag that passed in Chromium saved only its first
+# pixel there (the cover-art crop Afiya reported).
+"$(Get-Date -Format s) === smoke (webkit) against $base ===" | Tee-Object -FilePath $log -Append
+& node smoke.mjs --engine webkit --base-url $base --username $user --password $pass 2>&1 | Tee-Object -FilePath $log -Append
+if ($LASTEXITCODE -ne 0) { $failed = $true }
+
 "$(Get-Date -Format s) === mobile smoke against $base ===" | Tee-Object -FilePath $log -Append
 & node mobile-smoke.mjs --base-url $base --username $user --password $pass 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { $failed = $true }

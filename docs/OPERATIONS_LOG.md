@@ -190,3 +190,21 @@ layer-order). DEPLOY GOTCHA: `docker compose build` on the box needs
 KINDER_DB_PASSWORD exported (the compose file declares kinder-db) — without it
 the build fails before it starts and apply-template quietly reuses the old
 image. Read it from the template XML on the box; never write it to .env.
+
+2026-09-02 later: Safari drag fix (Afiya's "cropping the cover art with the
+cursor does not work"). Reproduced in Playwright's WebKit: a 40 px corner
+drag resized by 4 px and a 30 px move moved 3 px, while Chromium did the
+full amount. Cause: drag() and resize() updated the layer inside a React
+functional state updater, which React only runs when it next renders;
+Safari delivers pointer moves faster than that, so at pointerup the ref
+still held the FIRST move's position, save() sent it, and the response
+snapped the picture back. Both handlers now compute from the ref
+synchronously. Also: transcript saves are queued one at a time and only the
+newest response is applied (two quick word fixes could put the old word
+back). Smoke has --engine webkit; the nightly runs it as a fourth pass.
+Deployed as image 1e009cdb0717; verified with the WebKit probe against the
+box, Chromium smoke 32/32, WebKit smoke 32/32 (local), phone smoke.
+Afiya's other reports: her dropdown screenshot shows sound-bar names that
+left the app on Aug 30, so her browser was holding an old copy of the app;
+the public URL serves the current bundle. A hard refresh (Cmd+Shift+R) or
+a fresh tab gets her the Aug 30 sound-bar fix and today's panel changes.
