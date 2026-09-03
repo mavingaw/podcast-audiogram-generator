@@ -3165,3 +3165,13 @@ md-outlined-select { width: 100%; }
   border: 1px solid var(--accent); border-radius: 4px;
   background: var(--surface); color: var(--text);
 }
+
+/* A failed save says so (2026-09-02). Bottom centre, above everything, gone
+   on its own after a few seconds or on OK. */
+.save-notice {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.4;
+  background: var(--surface); color: var(--text); border: 1px solid var(--danger-500);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}

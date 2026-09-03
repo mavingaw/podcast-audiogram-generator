@@ -29,6 +29,9 @@ const problems = [];
 // Before sign-in the app probes /api/me and is correctly told 401. That is the
 // auth check working, not a fault, so it only counts once a session exists.
 let signedIn = false;
+// While a step deliberately makes a request fail, the browser's own line
+// about that failure is expected, not a finding.
+let expectingFailure = false;
 const browser = await ENGINE.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 
@@ -38,6 +41,7 @@ page.on("console", (message) => {
   // A failed poll or a missing favicon is noise, not a broken app.
   if (/favicon|ERR_INTERNET_DISCONNECTED|net::ERR_ABORTED/i.test(text)) return;
   if (!signedIn && /401 \(Unauthorized\)/.test(text)) return;
+  if (expectingFailure && /500 \(Internal Server Error\)/.test(text)) return;
   problems.push(`console: ${text}`);
 });
 page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
@@ -639,6 +643,37 @@ await step("fix-word", async () => {
     problems.push(`fix-word: could not restore the word (${restored})`);
   }
   await page.locator('.cuts-summary button:has-text("Done fixing")').click();
+});
+
+// A save that fails must say so and put the screen back to what the server
+// has. Before this the edit stayed on screen, unsaved, until the next reload
+// quietly took it away.
+await step("save-failure", async () => {
+  const title = page.locator(".canvas-layer.layer-title").first();
+  if ((await title.count()) === 0) return;
+  await page.locator(".design-canvas").first().evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await title.click({ force: true });
+  await page.waitForTimeout(300);
+  const before = (await title.boundingBox())?.x ?? 0;
+  let failed = 0;
+  expectingFailure = true;
+  await page.route("**/api/projects/*", async (route) => {
+    if (route.request().method() === "PATCH" && failed === 0) {
+      failed += 1;
+      return route.fulfill({ status: 500, contentType: "application/json", body: '{"detail":"simulated"}' });
+    }
+    return route.continue();
+  });
+  await page.keyboard.press("ArrowRight");
+  const notice = page.locator(".save-notice");
+  const shown = await settles(async () => (await notice.count()) > 0);
+  if (!shown) problems.push("save-failure: no notice when a save failed");
+  await page.unroute("**/api/projects/*");
+  expectingFailure = false;
+  const reverted = await settles(async () => Math.abs(((await title.boundingBox())?.x ?? 0) - before) < 0.5);
+  if (!reverted) problems.push("save-failure: the layer kept an edit the server never saved");
+  await notice.locator("button").click().catch(() => {});
+  if (await notice.count()) problems.push("save-failure: OK did not dismiss the notice");
 });
 
 // The arrows in "What is on the picture" reorder the stack — the list, the

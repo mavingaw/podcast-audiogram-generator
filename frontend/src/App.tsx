@@ -436,6 +436,15 @@ export function App() {
   const [saved, setSaved] = useState<SavedTemplate[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // A save that failed used to fail silently: the screen kept the edit, the
+  // server never got it, and the next reload took it away. Now it says so
+  // and puts the screen back to what the server has.
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 9000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   // The inbox badge only helps somebody already looking at the app. The tab
   // title carries the count so a background tab shows it, and when the count
   // rises and notifications are allowed, the browser says so out loud.
@@ -699,7 +708,14 @@ export function App() {
     setProjects((current) =>
       current.map((p) => (p.id === id ? { ...p, ...updates, scene: { ...p.scene, ...(updates.scene ?? {}) } } : p)),
     );
-    const result = await api.updateProject(selected, updates);
+    let result: Awaited<ReturnType<typeof api.updateProject>>;
+    try {
+      result = await api.updateProject(selected, updates);
+    } catch (cause) {
+      setNotice(`That change could not be saved (${errorMessage(cause)}). The screen shows what is saved.`);
+      await loadData();
+      return;
+    }
     // Only the newest edit reconciles with the server: responses to rapid
     // edits can come back out of order, and an older response replacing the
     // whole project would silently undo the edits after it.
@@ -738,7 +754,16 @@ export function App() {
     const seq = ++transcriptSaveSeq.current;
     const run = transcriptQueue.current.then(() => api.updateTranscript(mediaId, transcript));
     transcriptQueue.current = run.catch(() => undefined);
-    const result = await run;
+    let result: Awaited<typeof run>;
+    try {
+      result = await run;
+    } catch (cause) {
+      if (seq === transcriptSaveSeq.current) {
+        setNotice(`The transcript change could not be saved (${errorMessage(cause)}). The screen shows what is saved.`);
+        await loadData();
+      }
+      return;
+    }
     if (seq !== transcriptSaveSeq.current) return;
     setMedia((current) => current.map((m) => (m.id === mediaId ? result.media : m)));
   }
@@ -759,6 +784,12 @@ export function App() {
     );
   return (
     <div className={`app-shell ${navOpen ? "nav-open" : ""}`}>
+      {notice && (
+        <div className="save-notice" role="alert">
+          <span>{notice}</span>
+          <button className="ghost compact" onClick={() => setNotice(null)}>OK</button>
+        </div>
+      )}
       <ContextMenuHost />
       <FontFaces />
       {coaching && <Coach steps={MAKE_A_CLIP} onDone={() => setCoaching(false)} />}

@@ -208,3 +208,14 @@ Afiya's other reports: her dropdown screenshot shows sound-bar names that
 left the app on Aug 30, so her browser was holding an old copy of the app;
 the public URL serves the current bundle. A hard refresh (Cmd+Shift+R) or
 a fresh tab gets her the Aug 30 sound-bar fix and today's panel changes.
+
+2026-09-02 evening: failed saves are no longer silent (deferred item from the
+Aug 31 review). A project or transcript save that errors now shows a notice
+at the bottom of the screen and reloads what the server actually has, so
+the edit does not sit on screen unsaved until a reload quietly removes it.
+Smoke step "save-failure" fails one PATCH with a 500 and checks the notice
+appears, the layer snaps back, and OK dismisses it. Image 456caf00df07.
+This morning's nightly (03:30) FAILED on the keyboard step: the captions band
+was swallowing the click on the title, which the caption-handoff change in
+the first deploy today removed; every smoke since passes it.
+Reply to Afiya drafted in Gmail (not sent) — it tells her to hard-refresh.
