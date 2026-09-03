@@ -219,3 +219,14 @@ This morning's nightly (03:30) FAILED on the keyboard step: the captions band
 was swallowing the click on the title, which the caption-handoff change in
 the first deploy today removed; every smoke since passes it.
 Reply to Afiya drafted in Gmail (not sent) — it tells her to hard-refresh.
+
+2026-09-02 night: full-app audit (docs/AUDIT_2026-09-02.md). Two new scripts,
+frontend/api-audit.mjs (78 endpoint checks with a fresh 30 s upload, real
+transcription and render, all cleaned up) and frontend/ui-audit.mjs (36
+pages/panels the smoke never drives, Chromium + WebKit), both now in the
+nightly after the smokes. Result: API 78/78, UI 36/36 in both engines. One
+real bug found and fixed: the Feeds "Clips per episode" / "Import older" and
+Studio batch "Clips" selects rendered blank (numeric option values never
+matched the Material select's string value). Image 546d530bb68a. A one-off
+16:9-vs-1:1 mismatch on the smoke project could not be reproduced; the UI
+audit now checks the server's shape after every switch.

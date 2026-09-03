@@ -51,6 +51,18 @@ if ($LASTEXITCODE -ne 0) { $failed = $true }
 "$(Get-Date -Format s) === regression against $base ===" | Tee-Object -FilePath $log -Append
 & node regression.mjs --base-url $base --username $user --password $pass --source "Season 4" 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { $failed = $true }
+
+# The two audits from 2026-09-02: every API endpoint group with a fresh
+# 30 s upload, and every page and panel the smoke does not drive. Both clean
+# up after themselves. They run last because they create and delete things
+# on the account, and the smokes must never overlap with that.
+"$(Get-Date -Format s) === api audit against $base ===" | Tee-Object -FilePath $log -Append
+& node api-audit.mjs --base-url $base --username $user --password $pass --assets (Join-Path $frontend "audit-assets") 2>&1 | Tee-Object -FilePath $log -Append
+if ($LASTEXITCODE -ne 0) { $failed = $true }
+
+"$(Get-Date -Format s) === ui audit against $base ===" | Tee-Object -FilePath $log -Append
+& node ui-audit.mjs --base-url $base --username $user --password $pass --assets (Join-Path $frontend "audit-assets") 2>&1 | Tee-Object -FilePath $log -Append
+if ($LASTEXITCODE -ne 0) { $failed = $true }
 Pop-Location
 
 if ($failed) {

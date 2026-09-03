@@ -6286,7 +6286,7 @@ function AutoClips({
             How many
             <md-outlined-select value={String(count)} onInput={(e) => setCount(Number(e.target.value))}>
               {[3, 6, 10].map((n) => (
-                <md-select-option key={n} value={n}><div slot="headline">{n} clips</div></md-select-option>
+                <md-select-option key={n} value={String(n)}><div slot="headline">{n} clips</div></md-select-option>
               ))}
             </md-outlined-select>
           </label>
@@ -6364,7 +6364,7 @@ function BatchClips({
           Clips
           <md-outlined-select value={String(count)} onInput={(e) => setCount(Number(e.target.value))}>
             {[3, 4, 6, 8, 10, 12].map((n) => (
-              <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
+              <md-select-option key={n} value={String(n)}><div slot="headline">{n}</div></md-select-option>
             ))}
           </md-outlined-select>
         </label>
@@ -6977,9 +6977,9 @@ function Feeds({
                       await refresh();
                     }}
                   >
-                    <md-select-option value={0}><div slot="headline">None — just transcribe</div></md-select-option>
+                    <md-select-option value="0"><div slot="headline">None — just transcribe</div></md-select-option>
                     {[3, 4, 6, 8, 10].map((n) => (
-                      <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
+                      <md-select-option key={n} value={String(n)}><div slot="headline">{n}</div></md-select-option>
                     ))}
                   </md-outlined-select>
                 </label>
@@ -7029,7 +7029,7 @@ function Feeds({
                   }
                 >
                   {[1, 3, 5, 10, 25].map((n) => (
-                    <md-select-option key={n} value={n}><div slot="headline">{n}</div></md-select-option>
+                    <md-select-option key={n} value={String(n)}><div slot="headline">{n}</div></md-select-option>
                   ))}
                 </md-outlined-select>
                 <button
